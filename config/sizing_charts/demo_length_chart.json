@@ -1,0 +1,21 @@
+{
+  "chart_id": "demo-length-v1",
+  "is_demo": true,
+  "disclaimer": "DEMONSTRATION CHART WITH SYNTHETIC VALUES. These boundaries are invented for software testing only and are not an official size chart for any glove product. Replace with the manufacturer's documented chart before customer use.",
+  "manufacturer": "Demo Manufacturer (placeholder)",
+  "product_model": "Demo Work Glove (placeholder)",
+  "units": "mm",
+  "rules": {
+    "measurements": ["hand_length_mm"],
+    "combine": "primary_only",
+    "notes": "Size by hand length only (wrist crease to middle fingertip)."
+  },
+  "sizes": [
+    { "label": "XS", "ranges": { "hand_length_mm": [null, 163.0] } },
+    { "label": "S", "ranges": { "hand_length_mm": [163.0, 175.0] } },
+    { "label": "M", "ranges": { "hand_length_mm": [175.0, 187.0] } },
+    { "label": "L", "ranges": { "hand_length_mm": [187.0, 199.0] } },
+    { "label": "XL", "ranges": { "hand_length_mm": [199.0, 211.0] } },
+    { "label": "XXL", "ranges": { "hand_length_mm": [211.0, null] } }
+  ]
+}

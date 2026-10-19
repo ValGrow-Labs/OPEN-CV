@@ -1,0 +1,9 @@
+node_modules/
+dist/
+public/mediapipe/
+public/models/
+public/opencv/
+*.tsbuildinfo
+e2e/.media/
+test-results/
+playwright-report/

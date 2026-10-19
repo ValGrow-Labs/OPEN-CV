@@ -1,0 +1,21 @@
+{
+  "chart_id": "demo-length-circumference-v1",
+  "is_demo": true,
+  "disclaimer": "DEMONSTRATION CHART WITH SYNTHETIC VALUES. These boundaries are invented for software testing only and are not an official size chart for any glove product. Replace with the manufacturer's documented chart before customer use.",
+  "manufacturer": "Demo Manufacturer (placeholder)",
+  "product_model": "Demo Fitted Glove (placeholder)",
+  "units": "mm",
+  "rules": {
+    "measurements": ["hand_circumference_mm", "hand_length_mm"],
+    "combine": "largest_size",
+    "notes": "Size by palm circumference and hand length; when they disagree, recommend the larger size. Circumference cannot be measured from a single camera view, so the customer is asked to enter a tape-measured value."
+  },
+  "sizes": [
+    { "label": "6", "ranges": { "hand_circumference_mm": [null, 165.0], "hand_length_mm": [null, 165.0] } },
+    { "label": "7", "ranges": { "hand_circumference_mm": [165.0, 190.0], "hand_length_mm": [165.0, 176.0] } },
+    { "label": "8", "ranges": { "hand_circumference_mm": [190.0, 215.0], "hand_length_mm": [176.0, 187.0] } },
+    { "label": "9", "ranges": { "hand_circumference_mm": [215.0, 240.0], "hand_length_mm": [187.0, 198.0] } },
+    { "label": "10", "ranges": { "hand_circumference_mm": [240.0, 265.0], "hand_length_mm": [198.0, 209.0] } },
+    { "label": "11", "ranges": { "hand_circumference_mm": [265.0, null], "hand_length_mm": [209.0, null] } }
+  ]
+}

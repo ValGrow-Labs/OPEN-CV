@@ -1,0 +1,39 @@
+# Remaining risks, known limitations and required client inputs
+
+## Required client inputs
+
+| # | Input | Why | Where it goes |
+|---|---|---|---|
+| 1 | **Official sizing chart per product**: size labels, the measurement(s) each size is based on, boundaries in mm, and the rule when measurements disagree | The shipped charts are synthetic demos | `config/sizing_charts/<product>.json` (schema validated at startup); set `default_chart_id` in `config/app.json` |
+| 2 | The **measurement definitions** used to build those charts (e.g. hand length from which wrist crease; circumference with or without the thumb) | Camera definitions must match the chart's | `docs/MEASUREMENT_METHODOLOGY.md`, calibration targets |
+| 3 | A **validation study** (people, reference measurements, try-on outcomes) | Real accuracy is unknown until measured | `docs/VALIDATION_PLAN.md` |
+| 4 | Acceptance targets (MAE, adjacent-size accuracy, rejection rate) | Defines when the tool can go live | Validation report |
+| 5 | Supported reference objects beyond the quarter (verify each in the study before enabling) | Coin identity cannot be checked from images | `config/reference_objects.json` |
+| 6 | Privacy and legal review: consent text, retention, biometric-law assessment | Required before collecting research data | `docs/DATA_COLLECTION_AND_PRIVACY.md` |
+| 7 | Branding: logo, colours, product names and hosting domain (HTTPS is required for cameras) | The UI currently uses neutral placeholders | `frontend/src/styles.css`, `index.html` |
+
+## Risks and limitations
+
+| Risk | Impact | Mitigation in place | Still needed |
+|---|---|---|---|
+| Landmark offsets (joint centres vs. creases and tips) | Systematic error of several mm | Prior uncertainty; calibration pipeline (dev split) | Real calibration data |
+| Depth and perspective (coin above the palm, joints below the skin, unknown FOV) | Scale bias of about 3–5% | Explicit depth model with uncertainty; tilt rectification; gates | Validate; A/B test the depth model |
+| Circumference not observable | Sizes for circumference-based charts | Tape entry; derived model only if validated | Study data to test a model |
+| Provisional 3D (world-landmark) gates | Possible over-rejection of real users | Configurable thresholds; rejection reasons shown | Tune on pilot data |
+| Unvalidated uncertainty model | The confidence shown may be over- or under-stated | Labelled "model-based, not validated"; conservative priors | Check 95% interval coverage |
+| Uncalibrated system reports wide intervals | Many "uncertain / confirm with tape" results | Honest messaging | Calibration will narrow them if the data allow |
+| Wrong coin selected or used | Large scale error | Explicit coin selection; implausible-hand rejection | Possibly a two-coin check |
+| Non-silver references (pennies), shiny or worn coins, glare | Detection failure | Chroma-based detection with glare, occlusion and blur gates; clear messages | Field data across lighting |
+| Device variety (wide-angle lenses, low light, older phones) | Accuracy and speed differences | Frame gates; GPU with CPU fallback; resolution hints | Per-device validation |
+| Very small or very large hands, skin-tone variation | Possible bias | Wide plausibility ranges | Stratified validation results |
+| Browser support (camera APIs need HTTPS; iOS Safari specifics) | The scan cannot start | Specific error messages per failure | Test on target devices |
+| Not tested with a physical camera | Unknown live behaviour on real phones | Fake-camera e2e tests, real hand photo smoke test | Manual device testing |
+
+## Engineering notes
+
+* The coin detector exists in Python (reference, offline validation) and in TypeScript (live
+  browser). Any change must update both, regenerate the fixtures
+  (`python -m scripts.make_parity_fixtures`) and pass the parity tests.
+* Public config (`/api/config`) is the single source of thresholds for both frontend and
+  backend.
+* The research endpoint has no authentication. Add authentication before enabling it.

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "default": "us_quarter",
+  "objects": [
+    {
+      "id": "us_quarter",
+      "label": "US quarter (25¢)",
+      "shape": "circle",
+      "diameter_mm": 24.26,
+      "diameter_uncertainty_mm": 0.05,
+      "thickness_mm": 1.75,
+      "source": "United States Mint coin specifications (diameter 0.955 in / 24.26 mm).",
+      "enabled": true,
+      "notes": "diameter_uncertainty_mm is an assumed allowance for manufacturing tolerance and rim wear, not an official tolerance."
+    },
+    {
+      "id": "us_nickel",
+      "label": "US nickel (5¢)",
+      "shape": "circle",
+      "diameter_mm": 21.21,
+      "diameter_uncertainty_mm": 0.05,
+      "thickness_mm": 1.95,
+      "source": "United States Mint coin specifications (diameter 0.835 in / 21.21 mm).",
+      "enabled": false,
+      "notes": "Disabled until verified in field testing. Enable only after the validation study includes nickel captures."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Extra dependencies for the offline validation pipeline (validation/).
+# Install MediaPipe WITHOUT its dependencies afterwards, because its wheel requires
+# opencv-contrib-python, which would conflict with opencv-python-headless:
+#   pip install -r requirements-validation.txt
+#   pip install --no-deps mediapipe==0.10.35
+absl-py==2.5.1
+flatbuffers==25.12.19
+matplotlib==3.10.3

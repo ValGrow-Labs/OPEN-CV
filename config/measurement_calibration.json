@@ -1,0 +1,20 @@
+{
+  "status": "uncalibrated",
+  "source": "No reference-measurement data has been collected yet. Offsets are zero and residual_sd_mm values are prior assumptions, not measured performance. Replace this file with the output of backend/validation/fit_calibration.py (development split only).",
+  "fitted_at": null,
+  "n_participants": 0,
+  "measurements": {
+    "hand_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 5.0 },
+    "palm_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 4.0 },
+    "mcp_span_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 3.0 },
+    "thumb_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 6.0 },
+    "index_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 4.0 },
+    "middle_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 4.0 },
+    "ring_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 4.0 },
+    "little_length_mm": { "scale": 1.0, "offset_mm": 0.0, "residual_sd_mm": 4.0 }
+  },
+  "derived": {
+    "palm_breadth_mm": null,
+    "hand_circumference_mm": null
+  }
+}

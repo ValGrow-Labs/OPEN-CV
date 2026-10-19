@@ -1,0 +1,3 @@
+participant_id,split,ref_hand_length_mm,ref_palm_breadth_mm,ref_hand_circumference_mm,ref_mcp_span_mm,measured_by,tool
+P-0001,dev,,,,,staff,anthropometer + tape
+P-0002,test,,,,,staff,anthropometer + tape

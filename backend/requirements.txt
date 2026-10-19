@@ -1,0 +1,10 @@
+# Runtime + test dependencies (Python 3.11). Pinned to versions verified in development.
+numpy==2.2.6
+opencv-python-headless==4.10.0.84
+scipy==1.17.1
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+pydantic==2.11.10
+pytest==8.3.5
+httpx==0.28.1
+ruff==0.11.8

@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "coin_detection": {
+    "clahe_clip_limit": 2.0,
+    "clahe_tile_grid": 8,
+    "blur_kernel": 5,
+    "canny_high": 90,
+    "canny_low_ratio": 0.5,
+    "min_contour_circularity": 0.72,
+    "min_axis_ratio": 0.75,
+    "hough_dp": 1.2,
+    "hough_param2": 22,
+    "max_candidates": 8,
+    "radial_rays": 144,
+    "radial_search_fraction": 0.22,
+    "radial_step_px": 0.5,
+    "edge_strength_min": 4.0,
+    "edge_strength_rel": 0.35,
+    "outlier_mad_k": 3.0,
+    "min_diameter_px": 28,
+    "glare_level": 250,
+    "search_roi_half_size_palm_lengths": 0.75,
+    "search_diameter_range_palm_lengths": [
+      0.12,
+      0.7
+    ],
+    "accept": {
+      "min_edge_support": 0.7,
+      "max_angular_gap_deg": 60.0,
+      "max_fit_residual_px": 0.9,
+      "max_fit_residual_rel": 0.03,
+      "max_edge_width_px": 4.5,
+      "max_glare_fraction": 0.2,
+      "min_contrast": 0.05,
+      "min_confidence": 0.6
+    }
+  },
+  "calibration": {
+    "max_tilt_deg": 20.0,
+    "warn_tilt_deg": 12.0,
+    "tilt_correction_min_deg": 8.0,
+    "diameter_edge_floor_px": 0.5,
+    "require_coin_on_palm": true
+  },
+  "capture": {
+    "frames_target": 24,
+    "frames_min_accepted": 12,
+    "max_frames_per_request": 120,
+    "min_hand_length_fraction": 0.3,
+    "edge_margin_fraction": 0.02,
+    "max_finger_bend_deg": 25.0,
+    "max_finger_bend_deg_3d": 35.0,
+    "max_palm_tilt_deg_model": 30.0,
+    "brightness_range": [
+      50,
+      225
+    ],
+    "max_landmark_jitter_fraction": 0.015
+  },
+  "uncertainty": {
+    "landmark_model_input_px": 224,
+    "landmark_sigma_model_px": 1.5,
+    "perspective_rel_sigma": 0.01,
+    "assumed_hfov_deg": [
+      55.0,
+      80.0
+    ],
+    "tilt_estimate_sigma_deg": 4.0,
+    "manual_measurement_sd_mm": 4.0
+  },
+  "depth_model": {
+    "enabled": true,
+    "landmark_layer_depth_mm": 10.0,
+    "landmark_layer_depth_sd_mm": 5.0
+  },
+  "acceptance": {
+    "max_rel_u95_valid": 0.08,
+    "max_rel_u95_low_confidence": 0.14
+  },
+  "measurements": {
+    "hand_length_mm": {
+      "label": "Hand length",
+      "landmarks": [
+        0,
+        12
+      ],
+      "kind": "straight",
+      "definition": "Straight-line distance from the MediaPipe wrist landmark (0) to the middle-fingertip landmark (12), in the palm plane, with the hand flat and fingers extended. Approximates the glove-industry definition 'distal wrist crease to tip of middle finger'; the offset between landmark 0 and the wrist crease must be calibrated from reference measurements.",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        120,
+        240
+      ]
+    },
+    "palm_length_mm": {
+      "label": "Palm length",
+      "landmarks": [
+        0,
+        9
+      ],
+      "kind": "straight",
+      "definition": "Straight-line distance from the wrist landmark (0) to the middle-finger MCP joint-centre landmark (9).",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        65,
+        140
+      ]
+    },
+    "mcp_span_mm": {
+      "label": "Palm width (knuckle joint centres)",
+      "landmarks": [
+        5,
+        17
+      ],
+      "kind": "straight",
+      "definition": "Distance between the index-finger MCP (5) and little-finger MCP (17) joint-centre landmarks. This is narrower than the anthropometric palm breadth measured skin-edge to skin-edge; converting it to breadth requires a fitted model (see measurement_calibration.json).",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        35,
+        100
+      ]
+    },
+    "thumb_length_mm": {
+      "label": "Thumb length",
+      "landmarks": [
+        2,
+        3,
+        4
+      ],
+      "kind": "polyline",
+      "definition": "Polyline length thumb MCP (2) -> IP (3) -> tip (4). The thumb usually rotates out of the palm plane, so this is reported as low confidence.",
+      "out_of_plane": true,
+      "plausible_range_mm": [
+        35,
+        95
+      ]
+    },
+    "index_length_mm": {
+      "label": "Index finger length",
+      "landmarks": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "kind": "polyline",
+      "definition": "Polyline length MCP (5) -> PIP (6) -> DIP (7) -> tip (8), measured from the joint centre, which is proximal to the palmar finger crease used in anthropometry.",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        55,
+        120
+      ]
+    },
+    "middle_length_mm": {
+      "label": "Middle finger length",
+      "landmarks": [
+        9,
+        10,
+        11,
+        12
+      ],
+      "kind": "polyline",
+      "definition": "Polyline length MCP (9) -> PIP (10) -> DIP (11) -> tip (12), joint-centre based.",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        60,
+        130
+      ]
+    },
+    "ring_length_mm": {
+      "label": "Ring finger length",
+      "landmarks": [
+        13,
+        14,
+        15,
+        16
+      ],
+      "kind": "polyline",
+      "definition": "Polyline length MCP (13) -> PIP (14) -> DIP (15) -> tip (16), joint-centre based.",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        55,
+        125
+      ]
+    },
+    "little_length_mm": {
+      "label": "Little finger length",
+      "landmarks": [
+        17,
+        18,
+        19,
+        20
+      ],
+      "kind": "polyline",
+      "definition": "Polyline length MCP (17) -> PIP (18) -> DIP (19) -> tip (20), joint-centre based.",
+      "out_of_plane": false,
+      "plausible_range_mm": [
+        40,
+        105
+      ]
+    }
+  }
+}
