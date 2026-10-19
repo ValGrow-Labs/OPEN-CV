@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://open-cv-zmul.onrender.com/api/:path*"
+    }
+  ]
+}

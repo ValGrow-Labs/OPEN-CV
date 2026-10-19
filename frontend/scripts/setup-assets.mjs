@@ -26,19 +26,27 @@ if (existsSync(opencvSrc)) {
   console.log("copied OpenCV.js -> public/opencv");
 }
 
+let modelBuffer;
 const repoModel = join(repo, "models", "hand_landmarker.task");
-if (!existsSync(repoModel)) {
+if (existsSync(repoModel)) {
+  modelBuffer = readFileSync(repoModel);
+} else {
   console.log("downloading", MODEL_URL);
   const res = await fetch(MODEL_URL);
   if (!res.ok) throw new Error(`model download failed: ${res.status}`);
-  mkdirSync(dirname(repoModel), { recursive: true });
-  writeFileSync(repoModel, Buffer.from(await res.arrayBuffer()));
+  modelBuffer = Buffer.from(await res.arrayBuffer());
+  try {
+    mkdirSync(dirname(repoModel), { recursive: true });
+    writeFileSync(repoModel, modelBuffer);
+  } catch {
+    /* If outside root directory in Vercel sandbox, safely continue */
+  }
 }
-const digest = createHash("sha256").update(readFileSync(repoModel)).digest("hex");
+const digest = createHash("sha256").update(modelBuffer).digest("hex");
 if (digest !== MODEL_SHA256) {
   console.warn(`WARNING: hand_landmarker.task sha256 ${digest} differs from the verified ${MODEL_SHA256}`);
 }
 const modelDst = join(root, "public", "models");
 mkdirSync(modelDst, { recursive: true });
-cpSync(repoModel, join(modelDst, "hand_landmarker.task"));
+writeFileSync(join(modelDst, "hand_landmarker.task"), modelBuffer);
 console.log("copied model ->", modelDst);
