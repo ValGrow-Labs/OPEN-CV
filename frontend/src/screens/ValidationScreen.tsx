@@ -461,7 +461,7 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
               {submitError}
             </div>
           )}
-          {last && <LastResult record={last} blind={blind} />}
+          {last && <LastResult record={last} blind={blind} summary={summary} />}
         </section>
 
         <section className="card stack" aria-labelledby="summary-title">
@@ -528,7 +528,7 @@ function ReferenceHint({
   );
 }
 
-function LastResult({ record, blind }: { record: ValidationRecord; blind: boolean }) {
+function LastResult({ record, blind, summary }: { record: ValidationRecord; blind: boolean; summary: ValidationSummary | null }) {
   const hl = record.comparisons.find((c) => c.key === "hand_length_mm");
   const kind = record.data_origin === "software_test" ? " (software test, not counted)" : "";
   if (blind) {
@@ -555,6 +555,28 @@ function LastResult({ record, blind }: { record: ValidationRecord; blind: boolea
         </>
       )}
       {record.integrity_flags.length > 0 && <> Flagged: {record.integrity_flags.join(", ")}; excluded from results.</>}
+      {summary && <RunningAccuracy summary={summary} />}
+    </div>
+  );
+}
+
+/** Running totals next to the latest result, so they are visible on a phone without scrolling. */
+function RunningAccuracy({ summary }: { summary: ValidationSummary }) {
+  const rw = summary.real_world;
+  const acc = rw.accuracy.by_scan;
+  return (
+    <div className="stack" style={{ gap: 2, marginTop: 8 }} aria-label="Running accuracy">
+      <strong>So far (real participants, standard scans with agreed readings)</strong>
+      {acc.n > 0 ? (
+        <span>
+          {acc.n} scan{acc.n === 1 ? "" : "s"} from {rw.accuracy.n_hands} hand{rw.accuracy.n_hands === 1 ? "" : "s"}: average error
+          (MAE) {fmt(acc.mae_mm, 1)} mm, bias {signed(acc.mean_signed_error_mm, 1)} mm, largest {fmt(acc.max_abs_error_mm, 1)} mm.
+          Rejected scans: {rw.scans.rejected} of {rw.scans.total}.
+        </span>
+      ) : (
+        <span>No scored scans yet.</span>
+      )}
+      <span className="muted">{rw.accuracy.sample_note}</span>
     </div>
   );
 }

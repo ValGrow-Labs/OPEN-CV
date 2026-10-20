@@ -28,6 +28,8 @@ test("validation mode records a software-test scan without counting it", async (
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Measurement validation", { timeout: 120_000 });
   await expect(page.getByRole("status").filter({ hasText: /Recorded/ })).toContainText("software test, not counted");
+  // Running accuracy is shown right under the result; a software test never counts towards it.
+  await expect(page.getByLabel("Running accuracy")).toContainText("No scored scans yet");
   // Other specs (the remote pilot) may add test records to the same throwaway file.
   await expect(page.getByText(/Tests \(\d+\)/)).toBeVisible();
   const row = page.locator(".validation-table tbody tr").filter({ hasText: "E2E-0001" });
@@ -35,7 +37,7 @@ test("validation mode records a software-test scan without counting it", async (
   await expect(row).toContainText("software test");
   await expect(row).toContainText("185.3 mm");
   // Not counted as a real-world result.
-  await expect(page.getByText(/No real-participant results yet/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Real-participant results" }).getByText(/No real-participant results yet/)).toBeVisible();
   await expect(page.getByText(/software test \d+/)).toBeVisible();
   await page.screenshot({ path: "test-results/validation.png", fullPage: true });
 });
