@@ -44,6 +44,75 @@ python -m validation.evaluate ../dataset/participants.csv ../dataset/scans.csv \
 Copy the fitted calibration to `config/measurement_calibration.json` only after reviewing the
 test-split report.
 
+### 2.1 In-app validation mode (pilot data, no images)
+
+Before the full image study, a pilot of 10–15 volunteers can be run with the developer-only
+validation screen at `#/validation`. The step-by-step procedure, including the physical
+measurement protocol HL-1, is in **`docs/PILOT_PROTOCOL.md`**. Validation mode is off by default
+and answers only local requests, unless an operator token is configured (README, Security).
+
+Each record holds:
+
+* **Record type:** `real_participant` (the operator confirms consent) or `software_test`. Only
+  real-participant records are counted.
+* **Identity and trial:** a random participant code, the hand scanned (left or right), and the
+  capture condition (standard, closer, further, coin off-centre, different lighting, hand
+  rotated, fingers slightly bent).
+* **Physical reference:**
+  * every reading as entered, with its unit, converted to mm by the server;
+  * the agreed reference value (mean of two readings within 2 mm, or the median of three);
+  * whether the readings were repeated, their spread, and a reliability label (`agreed`,
+    `single_reading` or `discrepant`);
+  * the protocol, tool, who measured, and an operator code.
+* **Camera estimate**, computed by the server from the scan: value and 1σ uncertainty, signed,
+  absolute and % error, and whether the reference lies inside the reported 95% interval.
+* **Scan and calibration:**
+  * scan status and rejection reasons;
+  * frame rejections;
+  * coin frames and confidence, px/mm, coin tilt, depth factor and the coin-implied camera
+    distance;
+  * image size and detected handedness.
+* **Conditions:** device, lighting, the distance measured by the operator, and notes.
+* **Per-frame numeric observations**, saved in `frames/<record id>.json` (never images), so
+  pilot scans can be re-measured under a changed configuration
+  (`validation_records.remeasure`). Each configuration version is saved once in
+  `configs/<fingerprint>.json`, and the file is checked against its fingerprint when read.
+* **Integrity:**
+  * configuration fingerprint and calibration status;
+  * a `static_frames` flag when the landmarks do not move between frames (a still image, not
+    a live camera);
+  * a `reference_mismatch` flag when one hand carries different references in different
+    records.
+
+The summary on the screen and `python -m scripts.validation_report` report real-participant
+results only:
+
+* scans, rejected scans (count and %) with reasons;
+* hand-length bias (mean signed error), MAE, RMSE, median and maximum absolute error, and the
+  error distribution, both per scan and per hand;
+* within-95%-interval counts;
+* one row per participant and hand: scans, rejections, and the mean error, MAE and error range
+  of its standard scans;
+* errors by camera-distance band (under 30, 30–40, 40–50, 50+ cm), both operator-measured and
+  coin-implied. Each hand counts once per band, and bands with fewer than 3 hands are listed but
+  not interpreted;
+* repeatability (pooled within-hand SD and the repeatability coefficient) and the shift of each
+  condition from the same hand's standard scans.
+
+Records are excluded from all statistics when they are software tests, carry an integrity
+flag, or were made with a different configuration. Accuracy uses only standard-condition scans
+with agreed references. The figures are descriptive. Below 30 hands, the screen and report say
+so, and no confidence intervals are given.
+
+What it is not:
+
+* It stores numbers, not images, so scans cannot be reprocessed later with a changed algorithm.
+  The full image study (§1–2) remains the basis for fitting and for held-out claims.
+* Nothing in validation mode can change `config/measurement_calibration.json`. A calibration is
+  reported as validated only when a person adds a `validation` block with held-out real-world
+  evidence (≥ 60 held-out participants, acceptance criteria met, report reference and approver).
+  `fit_calibration.py` never writes that block and refuses to write into `config/`.
+
 ## 3. Reported metrics (`evaluate.py`)
 
 Per measurement, per split:
@@ -71,17 +140,22 @@ Break down all metrics by device, lighting, camera facing, skin tone stratum and
 
 ## 4. Experiments to run on the development split
 
-1. **Depth correction on vs. off** (`depth_model.enabled`): keep it only if it reduces test
-   error.
-2. **Gate tuning**: rejection rate vs. error as the world-landmark thresholds vary
+1. **Depth adjustment on vs. off** (`depth_model.enabled`), and the assumed joint depth
+   (`landmark_layer_depth_mm`): keep the adjustment only if it reduces test error. The
+   simulation (`docs/CALIBRATION_STUDY.md`) predicts that it helps, but only as much as the
+   assumed depth matches real hands.
+2. **Tilt rectification** (`calibration.tilt_rectification`): off by default because it
+   over-corrects in the simulation. Re-test on real scans only if tilted scans show a
+   consistent bias.
+3. **Gate tuning**: rejection rate vs. error as the world-landmark thresholds vary
    (`max_palm_tilt_deg_model`, `max_finger_bend_deg_3d`). They are currently provisional.
-3. **Circumference / breadth models** (`fit_calibration.py` fits linear models from
+4. **Circumference / breadth models** (`fit_calibration.py` fits linear models from
    `mcp_span_mm` and `hand_length_mm`). Use them only if the test-split residual is small
    relative to the chart's size step. Otherwise keep requiring tape entry.
-4. **Machine learning.** Consider a learned correction (e.g. gradient boosting on landmark
+5. **Machine learning.** Consider a learned correction (e.g. gradient boosting on landmark
    features) only if it beats the linear calibration on the **test** split, with participants
    cross-validated on dev.
-5. **Capture distance**: check whether error depends on the estimated camera distance. If so,
+6. **Capture distance**: check whether error depends on the estimated camera distance. If so,
    tighten the hand-size gate.
 
 ## 5. Acceptance criteria (to agree with the client)
@@ -100,10 +174,14 @@ size-accuracy claims. Do not claim 95%, 99% or 100% accuracy without these data.
 
 ## 6. What can be validated right now, without data
 
-* Algorithm correctness on synthetic geometry (pytest: coin diameters, tilt, occlusion, blur,
-  glare, rectification, depth model, aggregation, sizing rules).
+* Algorithm correctness on synthetic geometry (pytest: coin diameters, rotation, white balance,
+  exposure, contrast, tilt, occlusion, blur, glare, rival circles, depth model, aggregation,
+  sizing rules).
+* Systematic error of each calibration method under simulated pinhole geometry
+  (`scripts/calibration_study.py` → `docs/CALIBRATION_STUDY.md`). This shows which biases exist
+  and how they depend on assumptions. It does not show their real size on real hands.
 * Parity between the browser and Python implementations (Vitest fixtures; Playwright
   cross-check on a real hand photo).
-* The end-to-end pipeline in a real browser with a fake camera.
+* The end-to-end pipeline, including validation mode, in a real browser with a fake camera.
 
 None of these measure real-world accuracy.

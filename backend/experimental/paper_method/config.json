@@ -1,0 +1,49 @@
+{
+  "_comment": "EXPERIMENTAL flat-hand-on-paper method. Not used by the production app. Values marked 'assumed' are priors to be checked in the comparison pilot.",
+  "papers": {
+    "a4": {
+      "label": "A4",
+      "width_mm": 210.0,
+      "height_mm": 297.0,
+      "tolerance_mm": 2.0,
+      "source": "ISO 216 A4. The tolerance is the commonly cited ISO 216 allowance of +/-2 mm for dimensions between 150 and 600 mm; verify against the standard before relying on it."
+    },
+    "letter": {
+      "label": "US Letter (8.5 x 11 in)",
+      "width_mm": 215.9,
+      "height_mm": 279.4,
+      "tolerance_mm": 2.0,
+      "source": "ANSI letter size, 8.5 x 11 in. Tolerance assumed equal to the A4 allowance."
+    }
+  },
+  "rectify_px_per_mm": 5.0,
+  "paper_detection": {
+    "min_area_fraction": 0.12,
+    "edge_samples": 120,
+    "edge_search_px": 8,
+    "min_edge_inlier_fraction": 0.4,
+    "max_edge_curvature_mm": 0.6,
+    "aspect_tolerance": 0.035
+  },
+  "hand": {
+    "min_margin_mm": 4.0,
+    "max_axis_angle_deg": 10.0,
+    "palm_level_fraction_of_length": 0.57,
+    "palm_band_mm": 4.0,
+    "min_wrist_width_mm": 35.0,
+    "max_breadth_to_length": 0.52
+  },
+  "geometry_assumptions": {
+    "assumed_hfov_deg": [
+      55.0,
+      80.0
+    ],
+    "silhouette_height_mm": {
+      "fingertip": 5.0,
+      "palm_edge": 12.0
+    },
+    "silhouette_height_sd_mm": 4.0,
+    "wrist_alignment_sd_mm": 3.0,
+    "outline_sd_mm": 0.3
+  }
+}

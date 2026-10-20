@@ -105,7 +105,11 @@ def main() -> None:
     write_y4m(args.out.with_suffix(".y4m"), frames)
     ref = resolve_reference(ReferenceSelection(object_id="us_quarter"), load_reference_objects())
     assert ref is not None
-    resp = process_scan(ScanRequest.model_validate({"frames": observations, "reference": {"object_id": "us_quarter"}}))
+    resp = process_scan(
+        ScanRequest.model_validate(
+            {"frames": observations, "reference": {"object_id": "us_quarter", "confirmed": True}}
+        )
+    )
     hl = next((m for m in resp.measurements if m.key == "hand_length_mm"), None)
     summary = {
         "note": "Synthetic coin on a real hand photo: pipeline test only, not an accuracy measurement.",

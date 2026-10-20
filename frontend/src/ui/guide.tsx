@@ -186,6 +186,7 @@ export function coachKind(code: LiveCode | undefined): CoachKind {
     case undefined:
       return "ok";
     case "hand_out_of_frame":
+    case "too_close":
       return "frame";
     case "hand_too_small":
     case "coin_too_small":
@@ -233,7 +234,7 @@ export function CoachIcon({ kind }: { kind: CoachKind }) {
 
 /** Which guide step the live result corresponds to (0 palm, 1 coin, 2 hold still). */
 export function liveStage(codes: readonly LiveCode[]): GuideStage {
-  const hand: LiveCode[] = ["no_hand", "hand_out_of_frame", "hand_too_small", "fingers_bent", "palm_not_flat"];
+  const hand: LiveCode[] = ["no_hand", "hand_out_of_frame", "hand_too_small", "fingers_bent", "palm_not_flat", "too_close"];
   if (codes.some((c) => hand.includes(c))) return 0;
   if (codes.some((c) => c.startsWith("coin_") && c !== "coin_blurry" && c !== "coin_low_confidence")) return 1;
   return 2;

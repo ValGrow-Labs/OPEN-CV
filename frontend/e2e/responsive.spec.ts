@@ -39,6 +39,9 @@ for (const vp of VIEWPORTS) {
       await page.screenshot({ path: `test-results/rwd-${vp.name}-welcome.png`, fullPage: true });
 
       await page.getByRole("button", { name: "Start Scan" }).click();
+      await expect(page.getByRole("dialog", { name: "Which coin are you holding?" })).toBeVisible();
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+      await page.getByRole("button", { name: /Yes, this is my coin/ }).click();
       const guide = page.getByRole("dialog", { name: "Before you start" });
       await expect(guide).toBeVisible();
       await page.getByRole("button", { name: "Next" }).click();

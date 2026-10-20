@@ -77,6 +77,11 @@ class ReferenceSelection(_Model):
     object_id: str | None = Field(default=None, max_length=64)
     custom_diameter_mm: float | None = Field(default=None, ge=10, le=60)
     custom_label: str | None = Field(default=None, max_length=80)
+    confirmed: bool = Field(
+        default=False,
+        description="The customer or operator explicitly confirmed which reference object is in the image. "
+        "Scans without confirmation are rejected: a circular object is never assumed to be a quarter.",
+    )
 
     @model_validator(mode="after")
     def _one_of(self) -> ReferenceSelection:
@@ -174,6 +179,7 @@ class RecommendationOut(_Model):
     basis: list[str]
     explanation: list[str]
     needed_measurements: list[str]
+    plausible_sizes: list[str] = Field(default_factory=list, description="Sizes overlapping the +/- 2 sigma interval.")
     by_measurement: list[SizeByMeasurement]
 
 
@@ -191,7 +197,7 @@ class ScanResponse(_Model):
     image_width: int
     image_height: int
     recommendation: RecommendationOut | None
-    uncertainty_basis: Literal["prior_assumptions", "validated"]
+    uncertainty_basis: Literal["prior_assumptions", "fitted_unvalidated", "validated"]
     limitations: list[str]
 
 

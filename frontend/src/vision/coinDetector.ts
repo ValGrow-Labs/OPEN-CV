@@ -121,7 +121,7 @@ function bilinear(img: Float64Array, w: number, h: number, xs: number, ys: numbe
 // Image channels
 // ----------------------------------------------------------------------------
 
-/** Normalised warm chroma (R - B) / (R + G + B), see chroma_channel() in Python. */
+/** Signed normalised warm chroma (R - B) / (R + G + B) around 128, see chroma_channel() in Python. */
 export function chromaChannel(rgba: Uint8Array | Uint8ClampedArray, n: number): Uint8Array {
   const out = new Uint8Array(n);
   for (let i = 0, j = 0; i < n; i++, j += 4) {
@@ -130,7 +130,7 @@ export function chromaChannel(rgba: Uint8Array | Uint8ClampedArray, n: number): 
     const b = rgba[j + 2];
     // float32 arithmetic, as in the NumPy reference
     const ratio = Math.fround(Math.fround(r - b) / Math.fround(r + g + b + 30));
-    const c = Math.fround(Math.fround(ratio * CHROMA_GAIN) * 255);
+    const c = Math.fround(Math.fround(Math.fround(ratio * CHROMA_GAIN) * 127.5) + 128);
     out[i] = c <= 0 ? 0 : c >= 255 ? 255 : Math.trunc(c);
   }
   return out;
@@ -496,7 +496,7 @@ function refine(cv: CV, img: Channel, raw: InstanceType<CV["Mat"]>, cand: Candid
   let scan = radialScan(img, cand, p, p.radial_search_fraction, polarity);
   const [fit] = robustFit(cv, scan, p.outlier_mad_k);
   if (!fit) return null;
-  scan = radialScan(img, fit, p, Math.min(0.08, p.radial_search_fraction), polarity);
+  scan = radialScan(img, fit, p, Math.min(p.narrow_search_fraction, p.radial_search_fraction), polarity);
   const [fit2, mask] = robustFit(cv, scan, p.outlier_mad_k);
   if (!fit2) return null;
   const pts = select(scan.points, mask);
@@ -534,14 +534,15 @@ function refine(cv: CV, img: Channel, raw: InstanceType<CV["Mat"]>, cand: Candid
 
 export function scoreDetection(det: CoinObservation, p: CoinDetectionParams): void {
   const acc = p.accept;
+  const sc = p.score;
   const residLimit = Math.max(acc.max_fit_residual_px, (acc.max_fit_residual_rel * det.major_axis_px) / 2);
   const scores = [
-    ramp(det.edge_support, 0.9, 0.5),
-    ramp(det.max_angular_gap_deg, 20, acc.max_angular_gap_deg * 1.5),
-    ramp(det.fit_residual_px, 0.3, 2 * residLimit),
-    ramp(det.edge_width_px, 2.5, acc.max_edge_width_px * 1.5),
-    ramp(det.glare_fraction, 0.02, acc.max_glare_fraction * 1.5),
-    ramp(det.contrast, 0.15, acc.min_contrast * 0.5),
+    ramp(det.edge_support, sc.edge_support_good, sc.edge_support_bad),
+    ramp(det.max_angular_gap_deg, sc.angular_gap_good_deg, acc.max_angular_gap_deg * sc.angular_gap_bad_factor),
+    ramp(det.fit_residual_px, sc.fit_residual_good_px, residLimit * sc.fit_residual_bad_factor),
+    ramp(det.edge_width_px, sc.edge_width_good_px, acc.max_edge_width_px * sc.edge_width_bad_factor),
+    ramp(det.glare_fraction, sc.glare_good, acc.max_glare_fraction * sc.glare_bad_factor),
+    ramp(det.contrast, sc.contrast_good, acc.min_contrast * sc.contrast_bad_factor),
   ];
   det.confidence = Math.pow(scores.reduce((a, s) => a * Math.min(1, Math.max(1e-3, s)), 1), 1 / scores.length);
 
@@ -560,6 +561,16 @@ export function scoreDetection(det: CoinObservation, p: CoinDetectionParams): vo
 // ----------------------------------------------------------------------------
 // Entry point
 // ----------------------------------------------------------------------------
+
+/** A different coin-like circle almost as convincing as the best one (see _has_rival in Python). */
+function hasRival(best: CoinDetection, others: CoinDetection[], p: CoinDetectionParams): boolean {
+  return others.some(
+    (d) =>
+      d.accepted &&
+      Math.hypot(d.center_x - best.center_x, d.center_y - best.center_y) > 0.5 * best.major_axis_px &&
+      d.confidence >= p.ambiguity_confidence_ratio * best.confidence,
+  );
+}
 
 export function detectCoin(
   cv: CV,
@@ -611,13 +622,18 @@ export function detectCoin(
     const results: CoinDetection[] = [];
     for (const cand of cands) {
       const det = refine(cv, smooth, raw, cand, p, 1);
-      if (!det || !(0.8 * dMin <= det.major_axis_px && det.major_axis_px <= 1.1 * dMax)) continue;
+      const [loTol, hiTol] = p.candidate_size_tolerance;
+      if (!det || !(loTol * dMin <= det.major_axis_px && det.major_axis_px <= hiTol * dMax)) continue;
       scoreDetection(det, p);
       results.push(det);
     }
     if (!results.length) return emptyDetection(["coin_not_found"]);
     results.sort((a, b) => Number(b.accepted) - Number(a.accepted) || b.confidence - a.confidence);
     const best = results[0];
+    if (best.accepted && hasRival(best, results.slice(1), p)) {
+      best.accepted = false;
+      best.reasons = ["coin_ambiguous"];
+    }
     best.candidates = results.slice(0, p.max_candidates).map((d) => ({
       method: d.method,
       diameter_px: Math.round(d.major_axis_px * 100) / 100,

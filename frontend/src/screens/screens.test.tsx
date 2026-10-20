@@ -21,7 +21,7 @@ function setMediaDevices(getUserMedia: () => Promise<MediaStream>) {
 describe("ScanScreen camera errors", () => {
   it("explains a denied camera permission and offers retry", async () => {
     setMediaDevices(() => Promise.reject(Object.assign(new Error("denied"), { name: "NotAllowedError" })));
-    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} showIntro={false} />);
+    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} showIntro={false} requireCoinConfirm={false} />);
     expect((await screen.findByRole("alert")).textContent).toMatch(/Camera access is blocked/);
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
@@ -29,13 +29,13 @@ describe("ScanScreen camera errors", () => {
 
   it("explains a missing camera", async () => {
     setMediaDevices(() => Promise.reject(Object.assign(new Error("none"), { name: "NotFoundError" })));
-    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} showIntro={false} />);
+    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} showIntro={false} requireCoinConfirm={false} />);
     expect((await screen.findByRole("alert")).textContent).toMatch(/No camera found/);
   });
 
   it("explains an insecure (http) origin without a retry button", async () => {
     Object.defineProperty(window, "isSecureContext", { value: false, configurable: true });
-    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} showIntro={false} />);
+    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} showIntro={false} requireCoinConfirm={false} />);
     expect((await screen.findByRole("alert")).textContent).toMatch(/Secure connection required/);
     await waitFor(() => expect(screen.queryByRole("button", { name: "Try again" })).toBeNull());
   });
@@ -88,6 +88,7 @@ const rec: Recommendation = {
   basis: ["hand length"],
   explanation: ["Your hand length is 185 mm (7.28 in)."],
   needed_measurements: [],
+  plausible_sizes: ["M", "L"],
   by_measurement: [{ key: "hand_length_mm", value_mm: 185, uncertainty_mm: 2, size: "M", plausible_sizes: ["M", "L"] }],
 };
 

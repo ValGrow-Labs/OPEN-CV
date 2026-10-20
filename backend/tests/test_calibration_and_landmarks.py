@@ -37,6 +37,15 @@ def test_tilt_from_axis_ratio():
     assert coin_tilt_deg(c) == pytest.approx(20, abs=1e-6)
 
 
+def test_rectification_is_off_by_default(cfg_nodepth):
+    # Affine rectification is only valid under weak perspective (docs/CALIBRATION_STUDY.md).
+    c = coin(80, 80 * math.cos(math.radians(11)), 30)
+    s = frame_scale(c, QUARTER, 720, 1280, cfg_nodepth)
+    assert not s.tilt_corrected
+    assert np.allclose(s.rectification, np.eye(2))
+    assert s.rel_sigma_tilt == pytest.approx(0.23 * math.sin(math.radians(11)) / math.sqrt(3), rel=1e-3)
+
+
 def test_small_tilt_not_corrected_but_in_uncertainty(cfg_nodepth):
     c = coin(80, 80 * math.cos(math.radians(5)))
     s = frame_scale(c, QUARTER, 720, 1280, cfg_nodepth)
@@ -46,10 +55,10 @@ def test_small_tilt_not_corrected_but_in_uncertainty(cfg_nodepth):
 
 
 @pytest.mark.parametrize("axis_deg", [0, 37, 90, 151])
-def test_rectification_undoes_foreshortening(cfg_nodepth, axis_deg):
+def test_rectification_undoes_foreshortening(cfg_rectify, axis_deg):
     tilt = 18.0
     c = coin(80, 80 * math.cos(math.radians(tilt)), axis_deg)
-    s = frame_scale(c, QUARTER, 720, 1280, cfg_nodepth)
+    s = frame_scale(c, QUARTER, 720, 1280, cfg_rectify)
     assert s.tilt_corrected
     a = math.radians(axis_deg)
     u = np.array([math.cos(a), math.sin(a)])

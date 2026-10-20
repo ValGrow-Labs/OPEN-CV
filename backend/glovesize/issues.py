@@ -29,8 +29,13 @@ ISSUES: dict[str, tuple[Severity, str]] = {
         "The coin's outline is unclear. Check that only one coin is used and it lies flat.",
     ),
     "coin_low_confidence": ("error", "The coin could not be measured reliably. Improve lighting and hold still."),
+    "coin_ambiguous": (
+        "error",
+        "More than one coin-like circle is visible. Use a single coin and keep other round objects out of view.",
+    ),
     "coin_not_on_palm": ("error", "Place the coin on the centre of your palm."),
     "coin_tilted": ("error", "The coin appears tilted. Hold your palm flat, facing the camera directly."),
+    "too_close": ("error", "Your hand is too close to the camera. Move it a little farther away."),
     "too_dark": ("error", "The scene is too dark. Move to a brighter place."),
     "too_bright": ("error", "The scene is overexposed. Avoid pointing the camera at a bright light."),
     "implausible_scale": (
@@ -41,12 +46,17 @@ ISSUES: dict[str, tuple[Severity, str]] = {
     "insufficient_frames": ("error", "Not enough good-quality frames were captured. Please scan again."),
     "hand_length_unreliable": ("error", "Hand length could not be measured with enough certainty. Please scan again."),
     "measurement_unstable": ("warning", "Measurements varied between frames. Keep your hand still during the scan."),
-    "tilt_corrected": ("info", "A small hand tilt was detected and geometrically corrected."),
+    "tilt_corrected": ("info", "A small palm tilt was detected; lengths were adjusted assuming a flat hand."),
+    "scan_unstable": (
+        "error",
+        "Your measurements changed too much between frames. Hold your hand and the coin still and scan again.",
+    ),
     "custom_reference": ("warning", "A custom reference object was used; accuracy depends on its stated diameter."),
     "reference_unavailable": ("error", "The selected reference object is not available."),
+    "reference_unconfirmed": ("error", "Please confirm which coin you are holding before scanning."),
     "uncertainty_unvalidated": (
         "info",
-        "Uncertainty values are model-based estimates; they have not yet been validated against tape-measured hands.",
+        "This is an unvalidated prototype: its measurements and uncertainty values have not yet been checked against tape-measured hands.",
     ),
 }
 

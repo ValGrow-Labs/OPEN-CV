@@ -79,6 +79,8 @@ def test_fit_uses_dev_split_only_and_improves_test_error():
     participants, scans = _synthetic_study()
     cal = fit(participants, scans)
     assert cal.status == "calibrated" and cal.n_participants == 20
+    # Fitting, however good the result, never marks the calibration as validated.
+    assert cal.validation is None and not cal.validated
     assert cal.measurements["hand_length_mm"].offset_mm == pytest.approx(-6.0, abs=1.5)
     before = evaluate(participants, scans)["splits"]["test"]["measurements"]["hand_length_mm"]
     after = evaluate(participants, scans, cal)["splits"]["test"]["measurements"]["hand_length_mm"]

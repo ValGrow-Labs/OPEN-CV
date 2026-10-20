@@ -24,7 +24,7 @@ async function scrollThrough(page: Page) {
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 
 async function fullScan(page: Page, tag: string) {
-  const python = JSON.parse(readFileSync(summaryPath, "utf-8")) as { python_hand_length_mm: number; python_size: string };
+  const python = JSON.parse(readFileSync(summaryPath, "utf-8")) as { python_hand_length_mm: number; python_size: string | null };
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
@@ -37,6 +37,8 @@ async function fullScan(page: Page, tag: string) {
 
   await page.goto("/");
   await page.getByRole("button", { name: "Start Scan" }).click();
+  // The coin must be confirmed before the camera starts.
+  await page.getByRole("button", { name: /Yes, this is my coin/ }).click();
   // Walk through the quick guide; the camera starts only at the end.
   for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Next" }).click();
   await page.getByRole("button", { name: /Start camera/ }).click();
@@ -60,9 +62,17 @@ async function fullScan(page: Page, tag: string) {
   expect(await overflow(page)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: `test-results/${tag}measurements.png`, fullPage: true });
 
+  // Uncalibrated, the camera estimate cannot single out a size (as in the Python pipeline), so
+  // the customer is asked for a tape measurement instead of being given a guess.
+  expect(python.python_size).toBeNull();
+  await expect(page.getByText(/are all possible, so we won't pick one/)).toBeVisible();
+  await page.getByLabel("Unit").selectOption("mm");
+  await page.getByLabel("Hand length").fill("181");
   await page.getByRole("button", { name: "See my size" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your glove size");
-  await expect(page.locator(".size-tile .size")).toHaveText(python.python_size);
+  // 181 mm +/- 4 mm (tape) sits inside M (175-187 mm).
+  await expect(page.locator(".size-tile .size")).toHaveText("M");
+  await expect(page.getByText(/entered by you/)).toBeVisible();
   await expect(page.getByText(/DEMONSTRATION CHART/)).toBeVisible();
   await scrollThrough(page);
   expect(await overflow(page)).toBeLessThanOrEqual(0);

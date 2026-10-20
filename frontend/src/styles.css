@@ -1927,3 +1927,29 @@ details.disclosure[open] summary {
   color: var(--muted);
   font-size: 0.82rem;
 }
+
+/* ------------------------------------------------- coin confirm, validation */
+
+.confirm-title {
+  font-size: clamp(1.3rem, 3.5vw, 1.6rem);
+  outline: none;
+}
+
+.validation-table {
+  table-layout: auto;
+  min-width: 760px;
+}
+
+.validation-table td,
+.validation-table th {
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 6px;
+}

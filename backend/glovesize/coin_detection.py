@@ -41,6 +41,7 @@ GLARE = "coin_glare"
 LOW_CONTRAST = "coin_low_contrast"
 IRREGULAR = "coin_irregular_boundary"
 LOW_CONFIDENCE = "coin_low_confidence"
+AMBIGUOUS = "coin_ambiguous"
 
 
 @dataclass
@@ -106,17 +107,21 @@ CHROMA_GAIN = 3.0
 
 
 def chroma_channel(image_bgr: np.ndarray) -> np.ndarray:
-    """Normalised warm chroma ``(R - B) / (R + G + B)``, scaled to uint8.
+    """Signed normalised warm chroma ``(R - B) / (R + G + B)``, mapped to uint8 around 128.
 
     Silver (cupronickel) coins are nearly achromatic while skin of every tone is warm
     (R > B), so this channel has a strong step exactly at the coin's *outer* boundary and
     is largely invariant to shading. In grayscale, by contrast, the coin's raised rim
     often produces a stronger edge than the coin/skin boundary.
+
+    The channel is signed (128 = neutral) so a coin that looks slightly blue under cool
+    light is not clipped to zero; clipping flattened the inner side of the edge and pushed
+    the detected boundary outwards (a 1.3% scale error in tests with a cool white balance).
     """
     f = image_bgr[:, :, :3].astype(np.float32)
     b, g, r = f[:, :, 0], f[:, :, 1], f[:, :, 2]
     c = (r - b) / (r + g + b + 30.0)
-    return np.clip(c * CHROMA_GAIN * 255.0, 0, 255).astype(np.uint8)
+    return np.clip(c * CHROMA_GAIN * 127.5 + 128.0, 0, 255).astype(np.uint8)
 
 
 def ramp(value: float, good: float, bad: float) -> float:
@@ -364,7 +369,7 @@ def _refine(
     if fit is None:
         return None
     # Second, narrow pass around the first fit.
-    scan = _radial_scan(img, fit, p, min(0.08, p.radial_search_fraction), polarity)
+    scan = _radial_scan(img, fit, p, min(p.narrow_search_fraction, p.radial_search_fraction), polarity)
     fit2, mask = _robust_fit(scan, p.outlier_mad_k)
     if fit2 is None:
         return None
@@ -406,15 +411,15 @@ def _refine(
 
 def score_detection(det: CoinDetection, p: CoinDetectionParams) -> None:
     """Fill ``confidence``, ``accepted`` and ``reasons`` from the quality metrics."""
-    acc = p.accept
+    acc, sc = p.accept, p.score
     resid_limit = max(acc.max_fit_residual_px, acc.max_fit_residual_rel * det.major_axis_px / 2)
     scores = [
-        ramp(det.edge_support, 0.9, 0.5),
-        ramp(det.max_angular_gap_deg, 20.0, acc.max_angular_gap_deg * 1.5),
-        ramp(det.fit_residual_px, 0.3, 2 * resid_limit),
-        ramp(det.edge_width_px, 2.5, acc.max_edge_width_px * 1.5),
-        ramp(det.glare_fraction, 0.02, acc.max_glare_fraction * 1.5),
-        ramp(det.contrast, 0.15, acc.min_contrast * 0.5),
+        ramp(det.edge_support, sc.edge_support_good, sc.edge_support_bad),
+        ramp(det.max_angular_gap_deg, sc.angular_gap_good_deg, acc.max_angular_gap_deg * sc.angular_gap_bad_factor),
+        ramp(det.fit_residual_px, sc.fit_residual_good_px, resid_limit * sc.fit_residual_bad_factor),
+        ramp(det.edge_width_px, sc.edge_width_good_px, acc.max_edge_width_px * sc.edge_width_bad_factor),
+        ramp(det.glare_fraction, sc.glare_good, acc.max_glare_fraction * sc.glare_bad_factor),
+        ramp(det.contrast, sc.contrast_good, acc.min_contrast * sc.contrast_bad_factor),
     ]
     det.confidence = float(np.prod(np.clip(scores, 1e-3, 1.0)) ** (1.0 / len(scores)))
 
@@ -435,6 +440,19 @@ def score_detection(det: CoinDetection, p: CoinDetectionParams) -> None:
         reasons.append(LOW_CONFIDENCE)
     det.reasons = reasons
     det.accepted = not reasons
+
+
+def _has_rival(best: CoinDetection, others: list[CoinDetection], p: CoinDetectionParams) -> bool:
+    """True when a *different* coin-like circle is almost as convincing as the best one
+    (e.g. two coins, or a round button next to the coin). Refinements of the same coin
+    converge to the same centre and are ignored."""
+    for d in others:
+        if not d.accepted:
+            continue
+        separation = math.hypot(d.center_x - best.center_x, d.center_y - best.center_y)
+        if separation > 0.5 * best.major_axis_px and d.confidence >= p.ambiguity_confidence_ratio * best.confidence:
+            return True
+    return False
 
 
 def detect_coin(
@@ -487,7 +505,8 @@ def detect_coin(
     results: list[CoinDetection] = []
     for cand in cands:
         det = _refine(smooth, raw, cand, params, polarity)
-        if det is None or not (0.8 * d_min <= det.major_axis_px <= 1.1 * d_max):
+        lo_tol, hi_tol = params.candidate_size_tolerance
+        if det is None or not (lo_tol * d_min <= det.major_axis_px <= hi_tol * d_max):
             continue
         score_detection(det, params)
         results.append(det)
@@ -496,6 +515,9 @@ def detect_coin(
 
     results.sort(key=lambda d: (d.accepted, d.confidence), reverse=True)
     best = results[0]
+    if best.accepted and _has_rival(best, results[1:], params):
+        best.accepted = False
+        best.reasons = [AMBIGUOUS]
     best.candidates = [
         {
             "method": d.method,

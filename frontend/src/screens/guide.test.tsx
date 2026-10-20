@@ -41,7 +41,7 @@ describe("pre-scan quick guide", () => {
   });
 
   const renderScan = () =>
-    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} />);
+    render(<ScanScreen config={publicConfig()} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onCancel={() => {}} onResult={() => {}} requireCoinConfirm={false} />);
 
   it("explains the steps before asking for the camera", async () => {
     renderScan();

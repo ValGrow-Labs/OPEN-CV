@@ -35,6 +35,7 @@ test("scan starts the camera, loads MediaPipe and OpenCV, and guides the user", 
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Start Scan" }).click();
+  await page.getByRole("button", { name: /Yes, this is my coin/ }).click();
   await expect(page.getByRole("dialog", { name: "Before you start" })).toBeVisible();
   await page.getByRole("button", { name: "Skip guide" }).click();
   // No hand in the synthetic video: the scanner must be running and asking for the palm.

@@ -22,7 +22,7 @@ def _diameter_tol(d):
     return 0.35 + 0.0075 * d
 
 
-@pytest.mark.parametrize("diameter", [32.0, 48.0, 63.7, 80.0, 120.0, 180.0])
+@pytest.mark.parametrize("diameter", [42.0, 48.0, 63.7, 80.0, 120.0, 180.0])
 def test_known_diameters(p, diameter):
     img, truth = render_coin_scene(width=max(320, int(diameter * 3)), height=max(320, int(diameter * 3)),
                                    center=(diameter * 1.5 + 0.3, diameter * 1.5 - 0.4), diameter_px=diameter, seed=3)  # fmt: skip
@@ -152,3 +152,93 @@ def test_ellipse_radius_function():
     assert r == pytest.approx([50, 25])
     r = cd.ellipse_radius(phi, 100, 50, 90)
     assert r == pytest.approx([25, 50])
+
+
+# --------------------------------------------------------------------------- #
+# Robustness: every case must end in either an accurate diameter or a rejection,
+# never a confident wrong measurement.
+# --------------------------------------------------------------------------- #
+
+
+def _accurate_or_rejected(det, truth_diameter: float) -> None:
+    if det.accepted:
+        assert abs(det.major_axis_px - truth_diameter) < _diameter_tol(truth_diameter), det
+    else:
+        assert det.reasons
+
+
+@pytest.mark.parametrize("angle", [17.0, 45.0, 90.0, 133.0, 250.0])
+def test_rotated_image(p, angle):
+    img, truth = render_coin_scene(width=360, height=360, center=(180.0, 180.0), diameter_px=90.0, seed=7)
+    m = cv2.getRotationMatrix2D((180.0, 180.0), angle, 1.0)
+    rotated = cv2.warpAffine(img, m, (360, 360), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    det = cd.detect_coin(rotated, p)
+    assert det.accepted, det.reasons
+    assert abs(det.major_axis_px - 90.0) < _diameter_tol(90.0)
+
+
+@pytest.mark.parametrize(
+    "gains",
+    [(0.75, 1.0, 1.15), (1.2, 1.0, 0.85), (0.9, 1.0, 1.3)],  # BGR gains: warm, cool, very warm light
+)
+def test_white_balance(p, gains):
+    img, _ = render_coin_scene(diameter_px=80)
+    balanced = np.clip(img.astype(np.float64) * np.array(gains), 0, 255).astype(np.uint8)
+    _accurate_or_rejected(cd.detect_coin(balanced, p), 80.0)
+
+
+@pytest.mark.parametrize("gain", [0.5, 1.35])
+def test_exposure(p, gain):
+    img, _ = render_coin_scene(diameter_px=80)
+    exposed = np.clip(img.astype(np.float64) * gain, 0, 255).astype(np.uint8)
+    _accurate_or_rejected(cd.detect_coin(exposed, p), 80.0)
+
+
+@pytest.mark.parametrize("keep", [0.25, 0.08])
+def test_low_contrast_boundary(p, keep):
+    # Desaturate towards gray: the coin/skin boundary becomes uncertain.
+    img, _ = render_coin_scene(diameter_px=80)
+    gray = cv2.cvtColor(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR).astype(np.float64)
+    washed = np.clip(gray + keep * (img.astype(np.float64) - gray), 0, 255).astype(np.uint8)
+    det = cd.detect_coin(washed, p)
+    _accurate_or_rejected(det, 80.0)
+    if keep < 0.1:
+        assert not det.accepted
+
+
+def test_two_coins_are_ambiguous(p):
+    img, _ = render_coin_scene(width=480, height=360, center=(150.0, 180.0), diameter_px=80, creases=False)
+    cv2.circle(img, (340, 180), 40, (150, 152, 150), -1, cv2.LINE_AA)
+    cv2.circle(img, (340, 180), 38, (190, 192, 190), 2, cv2.LINE_AA)
+    det = cd.detect_coin(img, p)
+    assert not det.accepted
+    assert cd.AMBIGUOUS in det.reasons
+
+
+def test_warm_coloured_disc_is_not_a_coin(p):
+    # A skin-toned or copper-coloured round object is not an achromatic coin.
+    rng = np.random.default_rng(1)
+    img = np.clip(np.full((300, 300, 3), (135, 165, 215), np.float64) + rng.normal(0, 2, (300, 300, 3)), 0, 255).astype(
+        np.uint8
+    )
+    cv2.circle(img, (150, 150), 40, (70, 110, 190), -1, cv2.LINE_AA)  # copper/penny-like
+    det = cd.detect_coin(img, p)
+    assert not det.accepted
+
+
+def test_coin_too_small_is_rejected(p):
+    img, _ = render_coin_scene(width=240, height=240, center=(120.0, 120.0), diameter_px=32.0)
+    det = cd.detect_coin(img, p)
+    assert not det.accepted
+
+
+def test_client_reported_ambiguity_is_kept_by_server(cfg_nodepth):
+    from glovesize.measurement import measure_frame
+    from glovesize.schemas import FrameObservation
+    from glovesize.synthetic import synthetic_frame
+
+    from .conftest import QUARTER
+
+    f = synthetic_frame(coin_overrides={"accepted": False, "reasons": ["coin_ambiguous"]})
+    r = measure_frame(FrameObservation.model_validate(f), QUARTER, cfg_nodepth)
+    assert "coin_ambiguous" in r.codes

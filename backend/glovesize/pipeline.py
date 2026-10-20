@@ -79,7 +79,14 @@ def process_scan(req: ScanRequest) -> ScanResponse:
     calib = load_measurement_calibration()
     chart = get_chart(req.chart_id)  # fail fast on unknown charts
     w, h = req.frames[0].image_width, req.frames[0].image_height
-    basis = "validated" if calib.status == "calibrated" else "prior_assumptions"
+    # "validated" needs human sign-off on held-out real-world evidence, not just a fitted file.
+    basis = (
+        "validated"
+        if calib.validated
+        else "fitted_unvalidated"
+        if calib.status == "calibrated"
+        else "prior_assumptions"
+    )
 
     def rejected(issues: list[Issue], counts: dict[str, int] | None = None, accepted: int = 0) -> ScanResponse:
         return ScanResponse(
@@ -92,6 +99,8 @@ def process_scan(req: ScanRequest) -> ScanResponse:
     ref = resolve_reference(req.reference, load_reference_objects())
     if ref is None:
         return rejected([_issue("reference_unavailable")])
+    if not req.reference.confirmed:
+        return rejected([_issue("reference_unconfirmed")])
 
     results = [measure_frame(f, ref, cfg) for f in req.frames]
     accepted_idx = [i for i, r in enumerate(results) if r.accepted]
@@ -106,6 +115,12 @@ def process_scan(req: ScanRequest) -> ScanResponse:
     if len(accepted_idx) < cfg.capture.frames_min_accepted:
         issues = [_issue("insufficient_frames")] + [_issue(c, n) for c, n in counts.most_common(3)]
         return rejected(issues, dict(counts), len(accepted_idx))
+
+    # Frame-to-frame consistency: a reliable coin fit and a still pose give nearly the same
+    # millimetre hand length in every frame. Large spread means the scale is not trustworthy.
+    hl_frames = np.array([results[i].values[HAND_LENGTH] for i in accepted_idx if HAND_LENGTH in results[i].values])
+    if hl_frames.size >= 2 and float(np.std(hl_frames, ddof=1) / np.median(hl_frames)) > cfg.capture.max_frame_rel_sd:
+        return rejected([_issue("scan_unstable")], dict(counts), len(accepted_idx))
 
     agg = aggregate_measurements(results, cfg, calib, req.manual_measurements)
     issues = [_issue(c) for c in agg.issue_codes]
@@ -124,7 +139,7 @@ def process_scan(req: ScanRequest) -> ScanResponse:
         issues.append(_issue("tilt_corrected"))
     if ref.custom:
         issues.append(_issue("custom_reference"))
-    if basis == "prior_assumptions":
+    if basis != "validated":
         issues.append(_issue("uncertainty_unvalidated"))
 
     med_px = float(np.median(px))
@@ -160,8 +175,10 @@ def process_scan(req: ScanRequest) -> ScanResponse:
     if cfg.depth_model.enabled:
         lo, hi = cfg.uncertainty.assumed_hfov_deg
         limitations.append(
-            f"A depth correction assumes a camera field of view between {lo:.0f}° and {hi:.0f}° "
-            "and a typical depth of the finger joints below the palm surface."
+            f"Lengths include an adjustment for depth that assumes a camera field of view between {lo:.0f}° "
+            f"and {hi:.0f}° and a typical depth of the finger joints below the palm surface. Perspective "
+            "and lens distortion are not measured; they are limited by the capture checks and included "
+            "in the uncertainty."
         )
 
     return ScanResponse(

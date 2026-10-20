@@ -1,5 +1,12 @@
 {
   "default_chart_id": "demo-length-v1",
   "research_collection_enabled": false,
-  "research_retention_days": 365
+  "research_retention_days": 365,
+  "validation_mode_enabled": false,
+  "validation_reference_tolerance_mm": 2.0,
+  "validation_store_frame_data": true,
+  "pilot_remote_enabled": false,
+  "pilot_invite_days": 30,
+  "pilot_max_submissions": 20,
+  "pilot_coin_check_tolerance_mm": 1.5
 }

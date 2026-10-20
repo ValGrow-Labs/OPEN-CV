@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .config import MeasurementConfig, ReferenceObjectsConfig
+from .config import CalibrationParams, MeasurementConfig, ReferenceObjectsConfig, load_measurement_config
 from .schemas import CoinObservation, ReferenceSelection
 
 
@@ -38,19 +38,26 @@ class ReferenceSpec:
     custom: bool
 
 
-def resolve_reference(sel: ReferenceSelection, refs: ReferenceObjectsConfig) -> ReferenceSpec | None:
+def resolve_reference(
+    sel: ReferenceSelection, refs: ReferenceObjectsConfig, cal: CalibrationParams | None = None
+) -> ReferenceSpec | None:
     if sel.custom_diameter_mm is not None:
+        cal = cal or load_measurement_config().calibration
         return ReferenceSpec(
             label=sel.custom_label or f"Custom reference ({sel.custom_diameter_mm:.2f} mm)",
             diameter_mm=sel.custom_diameter_mm,
-            diameter_uncertainty_mm=0.1,
-            thickness_mm=1.5,
+            diameter_uncertainty_mm=cal.custom_reference_uncertainty_mm,
+            thickness_mm=cal.custom_reference_thickness_mm,
             custom=True,
         )
     obj = refs.get(sel.object_id or "")
     if obj is None or not obj.enabled:
         return None
-    return ReferenceSpec(obj.label, obj.diameter_mm, obj.diameter_uncertainty_mm, obj.thickness_mm or 0.0, False)
+    if obj.thickness_mm is None:  # not in the coin's specification: use the documented assumption
+        thickness = (cal or load_measurement_config().calibration).custom_reference_thickness_mm
+    else:
+        thickness = obj.thickness_mm
+    return ReferenceSpec(obj.label, obj.diameter_mm, obj.diameter_uncertainty_mm, thickness, False)
 
 
 @dataclass(frozen=True)
@@ -102,7 +109,7 @@ def frame_scale(
     rel_sys = math.hypot(cal.diameter_edge_floor_px, ref.diameter_uncertainty_mm * px_per_mm_coin) / major
 
     tilt = coin_tilt_deg(coin)
-    corrected = tilt >= cal.tilt_correction_min_deg
+    corrected = cal.tilt_rectification and tilt >= cal.tilt_correction_min_deg
     if corrected:
         theta = math.radians(coin.angle_deg)
         u = np.array([math.cos(theta), math.sin(theta)])
@@ -112,8 +119,10 @@ def frame_scale(
         rel_tilt = math.tan(t) * math.radians(unc.tilt_estimate_sigma_deg)
     else:
         m = np.eye(2)
-        # Uncorrected foreshortening of up to (1 - cos tilt), treated as uniform.
-        rel_tilt = (1 - math.cos(math.radians(tilt))) / math.sqrt(3)
+        # Uncorrected tilt. Under true perspective the error depends on the (unknown) tilt
+        # direction: the pinhole study puts its worst case near coefficient * sin(tilt).
+        # Treated as a uniform error of that half-width.
+        rel_tilt = unc.tilt_pitch_coefficient * math.sin(math.radians(tilt)) / math.sqrt(3)
 
     z_lo, z_hi = camera_distance_range_mm(major, ref.diameter_mm, image_w, image_h, unc.assumed_hfov_deg)
     if depth.enabled:

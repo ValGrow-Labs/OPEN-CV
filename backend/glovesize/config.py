@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -40,6 +41,9 @@ class ReferenceObject(_Strict):
     thickness_mm: float | None = Field(default=None, ge=0, lt=10)
     source: str
     enabled: bool = True
+    # "pilot": offered only in the remote pilot, where the volunteer also measures the coin with a
+    # ruler (some coins exist in several sizes under the same name). Refused by /api/scan.
+    availability: Literal["all", "pilot"] = "all"
     notes: str | None = None
 
 
@@ -78,6 +82,24 @@ class CoinAcceptance(_Strict):
     min_confidence: float = Field(ge=0, le=1)
 
 
+class CoinScoreParams(_Strict):
+    """Linear ramps of the heuristic detection-quality score: 1 at *good*, 0 at *bad*.
+    *bad* values are given as factors of the matching acceptance threshold."""
+
+    edge_support_good: float
+    edge_support_bad: float
+    angular_gap_good_deg: float
+    angular_gap_bad_factor: float
+    fit_residual_good_px: float
+    fit_residual_bad_factor: float
+    edge_width_good_px: float
+    edge_width_bad_factor: float
+    glare_good: float
+    glare_bad_factor: float
+    contrast_good: float
+    contrast_bad_factor: float
+
+
 class CoinDetectionParams(_Strict):
     clahe_clip_limit: float = Field(gt=0)
     clahe_tile_grid: int = Field(ge=1)
@@ -99,6 +121,10 @@ class CoinDetectionParams(_Strict):
     glare_level: int = Field(ge=0, le=255)
     search_roi_half_size_palm_lengths: float = Field(gt=0)
     search_diameter_range_palm_lengths: tuple[float, float]
+    narrow_search_fraction: float = Field(gt=0, lt=0.5)
+    candidate_size_tolerance: tuple[float, float]
+    ambiguity_confidence_ratio: float = Field(gt=0, le=1)
+    score: CoinScoreParams
     accept: CoinAcceptance
 
     @field_validator("blur_kernel")
@@ -113,8 +139,11 @@ class CalibrationParams(_Strict):
     max_tilt_deg: float = Field(gt=0, lt=60)
     warn_tilt_deg: float = Field(gt=0, lt=60)
     tilt_correction_min_deg: float = Field(ge=0, lt=60)
+    tilt_rectification: bool
     diameter_edge_floor_px: float = Field(ge=0)
     require_coin_on_palm: bool
+    custom_reference_uncertainty_mm: float = Field(ge=0)
+    custom_reference_thickness_mm: float = Field(ge=0)
 
 
 class CaptureParams(_Strict):
@@ -128,15 +157,20 @@ class CaptureParams(_Strict):
     max_palm_tilt_deg_model: float = Field(gt=0, lt=90)
     brightness_range: tuple[float, float]
     max_landmark_jitter_fraction: float = Field(gt=0)
+    min_camera_distance_mm: float = Field(ge=0)
+    max_frame_rel_sd: float = Field(gt=0)
 
 
 class UncertaintyParams(_Strict):
     landmark_model_input_px: float = Field(gt=0)
     landmark_sigma_model_px: float = Field(ge=0)
+    landmark_roi_scale: float = Field(gt=0)
     perspective_rel_sigma: float = Field(ge=0)
     assumed_hfov_deg: tuple[float, float]
     tilt_estimate_sigma_deg: float = Field(ge=0)
     manual_measurement_sd_mm: float = Field(gt=0)
+    tilt_pitch_coefficient: float = Field(ge=0)
+    unstable_rel_sd: float = Field(gt=0)
 
 
 class DepthModelParams(_Strict):
@@ -200,6 +234,27 @@ class DerivedModel(_Strict):
     n_participants: int = Field(ge=1)
 
 
+# Held-out real participants required before a calibration may be signed off as validated
+# (docs/VALIDATION_PLAN.md: >= 120 participants, half of them in the held-out test split).
+MIN_VALIDATION_PARTICIPANTS = 60
+
+
+class CalibrationValidation(_Strict):
+    """Human sign-off that a fitted calibration met the agreed acceptance criteria on held-out,
+    real-world reference measurements. No code in this repository writes this block: fitting
+    produces ``status: calibrated`` with ``validation: null``, which is reported as "fitted, not
+    validated" until a person adds the evidence below."""
+
+    real_world: Literal[True]
+    held_out_participants: int = Field(ge=MIN_VALIDATION_PARTICIPANTS)
+    acceptance_criteria_met: Literal[True]
+    report: str = Field(
+        min_length=1, max_length=200, description="Identifier or path of the held-out evaluation report."
+    )
+    approved_by: str = Field(min_length=1, max_length=80, description="Role or staff ID of the reviewer.")
+    approved_at: date
+
+
 class MeasurementCalibration(_Strict):
     status: Literal["uncalibrated", "calibrated"]
     source: str
@@ -207,6 +262,18 @@ class MeasurementCalibration(_Strict):
     n_participants: int = 0
     measurements: dict[str, CalibrationEntry]
     derived: dict[str, DerivedModel | None] = Field(default_factory=dict)
+    validation: CalibrationValidation | None = None
+
+    @model_validator(mode="after")
+    def _validation_needs_fit(self) -> MeasurementCalibration:
+        if self.validation is not None and self.status != "calibrated":
+            raise ValueError("an uncalibrated configuration cannot carry validation evidence")
+        return self
+
+    @property
+    def validated(self) -> bool:
+        """True only for a fitted calibration with human-approved, held-out real-world evidence."""
+        return self.status == "calibrated" and self.validation is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -304,6 +371,19 @@ class AppConfig(_Strict):
     default_chart_id: str
     research_collection_enabled: bool = False
     research_retention_days: int = Field(default=365, ge=1, le=3650)
+    validation_mode_enabled: bool = False
+    # Two physical readings of the same hand further apart than this need a third reading
+    # before the reference is treated as reliable (docs/PILOT_PROTOCOL.md).
+    validation_reference_tolerance_mm: float = Field(default=2.0, gt=0, le=10)
+    # Save each validation scan's per-frame numeric observations (never images) so that pilot
+    # scans can be re-measured with a changed configuration.
+    validation_store_frame_data: bool = True
+    # Remote pilot (glovesize/remote_pilot.py): invited volunteers measure and scan their own hand.
+    # Needs validation mode too; off unless switched on here or with GLOVESIZE_PILOT_REMOTE_ENABLED.
+    pilot_remote_enabled: bool = False
+    pilot_invite_days: int = Field(default=30, ge=1, le=180)
+    pilot_max_submissions: int = Field(default=20, ge=1, le=100)
+    pilot_coin_check_tolerance_mm: float = Field(default=1.5, gt=0, le=3)
 
 
 @lru_cache(maxsize=1)
@@ -312,7 +392,40 @@ def load_app_config() -> AppConfig:
     env = os.environ.get("GLOVESIZE_RESEARCH_ENABLED")
     if env is not None:
         cfg = cfg.model_copy(update={"research_collection_enabled": env.lower() in {"1", "true", "yes"}})
+    env = os.environ.get("GLOVESIZE_VALIDATION_ENABLED")
+    if env is not None:
+        cfg = cfg.model_copy(update={"validation_mode_enabled": env.lower() in {"1", "true", "yes"}})
+    env = os.environ.get("GLOVESIZE_PILOT_REMOTE_ENABLED")
+    if env is not None:
+        cfg = cfg.model_copy(update={"pilot_remote_enabled": env.lower() in {"1", "true", "yes"}})
     return cfg
+
+
+class PilotConsent(_Strict):
+    """Consent text shown to remote pilot volunteers (config/pilot_consent.json). Invitations for
+    real participants are refused until a person has reviewed the text and recorded it here."""
+
+    version: str = Field(min_length=1, max_length=40)
+    reviewed: bool
+    reviewed_by: str | None = Field(default=None, max_length=80)
+    reviewed_at: date | None = None
+    title: str = Field(min_length=1, max_length=120)
+    paragraphs: list[str] = Field(min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def _review(self) -> PilotConsent:
+        if self.reviewed:
+            if not self.reviewed_by or self.reviewed_at is None:
+                raise ValueError("a reviewed consent text needs reviewed_by and reviewed_at")
+            text = " ".join(self.paragraphs)
+            if "DRAFT" in text or "[" in text:
+                raise ValueError("remove the draft notice and fill every [placeholder] before marking it reviewed")
+        return self
+
+
+@lru_cache(maxsize=1)
+def load_pilot_consent() -> PilotConsent:
+    return PilotConsent.model_validate(_read(config_dir() / "pilot_consent.json"))
 
 
 def default_chart_id() -> str:
@@ -330,5 +443,6 @@ def clear_caches() -> None:
         load_measurement_calibration,
         load_sizing_charts,
         load_app_config,
+        load_pilot_consent,
     ):
         fn.cache_clear()

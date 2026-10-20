@@ -1,9 +1,11 @@
 """End-to-end scan processing on synthetic frames (integration of measurement + sizing)."""
 
+from datetime import date
+
 import pytest
 
 from glovesize.calibration import frame_scale
-from glovesize.config import CalibrationEntry, load_measurement_calibration
+from glovesize.config import CalibrationEntry, CalibrationValidation, load_measurement_calibration
 from glovesize.pipeline import UnknownChartError, process_scan
 from glovesize.schemas import CoinObservation, ScanRequest
 from glovesize.synthetic import synthetic_frame
@@ -12,7 +14,7 @@ from .conftest import QUARTER, make_frames
 
 
 def request(frames, **kw):
-    body = {"frames": frames, "reference": {"object_id": "us_quarter"}}
+    body = {"frames": frames, "reference": {"object_id": "us_quarter", "confirmed": True}}
     body.update(kw)
     return ScanRequest.model_validate(body)
 
@@ -72,14 +74,16 @@ def test_unknown_chart():
 
 
 def test_disabled_reference_rejected():
-    req = ScanRequest.model_validate({"frames": make_frames(), "reference": {"object_id": "us_nickel"}})
+    req = ScanRequest.model_validate(
+        {"frames": make_frames(), "reference": {"object_id": "us_nickel", "confirmed": True}}
+    )
     r = process_scan(req)
     assert r.status == "rejected" and r.issues[0].code == "reference_unavailable"
 
 
 def test_custom_reference_flagged(no_depth_config):
     frames = make_frames(coin_diameter_mm=30.0)
-    req = ScanRequest.model_validate({"frames": frames, "reference": {"custom_diameter_mm": 30.0}})
+    req = ScanRequest.model_validate({"frames": frames, "reference": {"custom_diameter_mm": 30.0, "confirmed": True}})
     r = process_scan(req)
     assert r.status == "accepted"
     assert any(i.code == "custom_reference" for i in r.issues)
@@ -102,12 +106,29 @@ def test_circumference_chart_with_manual_input(no_depth_config):
     assert {b.key for b in r.recommendation.by_measurement} == {"hand_circumference_mm", "hand_length_mm"}
 
 
-def test_calibrated_system_reports_validated_basis(no_depth_config, monkeypatch):
-    import glovesize.pipeline as pipeline
-
+def _fitted_calibration():
     base = load_measurement_calibration()
     entries = {k: CalibrationEntry(scale=1.0, offset_mm=0.0, residual_sd_mm=2.0) for k in base.measurements}
-    calibrated = base.model_copy(update={"status": "calibrated", "measurements": entries})
+    return base.model_copy(update={"status": "calibrated", "measurements": entries})
+
+
+def test_fitted_calibration_is_not_reported_as_validated(no_depth_config, monkeypatch):
+    import glovesize.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "load_measurement_calibration", _fitted_calibration)
+    r = process_scan(request(make_frames()))
+    assert r.uncertainty_basis == "fitted_unvalidated"
+    assert any(i.code == "uncertainty_unvalidated" for i in r.issues)
+
+
+def test_signed_off_calibration_reports_validated_basis(no_depth_config, monkeypatch):
+    import glovesize.pipeline as pipeline
+
+    evidence = CalibrationValidation(
+        real_world=True, held_out_participants=60, acceptance_criteria_met=True,
+        report="held-out-report-001", approved_by="QA lead", approved_at=date(2026, 1, 1),
+    )  # fmt: skip
+    calibrated = _fitted_calibration().model_copy(update={"validation": evidence})
     monkeypatch.setattr(pipeline, "load_measurement_calibration", lambda: calibrated)
     r = process_scan(request(make_frames()))
     assert r.uncertainty_basis == "validated"
@@ -120,6 +141,44 @@ def test_calibrated_system_reports_validated_basis(no_depth_config, monkeypatch)
 
 
 def test_uncalibrated_recommendation_is_not_overconfident(no_depth_config):
+    # Unvalidated priors make the hand-length interval wider than one size band: no size is
+    # recommended, the plausible sizes are listed and a tape measurement is requested.
     r = process_scan(request(make_frames(hand_length_mm=181.0)))
-    assert r.recommendation.size == "M"
-    assert r.recommendation.confidence_level != "clear"
+    rec = r.recommendation
+    assert rec.size is None and rec.status == "needs_more_data"
+    assert "M" in rec.plausible_sizes and len(rec.plausible_sizes) >= 2
+    assert rec.needed_measurements == ["hand_length_mm"]
+    assert any("tape" in e for e in rec.explanation)
+
+
+def test_unconfirmed_reference_is_rejected():
+    req = ScanRequest.model_validate({"frames": make_frames(), "reference": {"object_id": "us_quarter"}})
+    r = process_scan(req)
+    assert r.status == "rejected" and r.issues[0].code == "reference_unconfirmed"
+    assert r.measurements == []
+
+
+def test_hand_too_close_to_camera_is_rejected(no_depth_config):
+    # A large coin in the image means the hand is very close: depth effects grow, so ask to move back.
+    r = process_scan(request(make_frames(px_per_mm=8.0, image_size=(1920, 2560))))
+    assert r.status == "rejected"
+    assert r.frame_rejection_counts.get("too_close") == 24
+
+
+def test_unstable_scan_is_rejected(no_depth_config):
+    frames = make_frames(n=12) + make_frames(n=12, coin_scale_factor=1.08, seed=3)
+    r = process_scan(request(frames))
+    assert r.status == "rejected" and r.issues[0].code == "scan_unstable"
+
+
+def test_simulated_perspective_matches_study(cfg):
+    # Pinhole simulation, typical setup: the default method (coin thickness + assumed joint
+    # depth) should be within 0.5% for the case it assumes (10 mm joints, 350 mm distance).
+    from glovesize.measurement import measure_frame
+    from glovesize.schemas import FrameObservation
+    from glovesize.simulation import Scene, simulate_frame, true_hand_length_mm
+
+    scene = Scene()
+    r = measure_frame(FrameObservation.model_validate(simulate_frame(scene)), QUARTER, cfg)
+    assert r.accepted, r.codes
+    assert abs(r.values["hand_length_mm"] - true_hand_length_mm(scene)) / true_hand_length_mm(scene) < 0.005

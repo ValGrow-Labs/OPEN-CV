@@ -122,8 +122,12 @@ def measure_frame(frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementC
     if coin is None:
         codes.append("coin_missing")
     else:
-        reasons = recheck_coin(coin, cfg)
-        codes.extend(r for r in reasons if r in ISSUES)
+        # Server thresholds are re-applied to the reported metrics; reasons only the client can
+        # see in the image (e.g. a second coin-like circle) are kept as reported.
+        reasons = set(recheck_coin(coin, cfg)) | set(coin.reasons)
+        if not coin.accepted and not reasons:
+            reasons.add("coin_low_confidence")
+        codes.extend(r for r in sorted(reasons) if r in ISSUES)
         if cfg.calibration.require_coin_on_palm and not point_in_polygon(
             (coin.center_x, coin.center_y), palm_polygon(lm)
         ):
@@ -132,12 +136,18 @@ def measure_frame(frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementC
             codes.append("coin_tilted")
         if not codes:
             scale = frame_scale(coin, ref, w, h, cfg)
+            # Guided positioning: very close hands magnify depth differences between the coin
+            # and the finger joints (see docs/CALIBRATION_STUDY.md).
+            if math.sqrt(scale.distance_range_mm[0] * scale.distance_range_mm[1]) < cap.min_camera_distance_mm:
+                codes.append("too_close")
+                scale = None
 
     if codes or scale is None:
         return FrameResult(False, codes or ["coin_missing"])
 
     pts = scale.rectify(lm)
-    sigma_lm_px = unc.landmark_sigma_model_px * bbox_size(lm) / unc.landmark_model_input_px
+    # MediaPipe runs the landmark model on a crop about `landmark_roi_scale` times the hand's size.
+    sigma_lm_px = unc.landmark_sigma_model_px * unc.landmark_roi_scale * bbox_size(lm) / unc.landmark_model_input_px
     result = FrameResult(True, [], scale=scale)
     for key, d in cfg.measurements.items():
         if d.kind == "straight":
@@ -242,7 +252,7 @@ def aggregate_measurements(
 
         random = sd / math.sqrt(n)
         if calibrated:
-            comps = {"validated_residual": resid_sd, "frame_variation": random}
+            comps = {"calibration_residual": resid_sd, "frame_variation": random}
         else:
             comps = {
                 "frame_variation": random,
@@ -263,7 +273,7 @@ def aggregate_measurements(
         if not lo <= value <= hi:
             status = "invalid"
             reasons.append("implausible_value")
-        if m > 0 and sd / m > 0.03:
+        if m > 0 and sd / m > unc.unstable_rel_sd:
             reasons.append("unstable")
             unstable = True
         if status == "invalid" and not reasons:

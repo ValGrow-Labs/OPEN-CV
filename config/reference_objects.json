@@ -23,6 +23,30 @@
       "source": "United States Mint coin specifications (diameter 0.835 in / 21.21 mm).",
       "enabled": false,
       "notes": "Disabled until verified in field testing. Enable only after the validation study includes nickel captures."
+    },
+    {
+      "id": "inr_2_2019",
+      "label": "Indian 2-rupee coin, 2019 series (silver-coloured)",
+      "shape": "circle",
+      "diameter_mm": 23.0,
+      "diameter_uncertainty_mm": 0.1,
+      "thickness_mm": null,
+      "source": "Coinage of One Rupee, Two Rupees, Five Rupees, Ten Rupees and Twenty Rupees Rules, 2019 (Ministry of Finance notification G.S.R. 184(E), 6 March 2019): circular, ferritic stainless steel, outside diameter 23 mm.",
+      "enabled": true,
+      "availability": "pilot",
+      "notes": "Pilot only. Older silver 2-rupee coins (27 mm) are still in circulation, so the remote pilot makes the volunteer measure the coin with a ruler first. diameter_uncertainty_mm is an assumed allowance; the notification gives no diameter tolerance. Thickness is not specified there, so calibration.custom_reference_thickness_mm is assumed."
+    },
+    {
+      "id": "inr_1_2019",
+      "label": "Indian 1-rupee coin, 2019 series (silver-coloured)",
+      "shape": "circle",
+      "diameter_mm": 20.0,
+      "diameter_uncertainty_mm": 0.1,
+      "thickness_mm": null,
+      "source": "Coinage of One Rupee, Two Rupees, Five Rupees, Ten Rupees and Twenty Rupees Rules, 2019 (Ministry of Finance notification G.S.R. 184(E), 6 March 2019): circular, ferritic stainless steel, outside diameter 20 mm.",
+      "enabled": true,
+      "availability": "pilot",
+      "notes": "Pilot only. Older silver 1-rupee coins (25 mm) are still in circulation, so the remote pilot makes the volunteer measure the coin with a ruler first. At 20 mm it is more often too small in the image than the 2-rupee coin. diameter_uncertainty_mm is an assumed allowance; thickness is assumed as for the 2-rupee coin."
     }
   ]
 }

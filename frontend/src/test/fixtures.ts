@@ -35,6 +35,7 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
           thickness_mm: 1.75,
           source: "US Mint",
           enabled: true,
+          availability: "all",
           notes: null,
         },
         {
@@ -46,6 +47,7 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
           thickness_mm: 1.95,
           source: "US Mint",
           enabled: false,
+          availability: "all",
           notes: null,
         },
       ],
@@ -55,7 +57,9 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
     calibration: calibrationParams,
     measurement_labels: {},
     manual_measurement_sd_mm: 4,
+    assumed_hfov_deg: [55, 80],
     calibration_status: "uncalibrated",
+    calibration_validated: false,
     charts: [
       {
         chart_id: "demo-length-v1",
@@ -70,6 +74,10 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
     ],
     default_chart_id: "demo-length-v1",
     research_collection_enabled: false,
+    validation_mode_enabled: false,
+    validation_reference_tolerance_mm: 2,
+    operator_access: "localhost",
+    pilot_remote_enabled: false,
     ...overrides,
   };
 }

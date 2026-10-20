@@ -1,11 +1,14 @@
 """Fit measurement calibration (offsets/scales and derived models) on the DEVELOPMENT split.
 
-The fitted file replaces config/measurement_calibration.json. Test-split participants are
-never used here; evaluate.py reports performance on them separately.
+Test-split participants are never used here; evaluate.py reports performance on them
+separately. The output is written next to the dataset, never straight into ``config/``: a
+person reviews the held-out report first and then copies it. A fitted file always has
+``validation: null``, so the app reports it as "fitted, not validated" until someone adds the
+held-out evidence and sign-off (``CalibrationValidation`` in glovesize/config.py) by hand.
 
 Usage::
 
-    python -m validation.fit_calibration <participants.csv> <scans.csv> --out ../config/measurement_calibration.json
+    python -m validation.fit_calibration <participants.csv> <scans.csv> --out ../dataset/measurement_calibration.json
 """
 
 from __future__ import annotations
@@ -19,7 +22,13 @@ from pathlib import Path
 
 import numpy as np
 
-from glovesize.config import CalibrationEntry, DerivedModel, MeasurementCalibration, load_measurement_config
+from glovesize.config import (
+    CalibrationEntry,
+    DerivedModel,
+    MeasurementCalibration,
+    config_dir,
+    load_measurement_config,
+)
 
 from .dataset import DatasetError, Participant, Scan, check_consistency, load_participants, load_scans
 
@@ -119,6 +128,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--force", action="store_true", help="allow fewer than the minimum number of participants")
     args = ap.parse_args()
+    if args.out.resolve().parent == config_dir().resolve():
+        ap.error("refusing to write into the live config directory; write elsewhere, review, then copy")
     cal = fit(load_participants(args.participants), load_scans(args.scans), args.force)
     args.out.write_text(json.dumps(cal.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
     print(f"wrote {args.out} ({cal.n_participants} participants, status={cal.status})")

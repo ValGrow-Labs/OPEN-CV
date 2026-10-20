@@ -2,22 +2,34 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, fetchConfig, fetchRecommendation } from "./api/client";
 import type { Measurement, PublicConfig, Recommendation, ReferenceSelection, ScanResponse } from "./api/types";
 import { CalibrationScreen } from "./screens/CalibrationScreen";
-import { MeasurementsScreen } from "./screens/MeasurementsScreen";
+import { MeasurementsScreen, type ManualEntries } from "./screens/MeasurementsScreen";
+import { PilotScreen } from "./screens/PilotScreen";
+
+const MANUAL_LABELS: Record<keyof ManualEntries, string> = {
+  hand_length_mm: "Hand length",
+  hand_circumference_mm: "Hand circumference",
+};
 import { ResultsScreen } from "./screens/ResultsScreen";
 import { ScanScreen } from "./screens/ScanScreen";
+import { ValidationScreen } from "./screens/ValidationScreen";
 import { WelcomeScreen } from "./screens/WelcomeScreen";
 import { BrandMark } from "./ui/components";
 import { observeReveals } from "./ui/motion";
 import { loadChart, loadReference, saveChart, saveReference } from "./ui/settings";
 
-type Screen = "welcome" | "scan" | "measurements" | "results" | "calibration";
+type Screen = "welcome" | "scan" | "measurements" | "results" | "calibration" | "validation";
 
-const isCalibrationHash = () => window.location.hash === "#/calibration";
+const HASH_SCREENS: Record<string, Screen> = { "#/calibration": "calibration", "#/validation": "validation" };
+const hashScreen = (): Screen | undefined => HASH_SCREENS[window.location.hash];
+// Remote pilot invite links: #/pilot/<token>. The token stays in the fragment, which browsers never send to servers.
+const pilotTokenFromHash = (): string | null =>
+  window.location.hash.startsWith("#/pilot/") ? decodeURIComponent(window.location.hash.slice("#/pilot/".length)) || null : null;
 
 export function App() {
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [screen, setScreen] = useState<Screen>(isCalibrationHash() ? "calibration" : "welcome");
+  const [screen, setScreen] = useState<Screen>(hashScreen() ?? "welcome");
+  const [pilotToken, setPilotToken] = useState(pilotTokenFromHash);
   const [chartId, setChartId] = useState("");
   const [reference, setReference] = useState<ReferenceSelection>({});
   const [result, setResult] = useState<ScanResponse | null>(null);
@@ -42,7 +54,10 @@ export function App() {
   useEffect(loadConfig, [loadConfig]);
 
   useEffect(() => {
-    const onHash = () => setScreen(isCalibrationHash() ? "calibration" : "welcome");
+    const onHash = () => {
+      setScreen(hashScreen() ?? "welcome");
+      setPilotToken(pilotTokenFromHash());
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -72,46 +87,43 @@ export function App() {
   };
 
   const goHome = () => {
-    if (isCalibrationHash()) window.location.hash = "";
+    if (hashScreen()) window.location.hash = "";
     setScreen("welcome");
   };
 
-  const onContinue = async (manualCircumference: number | null) => {
+  const onContinue = async (entries: ManualEntries) => {
     if (!config || !result) return;
-    const chart = config.charts.find((c) => c.chart_id === chartId)!;
     setError(null);
-    if (manualCircumference === null || !chart.measurements.includes("hand_circumference_mm")) {
+    const keys = Object.keys(entries) as (keyof ManualEntries)[];
+    if (keys.length === 0) {
       setExtra([]);
       setRecommendation(result.recommendation);
       setScreen("results");
       return;
     }
-    const sd = config.manual_measurement_sd_mm;
-    const manual: Measurement = {
-      key: "hand_circumference_mm",
-      label: "Hand circumference",
-      value_mm: Math.round(manualCircumference * 10) / 10,
-      uncertainty_mm: sd,
+    // Tape measurements replace the camera estimate of the same quantity for sizing.
+    const manual: Measurement[] = keys.map((key) => ({
+      key,
+      label: MANUAL_LABELS[key],
+      value_mm: Math.round(entries[key]! * 10) / 10,
+      uncertainty_mm: config.manual_measurement_sd_mm,
       interval95_mm: null,
       status: "user_entered",
       source: "user_entered",
-      method: "Entered by the customer (tape measure)",
-      definition: "Circumference of the palm around the knuckles, excluding the thumb.",
+      method: "Entered by the customer (ruler or tape measure)",
+      definition: MANUAL_LABELS[key],
       calibrated: false,
       frames_used: 0,
       uncertainty_components_mm: {},
       reasons: [],
-    };
-    const inputs = [...result.measurements.filter((m) => m.value_mm !== null && m.key !== manual.key), manual].map((m) => ({
-      key: m.key,
-      value_mm: m.value_mm!,
-      uncertainty_mm: m.uncertainty_mm ?? 0,
-      status: m.status,
     }));
+    const inputs = [...result.measurements.filter((m) => m.value_mm !== null && !keys.includes(m.key as keyof ManualEntries)), ...manual].map(
+      (m) => ({ key: m.key, value_mm: m.value_mm!, uncertainty_mm: m.uncertainty_mm ?? 0, status: m.status }),
+    );
     setBusy(true);
     try {
       setRecommendation(await fetchRecommendation(chartId, inputs));
-      setExtra([manual]);
+      setExtra(manual);
       setScreen("results");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not calculate your size.");
@@ -145,6 +157,20 @@ export function App() {
 
   const chart = config.charts.find((c) => c.chart_id === chartId) ?? config.charts[0];
 
+  if (pilotToken) {
+    return (
+      <div className="app">
+        <header className="topbar">
+          <span className="brand">
+            <BrandMark />
+            Glove Size Finder
+          </span>
+        </header>
+        <PilotScreen config={config} token={pilotToken} />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {screen !== "scan" && <Header onHome={goHome} />}
@@ -171,6 +197,10 @@ export function App() {
           chartId={chart.chart_id}
           reference={reference}
           onCancel={() => setScreen(result ? "measurements" : "welcome")}
+          onReferenceConfirm={(sel) => {
+            setReference(sel);
+            saveReference(sel);
+          }}
           onResult={(r, m) => {
             setResult(r);
             setMirrored(m);
@@ -186,7 +216,7 @@ export function App() {
           result={result}
           mirrored={mirrored}
           onRescan={startScan}
-          onContinue={(c) => void onContinue(c)}
+          onContinue={(m) => void onContinue(m)}
           busy={busy}
           error={error}
         />
@@ -201,6 +231,9 @@ export function App() {
           onStartOver={goHome}
         />
       )}
+      {screen === "validation" && (
+        <ValidationScreen config={config} chartId={chart.chart_id} reference={reference} onClose={goHome} />
+      )}
       {screen === "calibration" && (
         <CalibrationScreen
           config={config}
@@ -214,8 +247,14 @@ export function App() {
       )}
       {screen !== "scan" && (
         <footer className="footer">
-          <span>Camera-based estimate · not a guarantee of fit</span>
-          {screen !== "calibration" && <a href="#/calibration">Operator calibration</a>}
+          <span>
+            {config.calibration_validated ? "Camera-based estimate" : "Unvalidated prototype · camera-based estimate"} · not a
+            guarantee of fit
+          </span>
+          <span className="row" style={{ gap: 16 }}>
+            {screen !== "calibration" && <a href="#/calibration">Operator calibration</a>}
+            {config.validation_mode_enabled && screen !== "validation" && <a href="#/validation">Validation</a>}
+          </span>
         </footer>
       )}
     </div>

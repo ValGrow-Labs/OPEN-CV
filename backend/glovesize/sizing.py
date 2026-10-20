@@ -32,7 +32,7 @@ MEASUREMENT_NAMES = {
 HOW_TO_MEASURE = {
     "hand_circumference_mm": "Wrap a soft tape measure around your palm at the knuckles (excluding the thumb) and enter the value.",
     "palm_breadth_mm": "Measure the width of your palm across the knuckles, excluding the thumb, and enter the value.",
-    "hand_length_mm": "Rescan your hand, or measure from the wrist crease to the tip of your middle finger.",
+    "hand_length_mm": "Measure from the crease where your wrist meets your palm to the tip of your middle finger with a ruler or tape and enter it, or rescan holding your hand flat and still.",
 }
 
 
@@ -76,6 +76,20 @@ def _range_text(chart: SizingChart, key: str, i: int) -> str:
     if hi is None:
         return f"{lo:.0f} mm and above"
     return f"{lo:.0f}-{hi:.0f} mm"
+
+
+def _nearest_neighbour(chart: SizingChart, key: str, value: float, best: int, span: tuple[int, int]) -> int:
+    """The adjacent size (within ``span``) on the side of the band the value is closer to."""
+    lo, hi = chart.sizes[best].ranges[key]
+    below, above = best - 1, best + 1
+    if lo is None or (hi is not None and value - lo > hi - value):
+        prefer, other = above, below
+    else:
+        prefer, other = below, above
+    for cand in (prefer, other):
+        if span[0] <= cand <= span[1] and 0 <= cand < len(chart.sizes):
+            return cand
+    return best
 
 
 def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> RecommendationOut:
@@ -142,12 +156,45 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         level = "clear"
     if level == "clear" and any(usable[k].status == "low_confidence" for k in required):
         level = "likely"
+    # Size charts are written for tape measurements, so a tape value's own spread is part of how
+    # the chart is meant to be used: it can make a result borderline, never "uncertain".
+    if level == "uncertain" and all(usable[k].status == "user_entered" for k in required):
+        level = "borderline"
 
     alternative = None
     if level in ("likely", "borderline"):
-        span = r1 if level == "borderline" else r2
-        alt = span[1] if span[1] != best else span[0]
-        alternative = chart.sizes[alt].label if alt != best else None
+        # A downgraded tape value can sit inside one band at 1 sd, so fall back to the 2 sd range.
+        span = r1 if level == "borderline" and r1[1] > r1[0] else r2
+        if span[1] > span[0]:
+            alt = _nearest_neighbour(
+                chart, required[idx.index(best)], usable[required[idx.index(best)]].value, best, span
+            )
+            alternative = chart.sizes[alt].label
+
+    plausible = [chart.sizes[j].label for j in range(r2[0], r2[1] + 1)]
+    if level == "uncertain":
+        # The data do not support a single size: say what would, instead of guessing.
+        explanation = [
+            f"Your {MEASUREMENT_NAMES.get(k, k)} is {_fmt(usable[k].value)}, with an estimated uncertainty of "
+            f"±{usable[k].sigma:.1f} mm."
+            for k in required
+        ]
+        explanation.append(
+            f"That is consistent with sizes {', '.join(plausible)}, so we can't recommend one size from this scan."
+        )
+        camera_based = [k for k in required if usable[k].status != "user_entered"]
+        explanation += [HOW_TO_MEASURE[k] for k in camera_based if k in HOW_TO_MEASURE]
+        return RecommendationOut(
+            **common,
+            status="needs_more_data",
+            size=None,
+            alternative_size=None,
+            confidence_level="uncertain",
+            explanation=explanation,
+            needed_measurements=camera_based or list(required),
+            plausible_sizes=plausible,
+            by_measurement=per,
+        )
 
     size = chart.sizes[best].label
     explanation: list[str] = []
@@ -170,21 +217,10 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         explanation.append(
             f"Your measurement is on the boundary between {size} and {alternative}; both may fit. Consider trying both, or measure with a tape to confirm."
         )
-    else:
-        plausible = [chart.sizes[j].label for j in range(r2[0], r2[1] + 1)]
-        explanation.append(
-            f"Size {size} is the single most likely size, but the measurement uncertainty spans "
-            f"{', '.join(plausible)}. Please confirm with a tape measure before ordering."
-        )
     if rules.notes:
         explanation.append(f"Sizing rule: {rules.notes}")
 
-    status = {
-        "clear": "recommended",
-        "likely": "recommended",
-        "borderline": "borderline",
-        "uncertain": "needs_more_data",
-    }[level]
+    status = "borderline" if level == "borderline" else "recommended"
     return RecommendationOut(
         **common,
         status=status,  # type: ignore[arg-type]
@@ -192,6 +228,7 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         alternative_size=alternative,
         confidence_level=level,  # type: ignore[arg-type]
         explanation=explanation,
-        needed_measurements=[] if level != "uncertain" else list(required),
+        needed_measurements=[],
+        plausible_sizes=plausible,
         by_measurement=per,
     )

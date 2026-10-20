@@ -18,7 +18,10 @@ def client():
 
 
 def scan_body(frames=None, **kw):
-    body = {"frames": frames if frames is not None else make_frames(), "reference": {"object_id": "us_quarter"}}
+    body = {
+        "frames": frames if frames is not None else make_frames(),
+        "reference": {"object_id": "us_quarter", "confirmed": True},
+    }
     body.update(kw)
     return body
 
@@ -145,38 +148,38 @@ def test_research_disabled_by_default(client):
     assert client.post("/api/research/records", json=record()).status_code == 403
 
 
-def test_research_store_and_delete(client, research_enabled):
-    r = client.post("/api/research/records", json=record())
+def test_research_store_and_delete(operator_client, research_enabled):
+    r = operator_client.post("/api/research/records", json=record())
     assert r.status_code == 201
     stored = research_enabled.read_text()
     assert "P-7f3a9c" in stored and "image" not in stored.replace('"images": false', "")
-    assert client.delete("/api/research/records/P-7f3a9c").json() == {"deleted": 1}
+    assert operator_client.delete("/api/research/records/P-7f3a9c").json() == {"deleted": 1}
     assert research_enabled.read_text() == ""
 
 
-def test_research_requires_measurement_consent(client, research_enabled):
+def test_research_requires_measurement_consent(operator_client, research_enabled):
     rec = record()
     rec["consent"]["measurements"] = False
-    assert client.post("/api/research/records", json=rec).status_code == 422
+    assert operator_client.post("/api/research/records", json=rec).status_code == 422
 
 
-def test_research_never_accepts_images(client, research_enabled):
+def test_research_never_accepts_images(operator_client, research_enabled):
     rec = record()
     rec["consent"]["images"] = True
-    assert client.post("/api/research/records", json=rec).status_code == 422
+    assert operator_client.post("/api/research/records", json=rec).status_code == 422
     rec = record()
     rec["image"] = "AAAA"
-    assert client.post("/api/research/records", json=rec).status_code == 422
+    assert operator_client.post("/api/research/records", json=rec).status_code == 422
 
 
-def test_research_rejects_identifying_codes(client, research_enabled):
-    assert client.post("/api/research/records", json=record(code="jane@example.com")).status_code == 422
+def test_research_rejects_identifying_codes(operator_client, research_enabled):
+    assert operator_client.post("/api/research/records", json=record(code="jane@example.com")).status_code == 422
 
 
-def test_research_retention_limit(client, research_enabled):
+def test_research_retention_limit(operator_client, research_enabled):
     rec = record()
     rec["consent"]["retention_days"] = 5000
-    assert client.post("/api/research/records", json=rec).status_code == 422
+    assert operator_client.post("/api/research/records", json=rec).status_code == 422
 
 
 def test_research_expired_records_purged(research_enabled):

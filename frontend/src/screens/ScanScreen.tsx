@@ -1,24 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, submitScan } from "../api/client";
-import type { FrameObservation, PublicConfig, ReferenceSelection, ScanResponse } from "../api/types";
+import type { FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
 import { ScanController, type ScanStatus } from "../scan/scanController";
 import { Icon } from "../ui/components";
 import { CoachIcon, coachKind, GUIDE_STEPS, liveStage } from "../ui/guide";
-import { introSeen, markIntroSeen, referenceLabel } from "../ui/settings";
+import { coinConfirmed, introSeen, markCoinConfirmed, markIntroSeen, referenceLabel } from "../ui/settings";
+import { CoinConfirm } from "./CoinConfirm";
 import { ScanGuide } from "./ScanGuide";
 
-interface Props {
+interface Props<R> {
   config: PublicConfig;
   chartId: string;
   reference: ReferenceSelection;
   onCancel: () => void;
-  onResult: (r: ScanResponse, mirrored: boolean) => void;
+  onResult: (r: R, mirrored: boolean) => void;
   /** Show the quick guide before starting the camera (defaults to "first visit only"). */
   showIntro?: boolean;
+  /** Ask which coin is used before the camera starts (defaults to "once per session"). */
+  requireCoinConfirm?: boolean;
+  onReferenceConfirm?: (sel: ReferenceSelection) => void;
+  /** Override how the scan is submitted (the developer validation mode uses its own endpoint). */
+  submit?: (req: ScanRequest) => Promise<R>;
 }
 
-export function ScanScreen({ config, chartId, reference, onCancel, onResult, showIntro }: Props) {
+export function ScanScreen<R = ScanResponse>({
+  config,
+  chartId,
+  reference,
+  onCancel,
+  onResult,
+  showIntro,
+  requireCoinConfirm,
+  onReferenceConfirm,
+  submit,
+}: Props<R>) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<ScanController | null>(null);
@@ -29,7 +45,8 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
   const [announcement, setAnnouncement] = useState("");
   const ref = referenceLabel(config, reference);
   const [guide, setGuide] = useState<"intro" | "help" | null>(() => ((showIntro ?? !introSeen()) ? "intro" : null));
-  const [cameraAllowed, setCameraAllowed] = useState(guide !== "intro");
+  const [confirming, setConfirming] = useState(() => requireCoinConfirm ?? !coinConfirmed(reference));
+  const [cameraAllowed, setCameraAllowed] = useState(guide !== "intro" && !confirming);
   const mirroredRef = useRef(false);
   mirroredRef.current = status?.mirrored ?? false;
 
@@ -38,9 +55,9 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
       setSubmitting(true);
       setSubmitError(null);
       try {
-        const res = await submitScan({
+        const res = await (submit ?? (submitScan as unknown as (req: ScanRequest) => Promise<R>))({
           frames,
-          reference,
+          reference: { ...reference, confirmed: true },
           chart_id: chartId,
           capture: { device_class: isMobileDevice() ? "mobile" : "desktop", camera_facing: mirroredRef.current ? "user" : "environment" },
         });
@@ -52,7 +69,7 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
         setSubmitting(false);
       }
     },
-    [chartId, reference, onResult],
+    [chartId, reference, onResult, submit],
   );
 
   const start = useCallback(() => {
@@ -66,6 +83,7 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
     const c = new ScanController(video, canvas, config, {
       mode: "scan",
       facing,
+      referenceDiameterMm: ref.diameter,
       onStatus: setStatus,
       onComplete: (frames) => {
         setPendingFrames(frames);
@@ -74,7 +92,7 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
     });
     controllerRef.current = c;
     void c.start();
-  }, [config, send]);
+  }, [config, send, ref.diameter]);
 
   // The camera (and its permission prompt) starts only after the quick guide.
   useEffect(() => {
@@ -82,6 +100,13 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
     start();
     return () => controllerRef.current?.stop();
   }, [start, cameraAllowed]);
+
+  const confirmCoin = (sel: ReferenceSelection) => {
+    onReferenceConfirm?.(sel);
+    markCoinConfirmed(sel);
+    setConfirming(false);
+    if (guide !== "intro") setCameraAllowed(true);
+  };
 
   const closeGuide = () => {
     if (guide === "intro") {
@@ -231,7 +256,8 @@ export function ScanScreen({ config, chartId, reference, onCancel, onResult, sho
         </ol>
       </div>
 
-      {guide && <ScanGuide mode={guide} referenceLabel={`${ref.label}, ${ref.diameter.toFixed(2)} mm`} onDone={closeGuide} />}
+      {confirming && <CoinConfirm config={config} reference={reference} onConfirm={confirmCoin} onCancel={onCancel} />}
+      {!confirming && guide && <ScanGuide mode={guide} referenceLabel={`${ref.label}, ${ref.diameter.toFixed(2)} mm`} onDone={closeGuide} />}
     </div>
   );
 }

@@ -10,7 +10,7 @@ interface Props {
   result: ScanResponse;
   mirrored: boolean;
   onRescan: () => void;
-  onContinue: (manualCircumferenceMm: number | null) => void;
+  onContinue: (manual: ManualEntries) => void;
   busy: boolean;
   error: string | null;
 }
@@ -18,7 +18,12 @@ interface Props {
 export function MeasurementsScreen({ config, chart, result, mirrored, onRescan, onContinue, busy, error }: Props) {
   if (result.status === "rejected") return <Rejected result={result} onRescan={onRescan} />;
 
-  const needsCircumference = chart.measurements.includes("hand_circumference_mm");
+  // Tape measurements the customer can add: circumference whenever the product needs it (a
+  // camera cannot measure it), hand length when the camera estimate cannot single out a size.
+  const needed = result.recommendation?.needed_measurements ?? [];
+  const manualFields = (["hand_length_mm", "hand_circumference_mm"] as const).filter(
+    (k) => (k === "hand_circumference_mm" && chart.measurements.includes(k)) || (k === "hand_length_mm" && needed.includes(k)),
+  );
   const camera = result.measurements.filter((m) => m.source === "camera_landmarks" || m.source === "camera_model_estimate");
   const other = result.measurements.filter((m) => m.source !== "camera_landmarks" && m.source !== "camera_model_estimate");
   const warnings = result.issues.filter((i) => i.severity !== "error");
@@ -33,7 +38,7 @@ export function MeasurementsScreen({ config, chart, result, mirrored, onRescan, 
         </p>
       </header>
 
-      {result.uncertainty_basis === "prior_assumptions" && (
+      {result.uncertainty_basis !== "validated" && (
         <div className="notice notice-info small" role="note">
           Uncertainty values are model-based estimates. This system has not yet been validated against tape-measured
           hands, so treat them as approximate.
@@ -116,7 +121,8 @@ export function MeasurementsScreen({ config, chart, result, mirrored, onRescan, 
       </div>
 
       <ContinuePanel
-        needsCircumference={needsCircumference}
+        fields={manualFields}
+        plausibleSizes={result.recommendation?.plausible_sizes ?? []}
         manualSd={config.manual_measurement_sd_mm}
         onRescan={onRescan}
         onContinue={onContinue}
@@ -210,56 +216,97 @@ function UncRow({ name, value }: { name: string; value: number }) {
   );
 }
 
+export type ManualEntries = { hand_circumference_mm?: number; hand_length_mm?: number };
+
+const MANUAL_FIELDS = {
+  hand_length_mm: {
+    label: "Hand length",
+    how: "Measure from the crease where your wrist meets your palm to the tip of your middle finger, with your hand flat.",
+    range: [100, 260] as [number, number],
+    placeholder: { in: "e.g. 7.3", mm: "e.g. 185" },
+  },
+  hand_circumference_mm: {
+    label: "Hand circumference",
+    how: "Wrap a soft tape measure around your palm at the knuckles, excluding the thumb. A camera cannot measure circumference.",
+    range: [100, 400] as [number, number],
+    placeholder: { in: "e.g. 8.5", mm: "e.g. 216" },
+  },
+};
+
 function ContinuePanel({
-  needsCircumference,
+  fields,
+  plausibleSizes,
   manualSd,
   onRescan,
   onContinue,
   busy,
   error,
 }: {
-  needsCircumference: boolean;
+  fields: (keyof typeof MANUAL_FIELDS)[];
+  plausibleSizes: string[];
   manualSd: number;
   onRescan: () => void;
-  onContinue: (c: number | null) => void;
+  onContinue: (manual: ManualEntries) => void;
   busy: boolean;
   error: string | null;
 }) {
   const [unit, setUnit] = useState<"in" | "mm">("in");
-  const [text, setText] = useState("");
-  const value = parseFloat(text);
-  const mm = Number.isFinite(value) ? (unit === "in" ? value * MM_PER_INCH : value) : NaN;
-  const valid = Number.isFinite(mm) && mm >= 100 && mm <= 400;
+  const [text, setText] = useState<Record<string, string>>({});
+  const parsed = Object.fromEntries(
+    fields.map((k) => {
+      const v = parseFloat(text[k] ?? "");
+      const mm = Number.isFinite(v) ? (unit === "in" ? v * MM_PER_INCH : v) : NaN;
+      const [lo, hi] = MANUAL_FIELDS[k].range;
+      return [k, { mm, entered: (text[k] ?? "") !== "", valid: Number.isFinite(mm) && mm >= lo && mm <= hi }];
+    }),
+  ) as Record<string, { mm: number; entered: boolean; valid: boolean }>;
+  const anyInvalid = fields.some((k) => parsed[k].entered && !parsed[k].valid);
+  const manual: ManualEntries = Object.fromEntries(fields.filter((k) => parsed[k].valid).map((k) => [k, parsed[k].mm]));
 
   return (
     <div className="card stack" data-reveal>
-      {needsCircumference && (
+      {fields.length > 0 && (
         <div className="stack">
-          <h2>Hand circumference</h2>
-          <p className="small muted">
-            Wrap a soft tape measure around your palm at the knuckles, excluding the thumb, and enter the value. A
-            camera cannot measure circumference. Entered values are assumed accurate to about ±{manualSd.toFixed(0)} mm.
-          </p>
-          <div className="input-group">
-            <label htmlFor="circ" className="visually-hidden">
-              Hand circumference
-            </label>
-            <input
-              id="circ"
-              className="input num"
-              inputMode="decimal"
-              placeholder={unit === "in" ? "e.g. 8.5" : "e.g. 216"}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              aria-invalid={text !== "" && !valid}
-              style={{ maxWidth: 160 }}
-            />
+          <h2>{fields.includes("hand_length_mm") ? "Add a tape measurement" : "Hand circumference"}</h2>
+          {fields.includes("hand_length_mm") && plausibleSizes.length > 1 && (
+            <p className="small">
+              From the camera alone, sizes {plausibleSizes.join(", ")} are all possible, so we won't pick one for you.
+              A ruler or tape measurement gives a reliable size.
+            </p>
+          )}
+          <div className="row" style={{ gap: 8 }}>
+            <span className="small muted">Units</span>
             <select className="select" value={unit} onChange={(e) => setUnit(e.target.value as "in" | "mm")} aria-label="Unit">
               <option value="in">inches</option>
               <option value="mm">mm</option>
             </select>
           </div>
-          {text !== "" && !valid && <p className="small" style={{ color: "var(--bad)" }}>Enter a value between 4 and 15.7 in (100-400 mm).</p>}
+          {fields.map((k) => {
+            const f = MANUAL_FIELDS[k];
+            const [lo, hi] = f.range;
+            return (
+              <div key={k} className="field">
+                <label htmlFor={`manual-${k}`}>{f.label}</label>
+                <p className="small muted">{f.how}</p>
+                <input
+                  id={`manual-${k}`}
+                  className="input num"
+                  inputMode="decimal"
+                  placeholder={f.placeholder[unit]}
+                  value={text[k] ?? ""}
+                  onChange={(e) => setText({ ...text, [k]: e.target.value })}
+                  aria-invalid={parsed[k].entered && !parsed[k].valid}
+                  style={{ maxWidth: 180 }}
+                />
+                {parsed[k].entered && !parsed[k].valid && (
+                  <p className="small" style={{ color: "var(--bad)" }}>
+                    Enter a value between {(lo / MM_PER_INCH).toFixed(1)} and {(hi / MM_PER_INCH).toFixed(1)} in ({lo}-{hi} mm).
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          <p className="small muted">Entered values are assumed accurate to about ±{manualSd.toFixed(0)} mm.</p>
         </div>
       )}
       {error && (
@@ -268,7 +315,7 @@ function ContinuePanel({
         </div>
       )}
       <div className="row">
-        <button className="btn btn-primary btn-lg btn-island" disabled={busy || (needsCircumference && text !== "" && !valid)} onClick={() => onContinue(valid ? mm : null)}>
+        <button className="btn btn-primary btn-lg btn-island" disabled={busy || anyInvalid} onClick={() => onContinue(manual)}>
           {busy ? "Calculating…" : "See my size"}
           <ButtonIcon />
         </button>

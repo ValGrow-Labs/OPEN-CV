@@ -32,6 +32,10 @@ m.capture.max_palm_tilt_deg_model = 45;
 m.capture.max_finger_bend_deg_3d = 50;
 writeFileSync(mPath, JSON.stringify(m, null, 2));
 
+// Validation-mode e2e records go to a throwaway file, never to data/validation.
+rmSync(resolve(media, "validation-records.jsonl"), { force: true });
+rmSync(resolve(media, "validation"), { recursive: true, force: true }); // records, frames/, configs/
+
 if (!existsSync(resolve(media, "hand.y4m"))) {
   try {
     run(["-m", "scripts.make_hand_test_video", resolve(media, "hand"), "--config-dir", relaxed]);

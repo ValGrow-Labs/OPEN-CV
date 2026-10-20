@@ -21,6 +21,10 @@ function write(key: string, value: string): void {
   }
 }
 
+/** Coins offered to customers: enabled and not restricted to the pilot study. */
+export const customerCoins = (config: PublicConfig) =>
+  config.reference_objects.objects.filter((o) => o.enabled && o.availability !== "pilot");
+
 export function loadReference(config: PublicConfig): ReferenceSelection {
   const fallback = { object_id: config.reference_objects.default };
   const raw = read(REF_KEY);
@@ -28,8 +32,8 @@ export function loadReference(config: PublicConfig): ReferenceSelection {
   try {
     const sel = JSON.parse(raw) as ReferenceSelection;
     if (sel.object_id) {
-      const obj = config.reference_objects.objects.find((o) => o.id === sel.object_id);
-      return obj?.enabled ? { object_id: obj.id } : fallback;
+      const obj = customerCoins(config).find((o) => o.id === sel.object_id);
+      return obj ? { object_id: obj.id } : fallback;
     }
     if (typeof sel.custom_diameter_mm === "number" && sel.custom_diameter_mm >= 10 && sel.custom_diameter_mm <= 60) {
       return { custom_diameter_mm: sel.custom_diameter_mm, custom_label: sel.custom_label };
@@ -62,6 +66,24 @@ export function referenceLabel(config: PublicConfig, sel: ReferenceSelection): {
 }
 
 const INTRO_KEY = "glovesize.introSeen.v1";
+const COIN_KEY = "glovesize.coinConfirmed.v1";
+
+/** The coin is confirmed once per browser session (sessionStorage), and again if it changes. */
+export function coinConfirmed(sel: ReferenceSelection): boolean {
+  try {
+    return window.sessionStorage.getItem(COIN_KEY) === JSON.stringify(sel);
+  } catch {
+    return false;
+  }
+}
+
+export function markCoinConfirmed(sel: ReferenceSelection): void {
+  try {
+    window.sessionStorage.setItem(COIN_KEY, JSON.stringify(sel));
+  } catch {
+    /* storage unavailable: the customer will be asked again next time */
+  }
+}
 
 export function introSeen(): boolean {
   return read(INTRO_KEY) === "1";

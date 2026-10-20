@@ -32,6 +32,8 @@ export type LiveCode =
   | "coin_low_contrast"
   | "coin_irregular_boundary"
   | "coin_low_confidence"
+  | "coin_ambiguous"
+  | "too_close"
   | "coin_not_found"
   | "hold_still";
 
@@ -54,6 +56,8 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   coin_low_contrast: "Use brighter, even lighting",
   coin_irregular_boundary: "Use a single coin lying flat",
   coin_low_confidence: "Hold still so the coin can be measured",
+  coin_ambiguous: "Use one coin only and keep other round objects out of view",
+  too_close: "Move your hand a little farther from the camera",
   hold_still: "Hold still…",
 };
 
@@ -65,7 +69,26 @@ const COIN_CODES = new Set<string>([
   "coin_low_contrast",
   "coin_irregular_boundary",
   "coin_low_confidence",
+  "coin_ambiguous",
 ]);
+
+/** Camera distance implied by the coin's size, for an assumed horizontal FOV range (geometric mean). */
+export function estimatedDistanceMm(
+  coinMajorPx: number,
+  diameterMm: number,
+  imageW: number,
+  imageH: number,
+  hfovDeg: [number, number],
+): number {
+  const longSide = Math.max(imageW, imageH);
+  const [a, b] = hfovDeg.map((fov) => ((longSide / 2) / Math.tan((fov * Math.PI) / 360)) * diameterMm / coinMajorPx);
+  return Math.sqrt(a * b);
+}
+
+export interface ScaleContext {
+  referenceDiameterMm: number;
+  assumedHfovDeg: [number, number];
+}
 
 export interface LiveResult {
   ok: boolean;
@@ -78,6 +101,7 @@ export function evaluateFrame(
   previousLandmarks: Point[] | null,
   capture: CaptureParams,
   calibration: CalibrationParams,
+  scale?: ScaleContext,
 ): LiveResult {
   const codes: LiveCode[] = [];
   if (!frame) return result(["no_hand"]);
@@ -106,6 +130,13 @@ export function evaluateFrame(
     if (calibration.require_coin_on_palm && !pointInPolygon(coin.center_x, coin.center_y, poly)) codes.push("coin_not_on_palm");
     const tilt = (Math.acos(Math.min(1, coin.minor_axis_px / coin.major_axis_px)) * 180) / Math.PI;
     if (tilt > calibration.max_tilt_deg) codes.push("coin_tilted");
+    if (
+      scale &&
+      coin.major_axis_px > 0 &&
+      estimatedDistanceMm(coin.major_axis_px, scale.referenceDiameterMm, w, h, scale.assumedHfovDeg) < capture.min_camera_distance_mm
+    ) {
+      codes.push("too_close");
+    }
   }
   if (codes.length === 0 && previousLandmarks && jitterFraction(lm, previousLandmarks) > capture.max_landmark_jitter_fraction) {
     codes.push("hold_still");

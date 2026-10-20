@@ -28,7 +28,21 @@ SCENES = {
     "blurred": dict(width=240, height=240, diameter_px=70.0, center=(120, 120), blur_sigma=3.0, seed=4),
     "glare": dict(width=240, height=240, diameter_px=70.0, center=(120, 120), glare_fraction_of_radius=0.6, seed=5),
     "occluded": dict(width=240, height=240, diameter_px=70.0, center=(120, 120), occlusion_depth_fraction=0.3, seed=6),
+    "two_coins": dict(width=320, height=200, diameter_px=64.0, center=(90.0, 100.0), creases=False, seed=7),
+    "cool_light": dict(width=240, height=240, diameter_px=70.0, center=(120.0, 120.0), seed=8),
 }
+
+
+def post_process(name: str, bgr: np.ndarray) -> np.ndarray:
+    """Scene variants that the renderer does not draw itself."""
+    if name == "two_coins":
+        cv2.circle(bgr, (230, 100), 32, (150, 152, 150), -1, cv2.LINE_AA)
+        cv2.circle(bgr, (230, 100), 30, (190, 192, 190), 2, cv2.LINE_AA)
+    if name == "cool_light":
+        bgr = np.clip(bgr.astype(np.float64) * np.array([1.2, 1.0, 0.85]), 0, 255).astype(np.uint8)
+    return bgr
+
+
 ROI_CASE = {"scene": "clean_70", "roi": [60, 50, 130, 140], "diameter_range_px": [40.0, 110.0]}
 
 
@@ -38,6 +52,7 @@ def main() -> None:
     images = {}
     for name, kw in SCENES.items():
         bgr, truth = render_coin_scene(**kw)
+        bgr = post_process(name, bgr)
         images[name] = bgr
         rgba = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGBA)
         det = detect_coin(bgr, p)

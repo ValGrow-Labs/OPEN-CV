@@ -41,6 +41,8 @@ export interface ReferenceSelection {
   object_id?: string;
   custom_diameter_mm?: number;
   custom_label?: string;
+  /** Set when the customer or operator explicitly confirmed the coin; the server rejects scans without it. */
+  confirmed?: boolean;
 }
 
 export interface ManualMeasurements {
@@ -120,6 +122,7 @@ export interface Recommendation {
   basis: string[];
   explanation: string[];
   needed_measurements: string[];
+  plausible_sizes: string[];
   by_measurement: SizeByMeasurement[];
 }
 
@@ -137,7 +140,7 @@ export interface ScanResponse {
   image_width: number;
   image_height: number;
   recommendation: Recommendation | null;
-  uncertainty_basis: "prior_assumptions" | "validated";
+  uncertainty_basis: "prior_assumptions" | "fitted_unvalidated" | "validated";
   limitations: string[];
 }
 
@@ -154,6 +157,21 @@ export interface CoinAcceptance {
   max_glare_fraction: number;
   min_contrast: number;
   min_confidence: number;
+}
+
+export interface CoinScoreParams {
+  edge_support_good: number;
+  edge_support_bad: number;
+  angular_gap_good_deg: number;
+  angular_gap_bad_factor: number;
+  fit_residual_good_px: number;
+  fit_residual_bad_factor: number;
+  edge_width_good_px: number;
+  edge_width_bad_factor: number;
+  glare_good: number;
+  glare_bad_factor: number;
+  contrast_good: number;
+  contrast_bad_factor: number;
 }
 
 export interface CoinDetectionParams {
@@ -177,6 +195,10 @@ export interface CoinDetectionParams {
   glare_level: number;
   search_roi_half_size_palm_lengths: number;
   search_diameter_range_palm_lengths: [number, number];
+  narrow_search_fraction: number;
+  candidate_size_tolerance: [number, number];
+  ambiguity_confidence_ratio: number;
+  score: CoinScoreParams;
   accept: CoinAcceptance;
 }
 
@@ -191,12 +213,15 @@ export interface CaptureParams {
   max_palm_tilt_deg_model: number;
   brightness_range: [number, number];
   max_landmark_jitter_fraction: number;
+  min_camera_distance_mm: number;
+  max_frame_rel_sd: number;
 }
 
 export interface CalibrationParams {
   max_tilt_deg: number;
   warn_tilt_deg: number;
   tilt_correction_min_deg: number;
+  tilt_rectification: boolean;
   diameter_edge_floor_px: number;
   require_coin_on_palm: boolean;
 }
@@ -210,6 +235,8 @@ export interface ReferenceObject {
   thickness_mm: number | null;
   source: string;
   enabled: boolean;
+  /** "pilot": only offered in the remote pilot, where the coin is also measured with a ruler. */
+  availability: "all" | "pilot";
   notes: string | null;
 }
 
@@ -231,8 +258,297 @@ export interface PublicConfig {
   calibration: CalibrationParams;
   measurement_labels: Record<string, string>;
   manual_measurement_sd_mm: number;
+  assumed_hfov_deg: [number, number];
   calibration_status: "uncalibrated" | "calibrated";
+  /** True only after human sign-off on held-out real-world evidence. */
+  calibration_validated: boolean;
   charts: ChartSummary[];
   default_chart_id: string;
   research_collection_enabled: boolean;
+  validation_mode_enabled: boolean;
+  validation_reference_tolerance_mm: number;
+  operator_access: "localhost" | "token";
+  pilot_remote_enabled: boolean;
+}
+
+// ----------------------------------------------------------------------------
+// Developer validation mode
+// ----------------------------------------------------------------------------
+
+export type LengthUnit = "mm" | "cm" | "in";
+
+export interface Reading {
+  value: number;
+  unit: LengthUnit;
+}
+
+export interface ValidationReference {
+  protocol: "HL-1";
+  hand_length: Reading[];
+  palm_breadth?: Reading;
+  hand_circumference?: Reading;
+  tool: "ruler" | "tape" | "calipers" | "anthropometer" | "other";
+  measured_by: "operator" | "participant";
+  operator_code?: string;
+}
+
+export interface CaptureConditions {
+  device: string;
+  lighting: "daylight" | "indoor_bright" | "indoor_dim" | "mixed" | "other";
+  distance_cm?: number;
+  background?: string;
+  notes?: string;
+}
+
+export type TrialCondition =
+  | "standard"
+  | "distance_near"
+  | "distance_far"
+  | "coin_off_centre"
+  | "lighting_changed"
+  | "hand_rotated"
+  | "fingers_slightly_bent";
+
+export interface Trial {
+  hand: "left" | "right";
+  condition: TrialCondition;
+}
+
+export type DataOrigin = "real_participant" | "software_test";
+
+export interface ValidationScanRequest {
+  data_origin: DataOrigin;
+  consent_confirmed: boolean;
+  participant_code: string;
+  reference: ValidationReference;
+  trial: Trial;
+  conditions: CaptureConditions;
+  scan: ScanRequest;
+}
+
+export interface ReferenceSummary {
+  hand_length_mm: number;
+  readings_mm: number[];
+  spread_mm: number;
+  repeated: boolean;
+  reliability: "agreed" | "single_reading" | "discrepant";
+  tolerance_mm: number;
+}
+
+export interface CaptureInfo {
+  coin_accepted_frames: number;
+  coin_confidence_median: number | null;
+  coin_diameter_px: number | null;
+  px_per_mm: number | null;
+  coin_tilt_deg: number | null;
+  depth_correction_factor: number | null;
+  estimated_camera_distance_mm: [number, number] | null;
+  image_width: number;
+  image_height: number;
+  detected_handedness: "Left" | "Right" | null;
+  landmark_motion_px: number | null;
+}
+
+export interface ValidationComparison {
+  key: string;
+  reference_mm: number;
+  estimate_mm: number | null;
+  uncertainty_mm: number | null;
+  status: string;
+  abs_error_mm: number | null;
+  pct_error: number | null;
+  signed_error_mm: number | null;
+  within_95: boolean | null;
+}
+
+export interface ValidationRecord {
+  schema_version: 2;
+  id: string;
+  created_at: string;
+  data_origin: DataOrigin;
+  consent_confirmed: boolean;
+  participant_code: string;
+  trial: Trial;
+  calibration_status: string;
+  calibration_validated: boolean;
+  config_fingerprint: string;
+  app_version: string;
+  scan_status: "accepted" | "rejected";
+  quality_passed: boolean;
+  frames_received: number;
+  frames_accepted: number;
+  scan_rejection_reasons: string[];
+  frame_rejection_counts: Record<string, number>;
+  reference: ValidationReference;
+  reference_summary: ReferenceSummary;
+  conditions: CaptureConditions;
+  capture: CaptureInfo;
+  comparisons: ValidationComparison[];
+  recorded_only: Record<string, number>;
+  integrity_flags: string[];
+  frames_stored: boolean;
+  remote: {
+    invite_id: string;
+    consent_version: string;
+    consent_text_sha256: string;
+    consented_at: string;
+    helper: "alone" | "with_helper";
+    coin_object_id: string;
+    coin_check_mm: number;
+  } | null;
+}
+
+export interface ErrorStats {
+  n: number;
+  mean_signed_error_mm?: number;
+  mae_mm?: number;
+  rmse_mm?: number;
+  median_abs_error_mm?: number;
+  max_abs_error_mm?: number;
+  error_sd_mm?: number | null;
+  histogram?: { bin_edges_mm: number[]; counts: number[]; below: number; above: number };
+  errors_mm?: number[];
+}
+
+export interface ConditionShift {
+  n_hands: number;
+  mean_shift_mm: number;
+  max_abs_shift_mm: number;
+  exceeds_repeatability: boolean | null;
+}
+
+export interface ConditionStats {
+  scans: number;
+  rejected: number;
+  scored: number;
+  mean_signed_error_mm: number | null;
+  mae_mm: number | null;
+}
+
+export interface ParticipantRow {
+  participant_code: string;
+  hand: "left" | "right";
+  reference_mm: number | null;
+  reference_reliability: ReferenceSummary["reliability"];
+  scans: number;
+  rejected: number;
+  standard_scored: number;
+  standard_mean_signed_error_mm: number | null;
+  standard_mae_mm: number | null;
+  standard_error_range_mm: [number, number] | null;
+  other_conditions_scored: number;
+  other_conditions_mean_signed_error_mm: number | null;
+}
+
+export interface DistanceBand {
+  band: string;
+  scans: number;
+  rejected: number;
+  scans_scored: number;
+  hands_scored: number;
+  mean_signed_error_mm: number | null;
+  mae_mm: number | null;
+  sufficient: boolean;
+}
+
+export interface DistanceBreakdown {
+  rows: DistanceBand[];
+  without_distance: number;
+  note: string;
+}
+
+export interface ValidationSummary {
+  config_fingerprint: string;
+  calibration: { status: string; validated: boolean };
+  real_world: {
+    label: string;
+    participants: number;
+    hands: number;
+    scans: {
+      total: number;
+      accepted: number;
+      rejected: number;
+      rejected_pct: number | null;
+      rejection_reasons: Record<string, number>;
+      accepted_without_estimate: number;
+    };
+    references: Partial<Record<ReferenceSummary["reliability"], number>>;
+    accuracy: {
+      measurement: string;
+      scope: string;
+      by_scan: ErrorStats;
+      by_hand: ErrorStats;
+      n_hands: number;
+      within_reported_95_interval: { count: number; of: number };
+      sample_note: string;
+    };
+    conditions: Partial<Record<TrialCondition, ConditionStats>>;
+    by_participant: ParticipantRow[];
+    by_reference_source: Record<"operator" | "participant", { scans: number; hands_scored: number; by_hand: ErrorStats }>;
+    by_distance: {
+      scope: string;
+      min_hands_per_band: number;
+      operator_measured: DistanceBreakdown;
+      coin_implied: DistanceBreakdown;
+    };
+    repeatability: {
+      hands_with_repeats: number;
+      within_hand_sd_mm: number | null;
+      repeatability_coefficient_mm: number | null;
+      per_hand: { participant_code: string; hand: string; n: number; mean_mm: number; sd_mm: number; range_mm: number }[];
+      condition_shifts: Partial<Record<TrialCondition, ConditionShift>>;
+      note: string;
+    };
+  };
+  excluded: Record<string, number>;
+  record_flags: Record<string, string[]>;
+}
+
+// ----------------------------------------------------------------------------
+// Remote pilot (volunteers measure and scan their own hand from an invite link)
+// ----------------------------------------------------------------------------
+
+export interface PilotInvite {
+  id: string;
+  participant_code: string;
+  purpose: "pilot" | "test";
+  created_at: string;
+  expires_at: string;
+  submissions: number;
+  max_submissions: number;
+  enrolled: boolean;
+  status: "open" | "complete" | "expired" | "revoked" | "withdrawn";
+}
+
+export interface PilotSession {
+  participant_code: string;
+  purpose: "pilot" | "test";
+  consent: { version: string; title: string; paragraphs: string[]; reviewed: boolean };
+  coins: { id: string; label: string; diameter_mm: number }[];
+  coin_check_tolerance_mm: number;
+  enrolment: { hand: "left" | "right"; coin_object_id: string } | null;
+  scan_plan: TrialCondition[];
+  scans: { condition: TrialCondition; scan_status: "accepted" | "rejected"; reasons: string[] }[];
+  submissions: number;
+  max_submissions: number;
+  expires_at: string;
+}
+
+export interface PilotEnrolRequest {
+  consent_version: string;
+  consent_accepted: true;
+  hand: "left" | "right";
+  helper: "alone" | "with_helper";
+  hand_length: Reading[];
+  tool: "ruler" | "tape" | "calipers" | "other";
+  coin_object_id: string;
+  coin_check: Reading;
+  device: string;
+}
+
+export interface PilotScanResult {
+  scan_status: "accepted" | "rejected";
+  reasons: string[];
+  submissions: number;
+  max_submissions: number;
 }

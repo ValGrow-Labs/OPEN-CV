@@ -40,7 +40,12 @@ export default defineConfig({
   webServer: [
     server(8765),
     // Relaxed world-landmark gates for the sample hand photo (see e2e/prepare.mjs).
-    server(8766, { GLOVESIZE_CONFIG_DIR: resolve(MEDIA, "config-relaxed") }),
+    server(8766, {
+      GLOVESIZE_CONFIG_DIR: resolve(MEDIA, "config-relaxed"),
+      GLOVESIZE_VALIDATION_ENABLED: "true",
+      GLOVESIZE_PILOT_REMOTE_ENABLED: "true",
+      GLOVESIZE_VALIDATION_PATH: resolve(MEDIA, "validation", "records.jsonl"),
+    }),
   ],
   projects: [
     {
@@ -50,7 +55,7 @@ export default defineConfig({
     },
     {
       name: "hand-photo",
-      testMatch: /full-scan\.spec\.ts/,
+      testMatch: /(full-scan|validation|pilot)\.spec\.ts/,
       use: { baseURL: "http://127.0.0.1:8766", launchOptions: fakeCamera(resolve(MEDIA, "hand.y4m")) },
     },
   ],

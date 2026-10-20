@@ -68,7 +68,22 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
         ) : (
           <div className="stack">
             <h2 id="size-heading">More information needed</h2>
-            <p>We can't recommend a size for this product from the scan alone.</p>
+            <p>We can't recommend a size for this product from the measurements we have.</p>
+            {rec.plausible_sizes.length > 1 && (
+              <div className="row" aria-label="Sizes that are still possible">
+                <span className="small muted">Still possible:</span>
+                {rec.plausible_sizes.map((s) => (
+                  <Badge key={s} tone="neutral">
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div>
+              <button className="btn" onClick={onBack}>
+                Add a tape measurement
+              </button>
+            </div>
           </div>
         )}
         <ul className="bullets">
@@ -78,7 +93,7 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
             </li>
           ))}
         </ul>
-        {result.uncertainty_basis === "prior_assumptions" && (
+        {result.uncertainty_basis !== "validated" && (
           <p className="small muted">
             The confidence shown reflects estimated measurement uncertainty only. It is not yet based on validated
             accuracy data, and it is not the probability that a glove will fit.

@@ -30,6 +30,8 @@ export interface ScanControllerOptions {
   facing: Facing;
   onStatus: (s: ScanStatus) => void;
   onComplete?: (frames: FrameObservation[]) => void;
+  /** Diameter of the confirmed reference coin, for the live camera-distance check. */
+  referenceDiameterMm?: number;
 }
 
 const MIN_FRAME_INTERVAL_MS = 60; // spread collected frames over time (~16 fps max)
@@ -278,7 +280,10 @@ export class ScanController {
         brightness: r.brightness,
       });
     }
-    const live = evaluateFrame(frame, this.lastLandmarks, this.config.capture, this.config.calibration);
+    const live = evaluateFrame(frame, this.lastLandmarks, this.config.capture, this.config.calibration, {
+      referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
+      assumedHfovDeg: this.config.assumed_hfov_deg,
+    });
     this.lastLandmarks = hand ? hand.landmarks : null;
 
     if (frame && live.ok && now - this.lastAcceptMs >= MIN_FRAME_INTERVAL_MS) {

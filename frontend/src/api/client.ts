@@ -1,4 +1,18 @@
-import type { ManualMeasurements, PublicConfig, Recommendation, ScanRequest, ScanResponse } from "./types";
+import type {
+  ManualMeasurements,
+  PilotEnrolRequest,
+  PilotInvite,
+  PilotScanResult,
+  PilotSession,
+  TrialCondition,
+  PublicConfig,
+  Recommendation,
+  ScanRequest,
+  ScanResponse,
+  ValidationRecord,
+  ValidationScanRequest,
+  ValidationSummary,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -10,7 +24,9 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 20000): Promise<T> {
+/** `fieldErrors`: show the server's field-level validation messages (operator screens only;
+ *  customers get a generic message). */
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 20000, fieldErrors = false): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
@@ -31,6 +47,8 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 2000
     try {
       const body = await res.json();
       if (typeof body?.detail === "string") detail = body.detail;
+      else if (fieldErrors && Array.isArray(body?.detail))
+        detail = body.detail.map((d: { msg?: string }) => (d.msg ?? "").replace(/^Value error, /, "")).join("; ");
     } catch {
       /* non-JSON error body */
     }
@@ -50,3 +68,68 @@ export const fetchRecommendation = (
 ) => request<Recommendation>("/api/recommend", { method: "POST", body: JSON.stringify({ chart_id: chartId, measurements }) });
 
 export type { ManualMeasurements };
+
+// Developer validation mode (enabled only when the server allows it). Operator endpoints need
+// the X-Glovesize-Operator header (CSRF guard) and, when the server is in token mode, a bearer
+// token. The token is kept in memory only, never in storage.
+let operatorToken: string | null = null;
+export const setOperatorToken = (token: string | null) => {
+  operatorToken = token?.trim() || null;
+};
+const operatorHeaders = (): Record<string, string> => ({
+  "X-Glovesize-Operator": "1",
+  ...(operatorToken ? { Authorization: `Bearer ${operatorToken}` } : {}),
+});
+
+export const fetchValidationRecords = () =>
+  request<{ records: ValidationRecord[]; summary: ValidationSummary }>("/api/validation/records", { headers: operatorHeaders() });
+
+export const submitValidationScan = (body: ValidationScanRequest) =>
+  request<{ record: ValidationRecord; scan: ScanResponse }>(
+    "/api/validation/scans",
+    { method: "POST", body: JSON.stringify(body), headers: operatorHeaders() },
+    30000,
+    true,
+  );
+
+export const deleteValidationRecord = (id: string) =>
+  request<{ deleted: string }>(`/api/validation/records/${encodeURIComponent(id)}`, { method: "DELETE", headers: operatorHeaders() });
+
+/** The CSV export as text (fetched, so the operator headers can be sent). */
+export async function fetchValidationCsv(): Promise<string> {
+  const res = await fetch("/api/validation/records.csv", { headers: operatorHeaders() });
+  if (!res.ok) throw new ApiError(`CSV export failed (${res.status}).`, res.status);
+  return res.text();
+}
+
+// Remote pilot: operator invite management (operator headers) and the volunteer's own session,
+// authenticated by the invite token from the link (sent as a header, never in a URL).
+export const createPilotInvite = (purpose: "pilot" | "test") =>
+  request<{ invite: PilotInvite; token: string }>(
+    "/api/pilot/invites",
+    { method: "POST", body: JSON.stringify({ purpose }), headers: operatorHeaders() },
+    20000,
+    true,
+  );
+
+export const fetchPilotInvites = () =>
+  request<{ invites: PilotInvite[]; consent_reviewed: boolean }>("/api/pilot/invites", { headers: operatorHeaders() });
+
+export const revokePilotInvite = (id: string) =>
+  request<{ revoked: string }>(`/api/pilot/invites/${encodeURIComponent(id)}/revoke`, { method: "POST", headers: operatorHeaders() });
+
+const pilotHeaders = (token: string) => ({ "X-Pilot-Token": token });
+
+export const fetchPilotSession = (token: string) => request<PilotSession>("/api/pilot/me", { headers: pilotHeaders(token) }, 20000, true);
+
+export const enrolPilot = (token: string, body: PilotEnrolRequest) =>
+  request<{ enrolled: true }>("/api/pilot/me/enrol", { method: "POST", body: JSON.stringify(body), headers: pilotHeaders(token) }, 20000, true);
+
+export const submitPilotScan = (
+  token: string,
+  body: { condition: TrialCondition; lighting: string; distance_cm?: number; scan: ScanRequest },
+) =>
+  request<PilotScanResult>("/api/pilot/me/scans", { method: "POST", body: JSON.stringify(body), headers: pilotHeaders(token) }, 30000, true);
+
+export const withdrawPilot = (token: string) =>
+  request<{ deleted_records: number }>("/api/pilot/me", { method: "DELETE", headers: pilotHeaders(token) }, 20000, true);

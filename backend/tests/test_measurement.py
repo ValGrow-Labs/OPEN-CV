@@ -36,8 +36,9 @@ def test_scale_invariance(cfg_nodepth, length, px_per_mm):
 
 
 @pytest.mark.parametrize("tilt,axis,rotation", [(10, 0, 0), (15, 30, 20), (19, 100, -25), (12, 160, 10)])
-def test_tilt_rectification(cfg_nodepth, tilt, axis, rotation):
-    r = measure_frame(frame_obs(tilt_deg=tilt, tilt_axis_deg=axis, rotation_deg=rotation), QUARTER, cfg_nodepth)
+def test_tilt_rectification(cfg_rectify, tilt, axis, rotation):
+    # Weak-perspective synthetic frames: the opt-in affine rectification is exact here.
+    r = measure_frame(frame_obs(tilt_deg=tilt, tilt_axis_deg=axis, rotation_deg=rotation), QUARTER, cfg_rectify)
     assert r.accepted, r.codes
     assert r.scale.tilt_corrected
     for key, expected in EXPECTED_185.items():
@@ -53,7 +54,7 @@ def test_left_and_right_hands(cfg_nodepth):
 
 
 def test_excessive_tilt_rejected(cfg_nodepth):
-    r = measure_frame(frame_obs(tilt_deg=28), QUARTER, cfg_nodepth)
+    r = measure_frame(frame_obs(tilt_deg=13), QUARTER, cfg_nodepth)
     assert not r.accepted and "coin_tilted" in r.codes
 
 
@@ -119,8 +120,8 @@ def test_coin_quality_codes(cfg_nodepth, override, code):
 
 
 def test_wrong_coin_type_detected_as_implausible(cfg_nodepth):
-    # A coin 2.2x larger in the image than a quarter implies a tiny hand (~84 mm).
-    r = measure_frame(frame_obs(coin_scale_factor=2.2), QUARTER, cfg_nodepth)
+    # A coin 0.6x the size a quarter should be implies a ~308 mm hand.
+    r = measure_frame(frame_obs(coin_scale_factor=0.6), QUARTER, cfg_nodepth)
     assert r.codes == ["implausible_scale"]
 
 
@@ -196,10 +197,14 @@ def test_manual_circumference_is_user_entered(cfg_nodepth, calib):
 
 
 def test_derived_model_used_when_calibrated(cfg_nodepth, calib):
-    from glovesize.config import DerivedModel
+    from glovesize.config import CalibrationEntry, DerivedModel
 
     model = DerivedModel(predictors={"mcp_span_mm": 1.0}, intercept_mm=18.0, residual_sd_mm=2.5, n_participants=40)
-    calib2 = calib.model_copy(update={"derived": {"palm_breadth_mm": model}})
+    entries = dict(calib.measurements)
+    entries["mcp_span_mm"] = CalibrationEntry(scale=1.0, offset_mm=0.0, residual_sd_mm=2.0)
+    calib2 = calib.model_copy(
+        update={"status": "calibrated", "measurements": entries, "derived": {"palm_breadth_mm": model}}
+    )
     agg = _aggregate(cfg_nodepth, calib2)
     pb = next(m for m in agg.measurements if m.key == "palm_breadth_mm")
     assert pb.source == "camera_model_estimate"
@@ -216,7 +221,7 @@ def test_calibration_offsets_applied(cfg_nodepth, calib):
     hl = next(m for m in agg.measurements if m.key == "hand_length_mm")
     assert hl.value_mm == pytest.approx(191.0, abs=1.0)
     assert hl.calibrated
-    assert set(hl.uncertainty_components_mm) == {"validated_residual", "frame_variation"}
+    assert set(hl.uncertainty_components_mm) == {"calibration_residual", "frame_variation"}
 
 
 def test_unstable_frames_flagged(cfg_nodepth, calib):

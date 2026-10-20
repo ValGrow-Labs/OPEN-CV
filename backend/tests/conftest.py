@@ -31,6 +31,13 @@ def cfg_nodepth(cfg):
 
 
 @pytest.fixture
+def cfg_rectify(cfg_nodepth):
+    """Depth-free config with the (opt-in) affine tilt rectification switched on."""
+    cal = cfg_nodepth.calibration.model_copy(update={"tilt_rectification": True, "max_tilt_deg": 20.0})
+    return cfg_nodepth.model_copy(update={"calibration": cal})
+
+
+@pytest.fixture
 def calib():
     return load_measurement_calibration()
 
@@ -61,3 +68,17 @@ def no_depth_config(monkeypatch, cfg_nodepth):
 
     monkeypatch.setattr(pipeline, "load_measurement_config", lambda: cfg_nodepth)
     return cfg_nodepth
+
+
+@pytest.fixture
+def operator_client():
+    """A client on this machine sending the operator header, as validation mode and the research
+    endpoints require (glovesize/operator_access.py)."""
+    from fastapi.testclient import TestClient
+
+    from glovesize.api import app
+
+    with TestClient(
+        app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000), headers={"X-Glovesize-Operator": "1"}
+    ) as c:
+        yield c

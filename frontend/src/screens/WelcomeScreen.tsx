@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { PublicConfig, ReferenceSelection } from "../api/types";
 import { GUIDE_STEPS, HandScene, type GuideStage } from "../ui/guide";
 import { ButtonIcon, prefersReducedMotion, SplitWords, stagger } from "../ui/motion";
+import { customerCoins } from "../ui/settings";
 
 interface Props {
   config: PublicConfig;
@@ -25,7 +26,7 @@ const sizingBasis = (keys: string[]) => keys.map((k) => BASIS_NAMES[k] ?? k).joi
 
 export function WelcomeScreen({ config, chartId, reference, onChartChange, onReferenceChange, onStart }: Props) {
   const chart = config.charts.find((c) => c.chart_id === chartId)!;
-  const refs = config.reference_objects.objects.filter((o) => o.enabled);
+  const refs = customerCoins(config);
   const [stage, setStage] = useState<GuideStage>(0);
   const [autoplay, setAutoplay] = useState(() => !prefersReducedMotion());
 

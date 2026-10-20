@@ -96,7 +96,11 @@ def process_dataset(dataset: Path, chart_id: str | None, reference_id: str = "us
                                  "rejection_codes": "no_hand_detected", "calibration_status": "uncalibrated"})  # fmt: skip
                     continue
                 req = ScanRequest.model_validate(
-                    {"frames": frames, "reference": {"object_id": reference_id}, "chart_id": chart.chart_id}
+                    {
+                        "frames": frames,
+                        "reference": {"object_id": reference_id, "confirmed": True},
+                        "chart_id": chart.chart_id,
+                    }
                 )
                 resp = pipeline.process_scan(req)
                 rows.append(scan_row(pdir.name, sdir.name, resp, chart.chart_id))

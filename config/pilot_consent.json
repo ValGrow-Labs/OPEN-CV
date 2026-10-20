@@ -1,0 +1,17 @@
+{
+  "version": "draft-2026-10-1",
+  "reviewed": false,
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "title": "Taking part in the hand measurement pilot",
+  "paragraphs": [
+    "DRAFT FOR REVIEW. This text must be checked by the study owner (and, where required, a legal or ethics reviewer) before any invitation is sent.",
+    "What this is. We are testing a prototype that estimates hand length from a phone camera using a coin on your palm. It has not been validated and it does not recommend a glove size in this study. Taking part helps us find out how close its estimates are to a ruler measurement.",
+    "What you will do. You will measure your own hand length with a ruler, measure your coin, and then scan your hand about nine times in slightly different ways. It takes about 15 minutes.",
+    "What is recorded. A random code instead of your name, which hand you scanned, your ruler readings, the coin you used, your phone model if you enter it, and the numbers the app computes from each scan: the positions of 21 points on your hand in the image, the size and position of the coin, and image brightness. These numbers describe the shape and size of your hand.",
+    "What is not recorded. No photos or video leave your phone. We do not record your name, phone number, email address or location. Please do not type personal details into any field.",
+    "How the data is used and kept. Only the study team uses the data, to measure and improve the accuracy of the prototype. It is sent over an encrypted connection through Cloudflare (a network service that relays it to us), stored only on the study team's computer, not shared with anyone else, and deleted when the study analysis is finished, at the latest by [DATE TO BE SET BY THE STUDY OWNER].",
+    "Your choice. Taking part is voluntary. You can stop at any time, and you can delete everything you submitted with the 'Withdraw and delete my data' button on your link, or by asking the person who sent you the link.",
+    "Contact. Questions about the study: [CONTACT TO BE SET BY THE STUDY OWNER]."
+  ]
+}
