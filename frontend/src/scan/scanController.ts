@@ -63,6 +63,7 @@ export class ScanController {
   private lastAcceptMs = 0;
   private lastCoinMs = 0;
   private lastStatusMs = 0;
+  private startScanMs = 0;
   private frameTimes: number[] = [];
   private timing = { handMs: 0, coinMs: 0 };
   private trackedCoin: CoinDetection | null = null;
@@ -138,6 +139,7 @@ export class ScanController {
       return;
     }
     this.running = true;
+    this.startScanMs = performance.now();
     this.emit({ phase: "running" }, true);
     this.schedule();
   }
@@ -197,6 +199,7 @@ export class ScanController {
     this.trackedCoin = null;
     this.lastLandmarks = null;
     this.smoother.reset();
+    this.startScanMs = performance.now();
     this.emit({ collected: 0 }, true);
   }
 
@@ -345,7 +348,14 @@ export class ScanController {
     }
     if (coin?.found) drawCoin(ctx, coin, scale);
 
-    const done = this.frames.length >= this.config.capture.frames_target;
+    const target = this.config.capture.frames_target;
+    const minAccepted = this.config.capture.frames_min_accepted;
+    const n = this.frames.length;
+    const elapsedSec = (now - this.startScanMs) / 1000;
+    const isStable =
+      (n >= Math.min(14, target) && this.checkSampleStability(0.018)) ||
+      (n >= minAccepted && elapsedSec >= 10 && this.checkSampleStability(this.config.capture.max_frame_rel_sd));
+    const done = n >= target || isStable;
     this.emit(
       {
         live,
@@ -362,6 +372,28 @@ export class ScanController {
       this.running = false;
       this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request));
     }
+  }
+
+  private checkSampleStability(maxRelSd: number): boolean {
+    const minFrames = this.config.capture.frames_min_accepted;
+    if (this.frames.length < minFrames) return false;
+    const lengths: number[] = [];
+    const refDiam = this.opts.referenceDiameterMm || 24.26;
+    for (const f of this.frames) {
+      if (!f.coin || f.coin.major_axis_px <= 0) continue;
+      const dPx = dist(f.landmarks[WRIST], f.landmarks[MIDDLE_TIP]);
+      const pxPerMm = f.coin.major_axis_px / refDiam;
+      lengths.push(dPx / pxPerMm);
+    }
+    if (lengths.length < minFrames) return false;
+    let sum = 0;
+    for (const l of lengths) sum += l;
+    const mean = sum / lengths.length;
+    if (mean <= 0) return false;
+    let varSum = 0;
+    for (const l of lengths) varSum += (l - mean) ** 2;
+    const sd = Math.sqrt(varSum / (lengths.length - 1));
+    return sd / mean <= maxRelSd;
   }
 
   private processCalibrationFrame(): void {

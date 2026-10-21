@@ -71,7 +71,7 @@
     "max_frames_per_request": 120,
     "min_hand_length_fraction": 0.3,
     "edge_margin_fraction": 0.02,
-    "max_finger_bend_deg": 25.0,
+    "max_finger_bend_deg": 30.0,
     "max_finger_bend_deg_3d": 50.0,
     "max_palm_tilt_deg_model": 45.0,
     "brightness_range": [
@@ -103,7 +103,7 @@
   },
   "acceptance": {
     "max_rel_u95_valid": 0.08,
-    "max_rel_u95_low_confidence": 0.14
+    "max_rel_u95_low_confidence": 0.22
   },
   "measurements": {
     "hand_length_mm": {

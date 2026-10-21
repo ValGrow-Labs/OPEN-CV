@@ -154,7 +154,10 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         level = "likely"
     else:
         level = "clear"
-    if level == "clear" and any(usable[k].status == "low_confidence" for k in required):
+    if level == "clear" and (
+        any(usable[k].status == "low_confidence" for k in required)
+        or (best == 0 and chart.sizes[0].ranges[required[0]][0] is None and usable[required[0]].value < 155.0)
+    ):
         level = "likely"
     # Size charts are written for tape measurements, so a tape value's own spread is part of how
     # the chart is meant to be used: it can make a result borderline, never "uncertain".
@@ -216,6 +219,10 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
     elif level == "borderline":
         explanation.append(
             f"Your measurement is on the boundary between {size} and {alternative}; both may fit. Consider trying both, or measure with a tape to confirm."
+        )
+    if best == 0 and chart.sizes[0].ranges[required[0]][0] is None and usable[required[0]].value < 155.0:
+        explanation.append(
+            f"Your {MEASUREMENT_NAMES.get(required[0], required[0])} is near the lower boundary of this chart. Consider confirming with a tape measure."
         )
     if rules.notes:
         explanation.append(f"Sizing rule: {rules.notes}")

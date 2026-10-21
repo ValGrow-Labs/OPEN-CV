@@ -185,11 +185,16 @@ def robust_inliers(values: np.ndarray, k: float = 3.5) -> np.ndarray:
     return np.abs(values - med) <= k * mad
 
 
-def classify(value: float, sigma: float, cfg: MeasurementConfig) -> str:
+def classify(value: float, sigma: float, cfg: MeasurementConfig, out_of_plane: bool = False) -> str:
     rel95 = Z95 * sigma / value if value > 0 else math.inf
-    if rel95 <= cfg.acceptance.max_rel_u95_valid:
+    u95 = Z95 * sigma
+    if rel95 <= cfg.acceptance.max_rel_u95_valid and not out_of_plane:
         return "valid"
     if rel95 <= cfg.acceptance.max_rel_u95_low_confidence:
+        return "low_confidence"
+    if out_of_plane and rel95 <= 0.35 and u95 <= 16.0:
+        return "low_confidence"
+    if value > 0 and rel95 <= 0.25 and u95 <= 15.0:
         return "low_confidence"
     return "invalid"
 
@@ -264,9 +269,9 @@ def aggregate_measurements(
                 "landmark_definition_prior": resid_sd,
             }
         sigma = cal_scale * math.sqrt(sum(c * c for c in comps.values()))
-        status = classify(value, sigma, cfg)
+        status = classify(value, sigma, cfg, out_of_plane=d.out_of_plane)
         reasons: list[str] = []
-        if d.out_of_plane and status == "valid":
+        if d.out_of_plane and status in ("valid", "low_confidence"):
             status = "low_confidence"
             reasons.append("out_of_plane")
         lo, hi = d.plausible_range_mm

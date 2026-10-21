@@ -127,7 +127,7 @@ export function ScanScreen<R = ScanResponse>({
   }, [message, status?.phase]);
 
   const phase = status?.phase ?? "starting";
-  const progress = status ? Math.min(1, status.collected / status.target) : 0;
+  const progress = phase === "complete" ? 1 : status ? Math.min(1, status.collected / status.target) : 0;
   const [runningSec, setRunningSec] = useState(0);
   useEffect(() => {
     if (phase !== "running") {
@@ -241,7 +241,7 @@ export function ScanScreen<R = ScanResponse>({
         <div className="row" style={{ justifyContent: "space-between" }}>
           <strong>{phase === "complete" ? "Captured" : "Measuring"}</strong>
           <span className="num small" style={{ opacity: 0.8 }}>
-            {status?.collected ?? 0} / {status?.target ?? config.capture.frames_target} frames
+            {status?.collected ?? 0} / {phase === "complete" ? (status?.collected ?? status?.target ?? config.capture.frames_target) : (status?.target ?? config.capture.frames_target)} frames
           </span>
         </div>
         <div

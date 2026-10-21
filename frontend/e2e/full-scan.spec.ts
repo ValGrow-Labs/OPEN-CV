@@ -47,7 +47,7 @@ async function fullScan(page: Page, tag: string) {
   // Only numeric observations are sent: no image data in the request.
   expect(bodies).toHaveLength(1);
   const body = JSON.parse(bodies[0]);
-  expect(body.frames).toHaveLength(24);
+  expect(body.frames.length).toBeGreaterThanOrEqual(12);
   expect(bodies[0]).not.toMatch(/data:image|base64/);
   expect(Object.keys(body.frames[0]).sort()).toEqual(
     ["brightness", "coin", "handedness", "handedness_score", "image_height", "image_width", "landmarks", "timestamp_ms", "world_landmarks"].sort(),
