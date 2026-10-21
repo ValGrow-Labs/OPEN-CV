@@ -1953,3 +1953,21 @@ code {
   padding: 1px 6px;
   border-radius: 6px;
 }
+
+/* ?debug=1 diagnostics on the scan screen */
+.scan-debug {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 5;
+  margin: 0;
+  padding: 6px 8px;
+  max-width: calc(100% - 16px);
+  white-space: pre-wrap;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: 6px;
+  pointer-events: none;
+}

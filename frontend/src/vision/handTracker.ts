@@ -5,6 +5,13 @@ import type { Point } from "../api/types";
 export const MEDIAPIPE_WASM_PATH = "/mediapipe/wasm";
 export const HAND_MODEL_PATH = "/models/hand_landmarker.task";
 
+// MediaPipe's VIDEO-mode landmark projection assumes a square image (it logs "Using NORM_RECT
+// without IMAGE_DIMENSIONS is only supported for the square ROI"), and on some phones portrait
+// frames reach it in a different orientation or scale from what is displayed. Each frame is
+// therefore drawn as displayed onto a square canvas (at most this many pixels a side) and the
+// landmarks are mapped back.
+const MAX_SQUARE_PX = 1280;
+
 export interface HandFrame {
   landmarks: Point[]; // image pixels; z is MediaPipe's relative depth scaled by image width
   world: Point[] | null; // metres, model estimate
@@ -65,15 +72,33 @@ export class HandTracker {
     }
   }
 
+  private square: HTMLCanvasElement | null = null;
+
   detect(video: HTMLVideoElement, timestampMs: number): HandFrame | null {
     const w = video.videoWidth;
     const h = video.videoHeight;
-    const r = this.landmarker.detectForVideo(video, timestampMs);
+    if (!w || !h) return null;
+    const side = Math.min(Math.max(w, h), MAX_SQUARE_PX);
+    const k = side / Math.max(w, h);
+    const ox = (side - w * k) / 2;
+    const oy = (side - h * k) / 2;
+    const c = this.square ?? (this.square = document.createElement("canvas"));
+    if (c.width !== side || c.height !== side) {
+      c.width = side;
+      c.height = side;
+    }
+    const ctx = c.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, side, side);
+    ctx.drawImage(video, ox, oy, w * k, h * k);
+    const r = this.landmarker.detectForVideo(c, timestampMs);
     if (!r.landmarks.length) return null;
     const cat = r.handedness[0]?.[0];
     const label = cat?.categoryName;
     return {
-      landmarks: r.landmarks[0].map((p) => ({ x: p.x * w, y: p.y * h, z: p.z * w })),
+      // Square-canvas pixels back to frame pixels.
+      landmarks: r.landmarks[0].map((p) => ({ x: (p.x * side - ox) / k, y: (p.y * side - oy) / k, z: (p.z * side) / k })),
       world: r.worldLandmarks[0]?.map((p) => ({ x: p.x, y: p.y, z: p.z })) ?? null,
       handedness: label === "Left" || label === "Right" ? label : null,
       handednessScore: cat?.score ?? null,

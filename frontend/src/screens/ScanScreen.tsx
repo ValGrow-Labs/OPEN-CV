@@ -127,6 +127,8 @@ export function ScanScreen<R = ScanResponse>({
   }, [message, status?.phase]);
 
   const phase = status?.phase ?? "starting";
+  // ?debug=1 shows what the scanner sees, for diagnosing a scan on a real phone.
+  const debug = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
   const progress = status ? Math.min(1, status.collected / status.target) : 0;
   const [runningSec, setRunningSec] = useState(0);
   useEffect(() => {
@@ -167,6 +169,16 @@ export function ScanScreen<R = ScanResponse>({
       </div>
 
       <div className="stage">
+        {debug && status && (
+          <pre className="scan-debug" aria-hidden="true">
+            {[
+              `video ${videoRef.current?.videoWidth ?? 0}x${videoRef.current?.videoHeight ?? 0}  fps ${status.fps.toFixed(1)}`,
+              `hand ${Math.round(status.timing.handMs)} ms  coin ${Math.round(status.timing.coinMs)} ms`,
+              `coin ${status.coin?.found ? `${status.coin.method} d=${status.coin.major_axis_px.toFixed(1)}px conf=${status.coin.confidence.toFixed(2)} ${status.coin.accepted ? "ok" : (status.coin.reasons ?? []).join(",")}` : "not found"}`,
+              `checks ${status.live?.codes.join(",") || "ok"}`,
+            ].join("\n")}
+          </pre>
+        )}
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className={status?.mirrored ? "mirrored" : ""} aria-hidden="true" />
         {phase === "running" && !handSeen && <Guide />}
