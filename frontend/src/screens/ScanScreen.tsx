@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, submitScan } from "../api/client";
 import type { FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
-import { preloadScanTools, ScanController, type ScanStatus } from "../scan/scanController";
+import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
 import { Icon } from "../ui/components";
 import { CoachIcon, coachKind, GUIDE_STEPS, liveStage } from "../ui/guide";
 import { coinConfirmed, introSeen, markCoinConfirmed, markIntroSeen, referenceLabel } from "../ui/settings";
@@ -14,7 +14,7 @@ interface Props<R> {
   chartId: string;
   reference: ReferenceSelection;
   onCancel: () => void;
-  onResult: (r: R, mirrored: boolean) => void;
+  onResult: (r: R, mirrored: boolean, timing?: ScanTimingBreakdown) => void;
   /** Show the quick guide before starting the camera (defaults to "first visit only"). */
   showIntro?: boolean;
   /** Ask which coin is used before the camera starts (defaults to "once per session"). */
@@ -51,11 +51,13 @@ export function ScanScreen<R = ScanResponse>({
   const [cameraAllowed, setCameraAllowed] = useState(guide !== "intro" && !confirming);
   const mirroredRef = useRef(false);
   mirroredRef.current = status?.mirrored ?? false;
+  const startClickTimeRef = useRef<number>(0);
 
   const send = useCallback(
-    async (frames: FrameObservation[]) => {
+    async (frames: FrameObservation[], timingInfo?: ScanTimingInfo) => {
       setSubmitting(true);
       setSubmitError(null);
+      const tApiStart = performance.now();
       try {
         const res = await (submit ?? (submitScan as unknown as (req: ScanRequest) => Promise<R>))({
           frames,
@@ -63,8 +65,22 @@ export function ScanScreen<R = ScanResponse>({
           chart_id: chartId,
           capture: { device_class: isMobileDevice() ? "mobile" : "desktop", camera_facing: mirroredRef.current ? "user" : "environment" },
         });
+        const tApiEnd = performance.now();
         controllerRef.current?.stop();
-        onResult(res, mirroredRef.current);
+        const breakdown: ScanTimingBreakdown = {
+          cameraStartupMs: timingInfo?.cameraStartupMs ?? 0,
+          modelLoadMs: timingInfo?.modelLoadMs ?? 0,
+          firstLockMs: timingInfo?.firstLockMs ?? 0,
+          collectionMs: timingInfo?.collectionMs ?? 0,
+          handMs: timingInfo?.avgHandMs ?? 0,
+          coinMs: timingInfo?.avgCoinMs ?? 0,
+          apiMs: tApiEnd - tApiStart,
+          totalSec: (tApiEnd - (startClickTimeRef.current || tApiStart)) / 1000,
+          framesAccepted: (res as any).frames_accepted ?? frames.length,
+          framesReceived: (res as any).frames_received ?? frames.length,
+        };
+        (window as any).__LAST_SCAN_TIMINGS__ = breakdown;
+        onResult(res, mirroredRef.current, breakdown);
       } catch (err) {
         setSubmitError(err instanceof ApiError ? err.message : "The scan could not be processed.");
       } finally {
@@ -81,15 +97,16 @@ export function ScanScreen<R = ScanResponse>({
     if (!video || !canvas) return;
     setPendingFrames(null);
     setSubmitError(null);
+    startClickTimeRef.current = performance.now();
     const facing: Facing = isMobileDevice() ? "environment" : "user";
     const c = new ScanController(video, canvas, config, {
       mode: "scan",
       facing,
       referenceDiameterMm: ref.diameter,
       onStatus: setStatus,
-      onComplete: (frames) => {
+      onComplete: (frames, timing) => {
         setPendingFrames(frames);
-        void send(frames);
+        void send(frames, timing);
       },
     });
     controllerRef.current = c;

@@ -10,7 +10,7 @@ const MANUAL_LABELS: Record<keyof ManualEntries, string> = {
   hand_circumference_mm: "Hand circumference",
 };
 import { ResultsScreen } from "./screens/ResultsScreen";
-import { preloadScanTools } from "./scan/scanController";
+import { preloadScanTools, type ScanTimingBreakdown } from "./scan/scanController";
 import { ScanScreen } from "./screens/ScanScreen";
 import { ValidationScreen } from "./screens/ValidationScreen";
 import { WelcomeScreen } from "./screens/WelcomeScreen";
@@ -34,6 +34,7 @@ export function App() {
   const [chartId, setChartId] = useState("");
   const [reference, setReference] = useState<ReferenceSelection>({});
   const [result, setResult] = useState<ScanResponse | null>(null);
+  const [scanTiming, setScanTiming] = useState<ScanTimingBreakdown | null>(null);
   const [mirrored, setMirrored] = useState(false);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [extra, setExtra] = useState<Measurement[]>([]);
@@ -88,6 +89,7 @@ export function App() {
 
   const startScan = () => {
     setResult(null);
+    setScanTiming(null);
     setRecommendation(null);
     setExtra([]);
     setError(null);
@@ -210,9 +212,10 @@ export function App() {
             setReference(sel);
             saveReference(sel);
           }}
-          onResult={(r, m) => {
+          onResult={(r, m, t) => {
             setResult(r);
             setMirrored(m);
+            setScanTiming(t ?? null);
             setRecommendation(r.recommendation);
             setScreen("measurements");
           }}
@@ -224,6 +227,7 @@ export function App() {
           chart={chart}
           result={result}
           mirrored={mirrored}
+          scanTiming={scanTiming}
           onRescan={startScan}
           onContinue={(m) => void onContinue(m)}
           busy={busy}

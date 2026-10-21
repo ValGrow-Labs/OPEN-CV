@@ -28,11 +28,34 @@ export interface ScanStatus {
   error: CameraErrorInfo | null;
 }
 
+export interface ScanTimingInfo {
+  cameraStartupMs: number;
+  modelLoadMs: number;
+  firstLockMs: number;
+  collectionMs: number;
+  avgHandMs: number;
+  avgCoinMs: number;
+  totalScanMs: number;
+}
+
+export interface ScanTimingBreakdown {
+  cameraStartupMs: number;
+  modelLoadMs: number;
+  firstLockMs: number;
+  collectionMs: number;
+  handMs: number;
+  coinMs: number;
+  apiMs: number;
+  totalSec: number;
+  framesAccepted: number;
+  framesReceived: number;
+}
+
 export interface ScanControllerOptions {
   mode: ScanMode;
   facing: Facing;
   onStatus: (s: ScanStatus) => void;
-  onComplete?: (frames: FrameObservation[]) => void;
+  onComplete?: (frames: FrameObservation[], timing: ScanTimingInfo) => void;
   /** Diameter of the confirmed reference coin, for the live camera-distance check. */
   referenceDiameterMm?: number;
 }
@@ -64,6 +87,11 @@ export class ScanController {
   private lastCoinMs = 0;
   private lastStatusMs = 0;
   private startScanMs = 0;
+  private tStartInit = 0;
+  private tCameraReady = 0;
+  private tModelsReady = 0;
+  private tFirstLock = 0;
+  private tFirstFrameCollected = 0;
   private frameTimes: number[] = [];
   private timing = { handMs: 0, coinMs: 0 };
   private trackedCoin: CoinDetection | null = null;
@@ -105,8 +133,10 @@ export class ScanController {
   }
 
   async start(): Promise<void> {
+    this.tStartInit = performance.now();
     this.emit({ phase: "starting", error: null }, true);
     if (!(await this.startCamera())) return;
+    this.tCameraReady = performance.now();
     this.emit({ phase: "loading" }, true);
     try {
       const [tracker, cv] = await Promise.all([
@@ -133,6 +163,7 @@ export class ScanController {
       );
       return;
     }
+    this.tModelsReady = performance.now();
     if (this.disposed || !this.stream) {
       // stopped while the models were loading (the shared tracker stays loaded for next time)
       this.tracker = null;
@@ -140,6 +171,8 @@ export class ScanController {
     }
     this.running = true;
     this.startScanMs = performance.now();
+    this.tFirstLock = 0;
+    this.tFirstFrameCollected = 0;
     this.emit({ phase: "running" }, true);
     this.schedule();
   }
@@ -200,6 +233,8 @@ export class ScanController {
     this.lastLandmarks = null;
     this.smoother.reset();
     this.startScanMs = performance.now();
+    this.tFirstLock = 0;
+    this.tFirstFrameCollected = 0;
     this.emit({ collected: 0 }, true);
   }
 
@@ -333,7 +368,14 @@ export class ScanController {
     });
     this.lastLandmarks = smoothed;
 
+    if (live.ok && this.tFirstLock === 0) {
+      this.tFirstLock = now;
+    }
+
     if (frame && live.ok && now - this.lastAcceptMs >= MIN_FRAME_INTERVAL_MS) {
+      if (this.frames.length === 0) {
+        this.tFirstFrameCollected = now;
+      }
       this.frames.push(frame);
       this.lastAcceptMs = now;
     }
@@ -370,7 +412,17 @@ export class ScanController {
     );
     if (done) {
       this.running = false;
-      this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request));
+      const tDone = performance.now();
+      const timingInfo: ScanTimingInfo = {
+        cameraStartupMs: this.tCameraReady > 0 ? this.tCameraReady - this.tStartInit : 0,
+        modelLoadMs: this.tModelsReady > 0 && this.tCameraReady > 0 ? this.tModelsReady - this.tCameraReady : 0,
+        firstLockMs: this.tFirstLock > 0 ? this.tFirstLock - this.startScanMs : 0,
+        collectionMs: this.tFirstFrameCollected > 0 ? tDone - this.tFirstFrameCollected : tDone - this.startScanMs,
+        avgHandMs: this.timing.handMs,
+        avgCoinMs: this.timing.coinMs,
+        totalScanMs: tDone - this.startScanMs,
+      };
+      this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request), timingInfo);
     }
   }
 

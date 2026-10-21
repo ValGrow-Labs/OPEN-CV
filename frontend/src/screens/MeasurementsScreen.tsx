@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ChartSummary, Measurement, PublicConfig, ScanResponse } from "../api/types";
+import type { ScanTimingBreakdown } from "../scan/scanController";
 import { Badge, HandDiagram } from "../ui/components";
 import { ButtonIcon, CountUp, stagger } from "../ui/motion";
 import { COMPONENTS, fmtIn, MM_PER_INCH, REASONS, SOURCE, STATUS } from "../ui/format";
@@ -9,13 +10,14 @@ interface Props {
   chart: ChartSummary;
   result: ScanResponse;
   mirrored: boolean;
+  scanTiming?: ScanTimingBreakdown | null;
   onRescan: () => void;
   onContinue: (manual: ManualEntries) => void;
   busy: boolean;
   error: string | null;
 }
 
-export function MeasurementsScreen({ config, chart, result, mirrored, onRescan, onContinue, busy, error }: Props) {
+export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming, onRescan, onContinue, busy, error }: Props) {
   if (result.status === "rejected") return <Rejected result={result} onRescan={onRescan} />;
 
   // Tape measurements the customer can add: circumference whenever the product needs it (a
@@ -83,7 +85,34 @@ export function MeasurementsScreen({ config, chart, result, mirrored, onRescan, 
                 <dd>
                   {result.frames_accepted} of {result.frames_received}
                 </dd>
+                {scanTiming && (
+                  <>
+                    <dt>Total elapsed</dt>
+                    <dd><strong>{scanTiming.totalSec.toFixed(2)} s</strong></dd>
+                  </>
+                )}
               </dl>
+              {scanTiming && (
+                <details className="disclosure" style={{ marginTop: 12 }}>
+                  <summary>Scan performance timings</summary>
+                  <dl className="kv small" style={{ marginTop: 8 }}>
+                    <dt>Camera startup</dt>
+                    <dd>{scanTiming.cameraStartupMs.toFixed(0)} ms</dd>
+                    <dt>Model loading</dt>
+                    <dd>{scanTiming.modelLoadMs.toFixed(0)} ms</dd>
+                    <dt>Time to first lock</dt>
+                    <dd>{scanTiming.firstLockMs > 0 ? `${scanTiming.firstLockMs.toFixed(0)} ms` : "n/a"}</dd>
+                    <dt>Frame collection</dt>
+                    <dd>{scanTiming.collectionMs.toFixed(0)} ms ({result.frames_accepted} frames)</dd>
+                    <dt>Inference / frame</dt>
+                    <dd>Hand: {scanTiming.handMs.toFixed(1)} ms · Coin: {scanTiming.coinMs.toFixed(1)} ms</dd>
+                    <dt>Server processing & API</dt>
+                    <dd>{scanTiming.apiMs.toFixed(0)} ms</dd>
+                    <dt>Total elapsed time</dt>
+                    <dd><strong>{scanTiming.totalSec.toFixed(2)} s</strong></dd>
+                  </dl>
+                </details>
+              )}
             </div>
           )}
         </div>
