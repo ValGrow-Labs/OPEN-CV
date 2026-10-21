@@ -72,13 +72,13 @@
     "min_hand_length_fraction": 0.3,
     "edge_margin_fraction": 0.02,
     "max_finger_bend_deg": 25.0,
-    "max_finger_bend_deg_3d": 35.0,
-    "max_palm_tilt_deg_model": 30.0,
+    "max_finger_bend_deg_3d": 50.0,
+    "max_palm_tilt_deg_model": 45.0,
     "brightness_range": [
       50,
       225
     ],
-    "max_landmark_jitter_fraction": 0.015,
+    "max_landmark_jitter_fraction": 0.025,
     "min_camera_distance_mm": 250.0,
     "max_frame_rel_sd": 0.025
   },

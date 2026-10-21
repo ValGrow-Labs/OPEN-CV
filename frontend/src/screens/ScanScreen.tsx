@@ -128,6 +128,16 @@ export function ScanScreen<R = ScanResponse>({
 
   const phase = status?.phase ?? "starting";
   const progress = status ? Math.min(1, status.collected / status.target) : 0;
+  const [runningSec, setRunningSec] = useState(0);
+  useEffect(() => {
+    if (phase !== "running") {
+      setRunningSec(0);
+      return;
+    }
+    const timer = setInterval(() => setRunningSec((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [phase]);
+
   const liveCodes = status?.live?.codes ?? [];
   const handSeen = status?.live ? !liveCodes.includes("no_hand") : false;
   const stage = phase === "complete" ? 3 : liveStage(liveCodes);
@@ -259,6 +269,20 @@ export function ScanScreen<R = ScanResponse>({
             );
           })}
         </ol>
+        {runningSec >= 15 && phase === "running" && (status?.collected ?? 0) < 6 && (
+          <div className="row" style={{ justifyContent: "center", alignItems: "center", marginTop: 8, gap: 10 }}>
+            <span className="small muted">
+              Tip: Hold your palm steady and flat ~30 cm away in bright light.
+            </span>
+            <button
+              className="btn btn-quiet"
+              style={{ padding: "3px 10px", fontSize: "0.75rem" }}
+              onClick={() => controllerRef.current?.resetCollection()}
+            >
+              Reset
+            </button>
+          </div>
+        )}
       </div>
 
       {confirming && <CoinConfirm config={config} reference={reference} onConfirm={confirmCoin} onCancel={onCancel} />}

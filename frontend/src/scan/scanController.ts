@@ -5,6 +5,7 @@ import { describeCameraError, openCamera, stopStream, type CameraErrorInfo, type
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import { clear, COLORS, drawCoin, drawRoi, drawSkeleton } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness } from "../vision/frameAnalysis";
+import { dist, insideFrame, MIDDLE_TIP, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandTracker } from "../vision/handTracker";
 import { evaluateFrame, type LiveResult } from "../vision/liveChecks";
 import { loadOpenCV, type CV } from "../vision/opencv";
@@ -36,7 +37,7 @@ export interface ScanControllerOptions {
   referenceDiameterMm?: number;
 }
 
-const MIN_FRAME_INTERVAL_MS = 60; // spread collected frames over time (~16 fps max)
+const MIN_FRAME_INTERVAL_MS = 50; // spread collected frames over time (~20 fps max)
 // Between full coin searches the coin is tracked from its last position (much faster). A full
 // search still runs at least every FULL_COIN_SEARCH_EVERY frames, and whenever tracking fails,
 // so a second coin-like object is still noticed.
@@ -266,7 +267,7 @@ export class ScanController {
     if (seed && this.framesSinceFullSearch < FULL_COIN_SEARCH_EVERY) {
       const local = { ...seed, center_x: seed.center_x - roi.x, center_y: seed.center_y - roi.y };
       const tracked = detectCoin(this.cv, image, p, null, range, local);
-      if (tracked.accepted) {
+      if (tracked.found) {
         coin = tracked;
         this.framesSinceFullSearch++;
       }
@@ -279,7 +280,7 @@ export class ScanController {
       coin.center_x += roi.x;
       coin.center_y += roi.y;
     }
-    this.trackedCoin = coin.accepted ? coin : null;
+    this.trackedCoin = coin.found && (coin.accepted || coin.confidence >= 0.2) ? coin : null;
     return { coin, brightness: meanBrightness(image.data) };
   }
 
@@ -295,12 +296,21 @@ export class ScanController {
     let frame: FrameObservation | null = null;
     let coin: CoinDetection | null = null;
     let roi = null;
+    let smoothed: Point[] | null = null;
     if (hand) {
-      const win = coinSearchWindow(hand.landmarks, w, h, this.config.coin_detection);
-      roi = win.roi;
-      const r = this.detectInRoi(win.roi, win.diameterRange);
-      this.timing.coinMs = 0.8 * this.timing.coinMs + 0.2 * (performance.now() - tHand);
-      coin = r.coin;
+      smoothed = this.smoother.smooth(hand.landmarks, now);
+      const inFrame = insideFrame(hand.landmarks, w, h, this.config.capture.edge_margin_fraction);
+      const minSize = dist(hand.landmarks[WRIST], hand.landmarks[MIDDLE_TIP]) >= this.config.capture.min_hand_length_fraction * Math.min(w, h);
+
+      let brightness: number | null = null;
+      if (inFrame && minSize) {
+        const win = coinSearchWindow(hand.landmarks, w, h, this.config.coin_detection);
+        roi = win.roi;
+        const r = this.detectInRoi(win.roi, win.diameterRange);
+        this.timing.coinMs = 0.8 * this.timing.coinMs + 0.2 * (performance.now() - tHand);
+        coin = r.coin;
+        brightness = r.brightness;
+      }
       frame = buildObservation({
         timestampMs: now,
         width: w,
@@ -310,7 +320,7 @@ export class ScanController {
         handedness: hand.handedness,
         handednessScore: hand.handednessScore,
         coin,
-        brightness: r.brightness,
+        brightness,
       });
     }
     this.timing.handMs = 0.8 * this.timing.handMs + 0.2 * (tHand - now);
@@ -318,7 +328,7 @@ export class ScanController {
       referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
       assumedHfovDeg: this.config.assumed_hfov_deg,
     });
-    this.lastLandmarks = hand ? hand.landmarks : null;
+    this.lastLandmarks = smoothed;
 
     if (frame && live.ok && now - this.lastAcceptMs >= MIN_FRAME_INTERVAL_MS) {
       this.frames.push(frame);
@@ -326,9 +336,9 @@ export class ScanController {
     }
 
     clear(ctx);
-    if (hand) {
+    if (hand && smoothed) {
       if (roi) drawRoi(ctx, roi, scale);
-      drawSkeleton(ctx, this.smoother.smooth(hand.landmarks, now), live.ok ? COLORS.good : COLORS.neutral, scale);
+      drawSkeleton(ctx, smoothed, live.ok ? COLORS.good : COLORS.neutral, scale);
     } else {
       this.smoother.reset();
       this.trackedCoin = null;
