@@ -26,6 +26,8 @@ const withPilotCoin = (over: Partial<PublicConfig> = {}): PublicConfig => {
     source: "Gazette",
     enabled: true,
     availability: "pilot",
+    size_check: true,
+    customer_hint: null,
     notes: null,
   });
   return c;
@@ -200,5 +202,39 @@ describe("volunteer flow", () => {
     expect(screen.getByText(/Use your left hand and the US quarter/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Withdraw and delete my data" }));
     expect(await screen.findByText(/Your data has been deleted \(2 scans\)/)).toBeTruthy();
+  });
+});
+
+describe("regional coins for customers", () => {
+  const withRegionalCoins = (): PublicConfig => {
+    const c = publicConfig();
+    const base = { shape: "circle" as const, diameter_uncertainty_mm: 0.1, source: "official", enabled: true, availability: "all" as const, notes: null };
+    c.reference_objects.objects.push(
+      { ...base, id: "inr_2_2019", label: "Indian 2-rupee coin, 2019 series (silver)", diameter_mm: 23, thickness_mm: null,
+        size_check: true, customer_hint: "23 mm across. Older silver 2-rupee coins are 27 mm and give wrong sizes." },
+      { ...base, id: "lkr_5_2017", label: "Sri Lankan 5-rupee coin, 2017 series (silver)", diameter_mm: 23.5, thickness_mm: 1.8,
+        size_check: false, customer_hint: "Silver 2017 coin, 23.5 mm. The older gold-coloured 5-rupee coin cannot be used." },
+    );
+    return c;
+  };
+
+  it("asks for a size check only for coins with a differently sized older series", () => {
+    const onConfirm = vi.fn();
+    render(<CoinConfirm config={withRegionalCoins()} reference={{ object_id: "us_quarter" }} onConfirm={onConfirm} onCancel={() => {}} />);
+    expect(screen.getByText(/Older silver 2-rupee coins are 27 mm/)).toBeTruthy();
+    expect(screen.getByText(/older gold-coloured 5-rupee coin/)).toBeTruthy();
+    const yes = screen.getByRole("button", { name: /Yes, this is my coin/ }) as HTMLButtonElement;
+
+    fireEvent.click(screen.getByLabelText(/Indian 2-rupee coin/));
+    expect(yes.disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(/I checked: my coin is 23 mm across/));
+    expect(yes.disabled).toBe(false);
+    fireEvent.click(yes);
+    expect(onConfirm).toHaveBeenLastCalledWith({ object_id: "inr_2_2019", size_checked: true });
+
+    fireEvent.click(screen.getByLabelText(/Sri Lankan 5-rupee coin/));
+    expect(screen.queryByLabelText(/I checked/)).toBeNull();
+    fireEvent.click(yes);
+    expect(onConfirm).toHaveBeenLastCalledWith({ object_id: "lkr_5_2017" });
   });
 });

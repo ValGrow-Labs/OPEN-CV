@@ -82,6 +82,10 @@ class ReferenceSelection(_Model):
         description="The customer or operator explicitly confirmed which reference object is in the image. "
         "Scans without confirmation are rejected: a circular object is never assumed to be a quarter.",
     )
+    size_checked: bool = Field(
+        default=False,
+        description="The customer confirmed the coin's size, required for coins whose older series differ in size.",
+    )
 
     @model_validator(mode="after")
     def _one_of(self) -> ReferenceSelection:

@@ -26,15 +26,17 @@
     },
     {
       "id": "inr_2_2019",
-      "label": "Indian 2-rupee coin, 2019 series (silver-coloured)",
+      "label": "Indian 2-rupee coin, 2019 series (silver)",
       "shape": "circle",
       "diameter_mm": 23.0,
       "diameter_uncertainty_mm": 0.1,
       "thickness_mm": null,
       "source": "Coinage of One Rupee, Two Rupees, Five Rupees, Ten Rupees and Twenty Rupees Rules, 2019 (Ministry of Finance notification G.S.R. 184(E), 6 March 2019): circular, ferritic stainless steel, outside diameter 23 mm.",
       "enabled": true,
-      "availability": "pilot",
-      "notes": "Pilot only. Older silver 2-rupee coins (27 mm) are still in circulation, so the remote pilot makes the volunteer measure the coin with a ruler first. diameter_uncertainty_mm is an assumed allowance; the notification gives no diameter tolerance. Thickness is not specified there, so calibration.custom_reference_thickness_mm is assumed."
+      "availability": "all",
+      "notes": "Older silver 2-rupee coins (27 mm) are still in circulation, so customers confirm the 23 mm size before scanning (size_check) and the remote pilot measures it with a ruler. diameter_uncertainty_mm is an assumed allowance; the notification gives no diameter tolerance. Thickness is not specified there, so calibration.custom_reference_thickness_mm is assumed. Detection on real coins not yet tested.",
+      "size_check": true,
+      "customer_hint": "23 mm across. Older silver 2-rupee coins are 27 mm and give wrong sizes."
     },
     {
       "id": "inr_1_2019",
@@ -46,7 +48,22 @@
       "source": "Coinage of One Rupee, Two Rupees, Five Rupees, Ten Rupees and Twenty Rupees Rules, 2019 (Ministry of Finance notification G.S.R. 184(E), 6 March 2019): circular, ferritic stainless steel, outside diameter 20 mm.",
       "enabled": true,
       "availability": "pilot",
-      "notes": "Pilot only. Older silver 1-rupee coins (25 mm) are still in circulation, so the remote pilot makes the volunteer measure the coin with a ruler first. At 20 mm it is more often too small in the image than the 2-rupee coin. diameter_uncertainty_mm is an assumed allowance; thickness is assumed as for the 2-rupee coin."
+      "notes": "Pilot only. Older silver 1-rupee coins (25 mm) are still in circulation, so the remote pilot makes the volunteer measure the coin with a ruler first. At 20 mm it is more often too small in the image than the 2-rupee coin. diameter_uncertainty_mm is an assumed allowance; thickness is assumed as for the 2-rupee coin.",
+      "size_check": true
+    },
+    {
+      "id": "lkr_5_2017",
+      "label": "Sri Lankan 5-rupee coin, 2017 series (silver)",
+      "shape": "circle",
+      "diameter_mm": 23.5,
+      "diameter_uncertainty_mm": 0.1,
+      "thickness_mm": 1.8,
+      "source": "Central Bank of Sri Lanka, coins in circulation (FAQ, https://www.cbsl.gov.lk/en/node/8034): Rs. 5, 2017, stainless steel, round, diameter 23.5 mm, thickness 1.8 mm.",
+      "enabled": true,
+      "availability": "all",
+      "size_check": false,
+      "customer_hint": "Silver 2017 coin, 23.5 mm. The older gold-coloured 5-rupee coin cannot be used.",
+      "notes": "The older 5-rupee coin has the same 23.5 mm diameter but is brass-plated (gold-coloured), which the detector rejects, so no size check is needed. Edge: milled with regular indentations. diameter_uncertainty_mm is an assumed allowance. Detection on real coins not yet tested."
     }
   ]
 }

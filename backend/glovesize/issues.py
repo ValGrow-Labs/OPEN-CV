@@ -54,6 +54,10 @@ ISSUES: dict[str, tuple[Severity, str]] = {
     "custom_reference": ("warning", "A custom reference object was used; accuracy depends on its stated diameter."),
     "reference_unavailable": ("error", "The selected reference object is not available."),
     "reference_unconfirmed": ("error", "Please confirm which coin you are holding before scanning."),
+    "reference_size_unchecked": (
+        "error",
+        "Please confirm the size of your coin: older coins with the same value are a different size.",
+    ),
     "uncertainty_unvalidated": (
         "info",
         "This is an unvalidated prototype: its measurements and uncertainty values have not yet been checked against tape-measured hands.",

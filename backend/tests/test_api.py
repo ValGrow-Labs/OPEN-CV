@@ -187,3 +187,33 @@ def test_research_expired_records_purged(research_enabled):
     old = datetime.now(UTC) - timedelta(days=31)
     research.add_record(rec, now=old)
     assert research.purge_expired() == 1
+
+
+def test_regional_coins_for_customers(client):
+    clear_caches()
+    objects = {o["id"]: o for o in client.get("/api/config").json()["reference_objects"]["objects"]}
+    inr, lkr = objects["inr_2_2019"], objects["lkr_5_2017"]
+    assert (inr["availability"], inr["size_check"], inr["diameter_mm"]) == ("all", True, 23.0)
+    assert (lkr["availability"], lkr["size_check"], lkr["diameter_mm"], lkr["thickness_mm"]) == (
+        "all",
+        False,
+        23.5,
+        1.8,
+    )
+    assert "27 mm" in inr["customer_hint"] and "gold" in lkr["customer_hint"]
+
+
+def test_coin_with_an_older_series_needs_a_size_confirmation(client):
+    clear_caches()
+    unchecked = client.post(
+        "/api/scan", json=scan_body(reference={"object_id": "inr_2_2019", "confirmed": True})
+    ).json()
+    assert unchecked["status"] == "rejected"
+    assert [i["code"] for i in unchecked["issues"]] == ["reference_size_unchecked"]
+    checked = client.post(
+        "/api/scan", json=scan_body(reference={"object_id": "inr_2_2019", "confirmed": True, "size_checked": True})
+    ).json()
+    assert checked["status"] == "accepted" and checked["calibration"]["reference_diameter_mm"] == 23.0
+    # No older series of a different size: no confirmation needed.
+    lkr = client.post("/api/scan", json=scan_body(reference={"object_id": "lkr_5_2017", "confirmed": True})).json()
+    assert lkr["status"] == "accepted" and lkr["calibration"]["reference_diameter_mm"] == 23.5

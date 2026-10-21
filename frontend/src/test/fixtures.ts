@@ -36,6 +36,8 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
           source: "US Mint",
           enabled: true,
           availability: "all",
+          size_check: false,
+          customer_hint: null,
           notes: null,
         },
         {
@@ -48,6 +50,8 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
           source: "US Mint",
           enabled: false,
           availability: "all",
+          size_check: false,
+          customer_hint: null,
           notes: null,
         },
       ],

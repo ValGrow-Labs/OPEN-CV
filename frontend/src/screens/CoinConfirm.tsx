@@ -22,7 +22,10 @@ export function CoinConfirm({ config, reference, onConfirm, onCancel }: Props) {
   const refs = customerCoins(config);
   const custom = reference.custom_diameter_mm !== undefined ? referenceLabel(config, reference) : null;
   const [choice, setChoice] = useState<string>(custom ? "custom" : (reference.object_id ?? config.reference_objects.default));
+  const [sizeChecked, setSizeChecked] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const chosen = refs.find((o) => o.id === choice);
+  const needsSizeCheck = Boolean(chosen?.size_check);
 
   useEffect(() => {
     titleRef.current?.focus({ preventScroll: true });
@@ -30,7 +33,7 @@ export function CoinConfirm({ config, reference, onConfirm, onCancel }: Props) {
 
   const confirm = () => {
     if (choice === "custom" && custom) onConfirm(reference);
-    else onConfirm({ object_id: choice });
+    else onConfirm(needsSizeCheck ? { object_id: choice, size_checked: true } : { object_id: choice });
   };
 
   return (
@@ -59,13 +62,17 @@ export function CoinConfirm({ config, reference, onConfirm, onCancel }: Props) {
                 className="visually-hidden"
                 value={o.id}
                 checked={choice === o.id}
-                onChange={() => setChoice(o.id)}
+                onChange={() => {
+                  setChoice(o.id);
+                  setSizeChecked(false);
+                }}
               />
               <span className="po-text">
                 <strong>{o.label}</strong>
                 <span className="po-maker">
                   {o.diameter_mm.toFixed(2)} mm ({(o.diameter_mm / MM_PER_INCH).toFixed(3)} in) across
                 </span>
+                {o.customer_hint && <span className="po-maker">{o.customer_hint}</span>}
               </span>
               <Coin className="po-check" size={22} weight="fill" aria-hidden="true" />
             </label>
@@ -82,9 +89,15 @@ export function CoinConfirm({ config, reference, onConfirm, onCancel }: Props) {
           )}
         </div>
         {refs.length === 1 && !custom && <p className="small muted">Other coins are not supported yet.</p>}
+        {needsSizeCheck && chosen && (
+          <label className="radio-row">
+            <input type="checkbox" checked={sizeChecked} onChange={(e) => setSizeChecked(e.target.checked)} />
+            <span>I checked: my coin is {chosen.diameter_mm} mm across (for example against a ruler).</span>
+          </label>
+        )}
         <div className="guide-foot">
           <span />
-          <button className="btn btn-primary btn-island" onClick={confirm}>
+          <button className="btn btn-primary btn-island" onClick={confirm} disabled={needsSizeCheck && !sizeChecked}>
             Yes, this is my coin
             <ButtonIcon />
           </button>

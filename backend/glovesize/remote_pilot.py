@@ -308,7 +308,9 @@ def submit_scan(token: str, req: PilotScanRequest) -> dict:
             raise PilotError(422, "manual measurements are not accepted in pilot scans")
         inv.submissions += 1  # counted before processing, so failures cannot be retried without limit
         _save(invites)
-    scan = req.scan.model_copy(update={"reference": req.scan.reference.model_copy(update={"confirmed": True})})
+    scan = req.scan.model_copy(
+        update={"reference": req.scan.reference.model_copy(update={"confirmed": True, "size_checked": True})}
+    )
     vreq = vr.ValidationScanRequest(
         data_origin="real_participant" if inv.purpose == "pilot" else "software_test",
         consent_confirmed=True,

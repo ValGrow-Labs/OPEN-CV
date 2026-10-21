@@ -43,6 +43,8 @@ export interface ReferenceSelection {
   custom_label?: string;
   /** Set when the customer or operator explicitly confirmed the coin; the server rejects scans without it. */
   confirmed?: boolean;
+  /** The customer confirmed the coin's size (required for coins with `size_check`). */
+  size_checked?: boolean;
 }
 
 export interface ManualMeasurements {
@@ -237,6 +239,9 @@ export interface ReferenceObject {
   enabled: boolean;
   /** "pilot": only offered in the remote pilot, where the coin is also measured with a ruler. */
   availability: "all" | "pilot";
+  /** Older coins of the same value have a different size: the customer confirms the size. */
+  size_check: boolean;
+  customer_hint: string | null;
   notes: string | null;
 }
 

@@ -101,6 +101,9 @@ def process_scan(req: ScanRequest) -> ScanResponse:
         return rejected([_issue("reference_unavailable")])
     if not req.reference.confirmed:
         return rejected([_issue("reference_unconfirmed")])
+    obj = load_reference_objects().get(req.reference.object_id or "")
+    if obj is not None and obj.size_check and not req.reference.size_checked:
+        return rejected([_issue("reference_size_unchecked")])
 
     results = [measure_frame(f, ref, cfg) for f in req.frames]
     accepted_idx = [i for i, r in enumerate(results) if r.accepted]

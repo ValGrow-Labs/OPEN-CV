@@ -44,6 +44,10 @@ class ReferenceObject(_Strict):
     # "pilot": offered only in the remote pilot, where the volunteer also measures the coin with a
     # ruler (some coins exist in several sizes under the same name). Refused by /api/scan.
     availability: Literal["all", "pilot"] = "all"
+    # True when older coins with the same name but a different size are still in circulation:
+    # the customer must confirm the size before scanning (the server refuses unconfirmed scans).
+    size_check: bool = False
+    customer_hint: str | None = Field(default=None, max_length=160)
     notes: str | None = None
 
 

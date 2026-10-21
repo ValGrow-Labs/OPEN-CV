@@ -145,12 +145,19 @@ through the same steps.
   catches older coin series of the same value:
   * US quarter: 24.26 mm.
   * Indian 2-rupee coin, 2019 series: 23 mm. The older silver 2-rupee coin is 27 mm.
-  * Indian 1-rupee coin, 2019 series: 20 mm. The older silver 1-rupee coin is 25 mm.
+  * Indian 1-rupee coin, 2019 series: 20 mm. The older silver 1-rupee coin is 25 mm (pilot only).
+  * Sri Lankan 5-rupee coin, 2017 series: 23.5 mm, stainless steel. The older 5-rupee coin is
+    the same size but gold-coloured, which the detector rejects.
 
-  The Indian sizes come from the Coinage Rules 2019 (G.S.R. 184(E)). Gold-coloured or two-metal
-  coins (₹5, ₹10, ₹20) cannot be used. Other countries' coins can be added to
-  `config/reference_objects.json` only from an official specification, silver-coloured and
-  circular, with `"availability": "pilot"`.
+  The Indian sizes come from the Coinage Rules 2019 (G.S.R. 184(E)) and the Sri Lankan size from
+  the Central Bank of Sri Lanka's coin specifications. Gold-coloured or two-metal coins (₹5, ₹10,
+  ₹20) and coins with lobed edges (Sri Lankan Rs 10 and Rs 20) cannot be used.
+
+  The US quarter, the Indian 2-rupee coin and the Sri Lankan 5-rupee coin are also offered to
+  customers. For the 2-rupee coin, customers must tick that they checked the 23 mm size
+  (`"size_check": true`), and the server refuses scans without that confirmation. Other countries'
+  coins can be added to `config/reference_objects.json` only from an official specification,
+  silver-coloured and round. None of these coins has been tested on real scans yet.
 * **Consent in the app.** The volunteer reads `config/pilot_consent.json` and ticks agreement. The
   version and a hash of the exact text are stored with each record. **Volunteer invites are
   locked until a person reviews that text** and sets `reviewed`, `reviewed_by` and

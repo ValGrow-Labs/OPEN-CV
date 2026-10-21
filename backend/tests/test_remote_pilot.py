@@ -274,9 +274,9 @@ def test_revoked_and_expired_links_stop_working(pilot, operator_client, voluntee
 
 def test_pilot_only_coins_are_refused_in_the_customer_flow(operator_client):
     clear_caches()
-    body = {"frames": make_frames(), "reference": {"object_id": "inr_2_2019", "confirmed": True}}
+    body = {"frames": make_frames(), "reference": {"object_id": "inr_1_2019", "confirmed": True}}
     r = operator_client.post("/api/scan", json=body)
     assert r.status_code == 422 and "pilot study" in r.text
     objects = {o["id"]: o for o in operator_client.get("/api/config").json()["reference_objects"]["objects"]}
-    assert objects["inr_2_2019"]["availability"] == "pilot" and objects["us_quarter"]["availability"] == "all"
+    assert objects["inr_1_2019"]["availability"] == "pilot" and objects["us_quarter"]["availability"] == "all"
     assert (objects["inr_2_2019"]["diameter_mm"], objects["inr_1_2019"]["diameter_mm"]) == (23.0, 20.0)
