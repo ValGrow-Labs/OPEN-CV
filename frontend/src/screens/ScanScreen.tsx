@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, submitScan } from "../api/client";
 import type { FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
-import { ScanController, type ScanStatus } from "../scan/scanController";
+import { preloadScanTools, ScanController, type ScanStatus } from "../scan/scanController";
 import { Icon } from "../ui/components";
 import { CoachIcon, coachKind, GUIDE_STEPS, liveStage } from "../ui/guide";
 import { coinConfirmed, introSeen, markCoinConfirmed, markIntroSeen, referenceLabel } from "../ui/settings";
@@ -36,6 +36,8 @@ export function ScanScreen<R = ScanResponse>({
   submit,
 }: Props<R>) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Load the measuring tools now, while the coin question and the guide are on screen.
+  useEffect(() => preloadScanTools("scan"), []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<ScanController | null>(null);
   const [status, setStatus] = useState<ScanStatus | null>(null);
@@ -234,6 +236,9 @@ export function ScanScreen<R = ScanResponse>({
         </div>
         <div
           className="progress"
+          data-fps={status ? Math.round(status.fps) : undefined}
+          data-hand-ms={status ? Math.round(status.timing.handMs) : undefined}
+          data-coin-ms={status ? Math.round(status.timing.coinMs) : undefined}
           role="progressbar"
           aria-label="Scan progress"
           aria-valuemin={0}

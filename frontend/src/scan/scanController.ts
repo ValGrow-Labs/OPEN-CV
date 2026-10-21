@@ -5,7 +5,7 @@ import { describeCameraError, openCamera, stopStream, type CameraErrorInfo, type
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import { clear, COLORS, drawCoin, drawRoi, drawSkeleton } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness } from "../vision/frameAnalysis";
-import { actualHandedness, HandTracker } from "../vision/handTracker";
+import { actualHandedness, getHandTracker, type HandTracker } from "../vision/handTracker";
 import { evaluateFrame, type LiveResult } from "../vision/liveChecks";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
@@ -22,6 +22,8 @@ export interface ScanStatus {
   coin: CoinDetection | null;
   mirrored: boolean;
   fps: number;
+  /** Rolling average processing time per frame (ms): hand landmarks, coin detection. */
+  timing: { handMs: number; coinMs: number };
   error: CameraErrorInfo | null;
 }
 
@@ -35,6 +37,17 @@ export interface ScanControllerOptions {
 }
 
 const MIN_FRAME_INTERVAL_MS = 60; // spread collected frames over time (~16 fps max)
+// Between full coin searches the coin is tracked from its last position (much faster). A full
+// search still runs at least every FULL_COIN_SEARCH_EVERY frames, and whenever tracking fails,
+// so a second coin-like object is still noticed.
+const FULL_COIN_SEARCH_EVERY = 5;
+
+/** Start loading the measuring tools before the camera is opened (e.g. while the person reads
+ *  the coin question and the guide). Failures are ignored here; start() reports them. */
+export function preloadScanTools(mode: ScanMode = "scan"): void {
+  loadOpenCV().catch(() => undefined);
+  if (mode === "scan") getHandTracker().catch(() => undefined);
+}
 const CALIBRATION_INTERVAL_MS = 150;
 const STATUS_INTERVAL_MS = 100;
 
@@ -50,6 +63,9 @@ export class ScanController {
   private lastCoinMs = 0;
   private lastStatusMs = 0;
   private frameTimes: number[] = [];
+  private timing = { handMs: 0, coinMs: 0 };
+  private trackedCoin: CoinDetection | null = null;
+  private framesSinceFullSearch = 0;
   private smoother = new LandmarkSmoother();
   private roiCanvas: HTMLCanvasElement;
   private facing: Facing;
@@ -72,6 +88,7 @@ export class ScanController {
       coin: null,
       mirrored: false,
       fps: 0,
+      timing: { handMs: 0, coinMs: 0 },
       error: null,
     };
   }
@@ -91,7 +108,7 @@ export class ScanController {
     this.emit({ phase: "loading" }, true);
     try {
       const [tracker, cv] = await Promise.all([
-        this.opts.mode === "scan" ? HandTracker.create() : Promise.resolve(null),
+        this.opts.mode === "scan" ? getHandTracker() : Promise.resolve(null),
         loadOpenCV(),
       ]);
       this.tracker = tracker;
@@ -115,8 +132,7 @@ export class ScanController {
       return;
     }
     if (this.disposed || !this.stream) {
-      // stopped while the models were loading
-      this.tracker?.close();
+      // stopped while the models were loading (the shared tracker stays loaded for next time)
       this.tracker = null;
       return;
     }
@@ -177,6 +193,7 @@ export class ScanController {
 
   resetCollection(): void {
     this.frames = [];
+    this.trackedCoin = null;
     this.lastLandmarks = null;
     this.smoother.reset();
     this.emit({ collected: 0 }, true);
@@ -188,8 +205,7 @@ export class ScanController {
     stopStream(this.stream);
     this.stream = null;
     this.video.srcObject = null;
-    this.tracker?.close();
-    this.tracker = null;
+    this.tracker = null; // shared and reused by the next scan; not closed
   }
 
   private schedule(): void {
@@ -244,11 +260,26 @@ export class ScanController {
   private detectInRoi(roi: { x: number; y: number; w: number; h: number }, range: [number, number] | null) {
     if (roi.w < 16 || roi.h < 16 || !this.cv) return { coin: null, brightness: null };
     const image = this.grab(roi);
-    const coin = detectCoin(this.cv, image, this.config.coin_detection, null, range);
+    const p = this.config.coin_detection;
+    let coin: CoinDetection | null = null;
+    const seed = this.opts.mode === "scan" ? this.trackedCoin : null;
+    if (seed && this.framesSinceFullSearch < FULL_COIN_SEARCH_EVERY) {
+      const local = { ...seed, center_x: seed.center_x - roi.x, center_y: seed.center_y - roi.y };
+      const tracked = detectCoin(this.cv, image, p, null, range, local);
+      if (tracked.accepted) {
+        coin = tracked;
+        this.framesSinceFullSearch++;
+      }
+    }
+    if (!coin) {
+      coin = detectCoin(this.cv, image, p, null, range);
+      this.framesSinceFullSearch = 0;
+    }
     if (coin.found) {
       coin.center_x += roi.x;
       coin.center_y += roi.y;
     }
+    this.trackedCoin = coin.accepted ? coin : null;
     return { coin, brightness: meanBrightness(image.data) };
   }
 
@@ -259,6 +290,7 @@ export class ScanController {
     const now = performance.now();
     const fps = this.trackFps(now);
     const hand = this.tracker.detect(this.video, now);
+    const tHand = performance.now();
 
     let frame: FrameObservation | null = null;
     let coin: CoinDetection | null = null;
@@ -267,6 +299,7 @@ export class ScanController {
       const win = coinSearchWindow(hand.landmarks, w, h, this.config.coin_detection);
       roi = win.roi;
       const r = this.detectInRoi(win.roi, win.diameterRange);
+      this.timing.coinMs = 0.8 * this.timing.coinMs + 0.2 * (performance.now() - tHand);
       coin = r.coin;
       frame = buildObservation({
         timestampMs: now,
@@ -280,6 +313,7 @@ export class ScanController {
         brightness: r.brightness,
       });
     }
+    this.timing.handMs = 0.8 * this.timing.handMs + 0.2 * (tHand - now);
     const live = evaluateFrame(frame, this.lastLandmarks, this.config.capture, this.config.calibration, {
       referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
       assumedHfovDeg: this.config.assumed_hfov_deg,
@@ -297,6 +331,7 @@ export class ScanController {
       drawSkeleton(ctx, this.smoother.smooth(hand.landmarks, now), live.ok ? COLORS.good : COLORS.neutral, scale);
     } else {
       this.smoother.reset();
+      this.trackedCoin = null;
     }
     if (coin?.found) drawCoin(ctx, coin, scale);
 
@@ -305,6 +340,7 @@ export class ScanController {
       {
         live,
         fps,
+        timing: { ...this.timing },
         coin,
         collected: this.frames.length,
         handedness: hand ? actualHandedness(hand.handedness) : this.status.handedness,

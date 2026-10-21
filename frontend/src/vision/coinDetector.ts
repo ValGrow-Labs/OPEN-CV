@@ -572,12 +572,22 @@ function hasRival(best: CoinDetection, others: CoinDetection[], p: CoinDetection
   );
 }
 
+/** A previous detection to track: the coin in image coordinates. */
+export type CoinSeed = Pick<CoinObservation, "center_x" | "center_y" | "major_axis_px" | "minor_axis_px" | "angle_deg">;
+
+/**
+ * Detect the coin. With a `seed` (the coin found in the previous frame), the candidate search
+ * is skipped and only the seed is refined: the same sub-pixel edge fit, quality metrics and
+ * acceptance gates, about an order of magnitude faster. Tracking cannot see a second coin, so
+ * the caller must still run a full detection regularly for the ambiguity check.
+ */
 export function detectCoin(
   cv: CV,
   image: RgbaImage,
   p: CoinDetectionParams,
   roi?: Roi | null,
   diameterRangePx?: [number, number] | null,
+  seed?: CoinSeed | null,
 ): CoinDetection {
   let r: Roi = { x: 0, y: 0, w: image.width, h: image.height };
   if (roi) {
@@ -595,7 +605,8 @@ export function detectCoin(
   }
   if (dMin >= dMax) return emptyDetection(["coin_too_small"]);
 
-  const rgbaBytes = r.x === 0 && r.y === 0 && r.w === image.width && r.h === image.height ? image.data : cropRgba(image, r);
+  if (seed) return trackCoin(cv, rgbaBytes(image, r), r, p, dMin, dMax, seed);
+
   const rgba = new cv.Mat(r.h, r.w, cv.CV_8UC4);
   const raw = new cv.Mat();
   const claheOut = new cv.Mat();
@@ -604,11 +615,12 @@ export function detectCoin(
   const smoothMat = new cv.Mat();
   const clahe = new cv.CLAHE(p.clahe_clip_limit, new cv.Size(p.clahe_tile_grid, p.clahe_tile_grid));
   try {
-    rgba.data.set(rgbaBytes);
+    const bytes = rgbaBytes(image, r);
+    rgba.data.set(bytes);
     cv.cvtColor(rgba, raw, cv.COLOR_RGBA2GRAY);
     clahe.apply(raw, claheOut);
     cv.GaussianBlur(claheOut, blurred, new cv.Size(p.blur_kernel, p.blur_kernel), 0);
-    chroma.data.set(chromaChannel(rgbaBytes, r.w * r.h));
+    chroma.data.set(chromaChannel(bytes, r.w * r.h));
     cv.GaussianBlur(chroma, smoothMat, new cv.Size(3, 3), 0);
     const smooth: Channel = { data: Float64Array.from(smoothMat.data), w: r.w, h: r.h };
 
@@ -652,5 +664,59 @@ export function detectCoin(
     chroma.delete();
     smoothMat.delete();
     clahe.delete();
+  }
+}
+
+function rgbaBytes(image: RgbaImage, r: Roi): Uint8Array | Uint8ClampedArray {
+  return r.x === 0 && r.y === 0 && r.w === image.width && r.h === image.height ? image.data : cropRgba(image, r);
+}
+
+function trackCoin(
+  cv: CV,
+  bytes: Uint8Array | Uint8ClampedArray,
+  r: Roi,
+  p: CoinDetectionParams,
+  dMin: number,
+  dMax: number,
+  seed: CoinSeed,
+): CoinDetection {
+  const rgba = new cv.Mat(r.h, r.w, cv.CV_8UC4);
+  const raw = new cv.Mat();
+  const chroma = new cv.Mat(r.h, r.w, cv.CV_8UC1);
+  const smoothMat = new cv.Mat();
+  try {
+    rgba.data.set(bytes);
+    cv.cvtColor(rgba, raw, cv.COLOR_RGBA2GRAY);
+    chroma.data.set(chromaChannel(bytes, r.w * r.h));
+    cv.GaussianBlur(chroma, smoothMat, new cv.Size(3, 3), 0);
+    const smooth: Channel = { data: Float64Array.from(smoothMat.data), w: r.w, h: r.h };
+    const cand: Candidate = {
+      cx: seed.center_x - r.x,
+      cy: seed.center_y - r.y,
+      major: seed.major_axis_px,
+      minor: seed.minor_axis_px,
+      angleDeg: seed.angle_deg,
+      method: "tracked",
+    };
+    const det = refine(cv, smooth, raw, cand, p, 1);
+    const [loTol, hiTol] = p.candidate_size_tolerance;
+    if (!det || !(loTol * dMin <= det.major_axis_px && det.major_axis_px <= hiTol * dMax)) return emptyDetection(["coin_not_found"]);
+    scoreDetection(det, p);
+    det.method = "tracked";
+    det.candidates = [{
+      method: "tracked",
+      diameter_px: Math.round(det.major_axis_px * 100) / 100,
+      axis_ratio: Math.round((det.minor_axis_px / det.major_axis_px) * 1e4) / 1e4,
+      confidence: Math.round(det.confidence * 1000) / 1000,
+      accepted: det.accepted,
+    }];
+    det.center_x += r.x;
+    det.center_y += r.y;
+    return det;
+  } finally {
+    rgba.delete();
+    raw.delete();
+    chroma.delete();
+    smoothMat.delete();
   }
 }

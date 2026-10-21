@@ -12,6 +12,23 @@ export interface HandFrame {
   handednessScore: number | null;
 }
 
+let shared: Promise<HandTracker> | null = null;
+
+/** One tracker per page, created on first use and reused by every scan: creating it (WASM,
+ *  model, GPU set-up) is the slow part, so it is never rebuilt between scans. */
+export function getHandTracker(): Promise<HandTracker> {
+  if (!shared) {
+    shared = HandTracker.create().then((t) => {
+      t.warmUp();
+      return t;
+    });
+    shared.catch(() => {
+      shared = null;
+    });
+  }
+  return shared;
+}
+
 export class HandTracker {
   private constructor(
     private landmarker: HandLandmarker,
@@ -32,6 +49,19 @@ export class HandTracker {
       return new HandTracker(await HandLandmarker.createFromOptions(fileset, options("GPU")), "GPU");
     } catch {
       return new HandTracker(await HandLandmarker.createFromOptions(fileset, options("CPU")), "CPU");
+    }
+  }
+
+  /** One detection on a blank image, so the GPU programs are compiled before the camera starts
+   *  (otherwise the first live frame stalls for a second or more). Failures are harmless. */
+  warmUp(): void {
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      c.getContext("2d")?.fillRect(0, 0, 256, 256);
+      this.landmarker.detectForVideo(c, performance.now());
+    } catch {
+      /* the first live frame warms it up instead */
     }
   }
 

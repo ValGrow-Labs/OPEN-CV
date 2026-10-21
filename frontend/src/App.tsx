@@ -10,6 +10,7 @@ const MANUAL_LABELS: Record<keyof ManualEntries, string> = {
   hand_circumference_mm: "Hand circumference",
 };
 import { ResultsScreen } from "./screens/ResultsScreen";
+import { preloadScanTools } from "./scan/scanController";
 import { ScanScreen } from "./screens/ScanScreen";
 import { ValidationScreen } from "./screens/ValidationScreen";
 import { WelcomeScreen } from "./screens/WelcomeScreen";
@@ -52,6 +53,14 @@ export function App() {
   }, []);
 
   useEffect(loadConfig, [loadConfig]);
+
+  // Fetch and start the measuring tools (OpenCV.js, the hand model) in the background soon after
+  // the page opens, so a scan starts at once instead of waiting for them after "Start camera".
+  useEffect(() => {
+    if (!config) return;
+    const id = window.setTimeout(() => preloadScanTools("scan"), 1500);
+    return () => window.clearTimeout(id);
+  }, [config]);
 
   useEffect(() => {
     const onHash = () => {

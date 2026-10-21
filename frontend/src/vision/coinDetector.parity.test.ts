@@ -74,3 +74,36 @@ describe("coin detector parity with Python reference", () => {
     }
   });
 });
+
+describe("coin tracking between frames (browser-only speed path)", () => {
+  it("reproduces the full detection when seeded with it", () => {
+    for (const scene of fixtures.scenes.filter((s) => s.python.accepted)) {
+      const full = detectCoin(cv, image(scene), params);
+      const tracked = detectCoin(cv, image(scene), params, null, null, full);
+      expect(tracked.accepted).toBe(true);
+      expect(tracked.method).toBe("tracked");
+      expect(Math.abs(tracked.major_axis_px - full.major_axis_px)).toBeLessThan(0.05);
+      expect(Math.abs(tracked.minor_axis_px - full.minor_axis_px)).toBeLessThan(0.05);
+      expect(Math.abs(tracked.center_x - full.center_x)).toBeLessThan(0.05);
+      expect(Math.abs(tracked.center_y - full.center_y)).toBeLessThan(0.05);
+    }
+  });
+
+  it("follows a coin that moved a little since the last frame", () => {
+    const scene = fixtures.scenes.find((s) => s.python.accepted)!;
+    const full = detectCoin(cv, image(scene), params);
+    const moved = { ...full, center_x: full.center_x + 0.06 * full.major_axis_px, center_y: full.center_y - 0.04 * full.major_axis_px };
+    const tracked = detectCoin(cv, image(scene), params, null, null, moved);
+    expect(tracked.accepted).toBe(true);
+    expect(Math.abs(tracked.major_axis_px - full.major_axis_px)).toBeLessThan(0.1);
+  });
+
+  it("is not accepted when the seed is wrong, so the caller falls back to a full search", () => {
+    const scene = fixtures.scenes.find((s) => s.python.accepted)!;
+    const full = detectCoin(cv, image(scene), params);
+    const far = { ...full, center_x: full.center_x + 1.5 * full.major_axis_px };
+    expect(detectCoin(cv, image(scene), params, null, null, far).accepted).toBe(false);
+    const wrongSize = { ...full, major_axis_px: full.major_axis_px * 1.6, minor_axis_px: full.minor_axis_px * 1.6 };
+    expect(detectCoin(cv, image(scene), params, null, null, wrongSize).accepted).toBe(false);
+  });
+});
