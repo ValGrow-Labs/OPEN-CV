@@ -84,9 +84,13 @@ export async function openCamera(facing: Facing, md: MediaDevices | undefined = 
   if (!md || typeof md.getUserMedia !== "function") {
     throw namedError("UnsupportedError", "getUserMedia unavailable");
   }
+  // Request 720p on mobile (faster processing, lower power) and 1080p on desktop.
+  const mobile = isMobileDevice();
+  const idealW = mobile ? 1280 : 1920;
+  const idealH = mobile ? 720 : 1080;
   const ideal: MediaStreamConstraints = {
     audio: false,
-    video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    video: { facingMode: { ideal: facing }, width: { ideal: idealW }, height: { ideal: idealH } },
   };
   try {
     return await md.getUserMedia(ideal);
