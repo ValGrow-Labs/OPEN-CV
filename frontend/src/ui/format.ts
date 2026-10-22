@@ -27,6 +27,7 @@ export const REASONS: Record<string, string> = {
   unstable: "The value varied between frames.",
   uncertainty_too_large: "The uncertainty is too large for this value to be useful.",
   finger_bent: "This finger was not straight enough to measure.",
+  finger_obscured: "This finger was obscured or poorly detected.",
   implausible_value: "The value is outside the expected human range.",
   too_few_frames: "Too few good frames were available for this measurement.",
   requires_validated_model_or_manual_entry: "Needs a tape measurement (or a model validated on reference data).",
@@ -53,5 +54,11 @@ export const CONFIDENCE: Record<ConfidenceLevel, { label: string; text: string }
 export const MEASUREMENT_NAMES: Record<string, string> = {
   hand_length_mm: "Hand length",
   hand_circumference_mm: "Hand circumference",
-  palm_breadth_mm: "Palm breadth",
+  palm_breadth_mm: "Palm breadth (skin edge to skin edge)",
+};
+
+export const MANUAL_LABELS: Record<string, string> = {
+  hand_length_mm: "Hand length",
+  hand_circumference_mm: "Hand circumference",
+  palm_breadth_mm: "Palm breadth (skin edge to skin edge)",
 };

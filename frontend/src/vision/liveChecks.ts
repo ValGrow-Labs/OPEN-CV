@@ -19,6 +19,7 @@ export type LiveCode =
   | "hand_out_of_frame"
   | "hand_too_small"
   | "fingers_bent"
+  | "index_finger_bent"
   | "palm_not_flat"
   | "too_dark"
   | "too_bright"
@@ -39,9 +40,10 @@ export type LiveCode =
 
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
   no_hand: "Show your open palm to the camera",
-  hand_out_of_frame: "Move your whole hand inside the frame",
+  hand_out_of_frame: "Move your hand into the guide",
   hand_too_small: "Bring your hand closer to the camera",
   fingers_bent: "Straighten your fingers",
+  index_finger_bent: "Straighten your index finger",
   palm_not_flat: "Hold your palm flat, facing the camera",
   too_dark: "It's too dark. Move to brighter light",
   too_bright: "Too bright. Avoid direct light behind the camera",
@@ -111,10 +113,23 @@ export function evaluateFrame(
 
   if (!insideFrame(lm, w, h, capture.edge_margin_fraction)) codes.push("hand_out_of_frame");
   if (dist(lm[WRIST], lm[MIDDLE_TIP]) < capture.min_hand_length_fraction * Math.min(w, h)) codes.push("hand_too_small");
+  const index = LONG_FINGERS.index;
+  const indexBent2d = chainBendDeg(lm, index);
+  const indexBent3d = frame.world_landmarks ? chainBendDeg(frame.world_landmarks, index, true) : 0;
+  const indexBent = !(indexBent2d <= capture.max_finger_bend_deg) || !(indexBent3d <= capture.max_finger_bend_deg_3d);
+
   const middle = LONG_FINGERS.middle;
-  const bent2d = chainBendDeg(lm, middle);
-  const bent3d = frame.world_landmarks ? chainBendDeg(frame.world_landmarks, middle, true) : 0;
-  if (!(bent2d <= capture.max_finger_bend_deg) || !(bent3d <= capture.max_finger_bend_deg_3d)) codes.push("fingers_bent");
+  const middleBent2d = chainBendDeg(lm, middle);
+  const middleBent3d = frame.world_landmarks ? chainBendDeg(frame.world_landmarks, middle, true) : 0;
+  const middleBent = !(middleBent2d <= capture.max_finger_bend_deg) || !(middleBent3d <= capture.max_finger_bend_deg_3d);
+
+  if (middleBent && indexBent) {
+    codes.push("fingers_bent");
+  } else if (indexBent) {
+    codes.push("index_finger_bent");
+  } else if (middleBent) {
+    codes.push("fingers_bent");
+  }
   if (frame.world_landmarks && palmTiltDeg(frame.world_landmarks) > capture.max_palm_tilt_deg_model) codes.push("palm_not_flat");
   if (frame.brightness !== null) {
     if (frame.brightness < capture.brightness_range[0]) codes.push("too_dark");

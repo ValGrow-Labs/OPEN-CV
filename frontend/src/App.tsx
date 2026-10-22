@@ -8,6 +8,7 @@ import { PilotScreen } from "./screens/PilotScreen";
 const MANUAL_LABELS: Record<keyof ManualEntries, string> = {
   hand_length_mm: "Hand length",
   hand_circumference_mm: "Hand circumference",
+  palm_breadth_mm: "Palm breadth (skin edge to skin edge)",
 };
 import { ResultsScreen } from "./screens/ResultsScreen";
 import { preloadScanTools, type ScanTimingBreakdown } from "./scan/scanController";

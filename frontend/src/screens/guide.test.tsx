@@ -13,6 +13,7 @@ describe("live guidance mapping", () => {
   it("maps live codes to the guide step", () => {
     expect(liveStage(["no_hand"])).toBe(0);
     expect(liveStage(["fingers_bent", "coin_missing"])).toBe(0);
+    expect(liveStage(["index_finger_bent"])).toBe(0);
     expect(liveStage(["coin_missing"])).toBe(1);
     expect(liveStage(["coin_glare"])).toBe(1);
     expect(liveStage(["hold_still"])).toBe(2);
@@ -27,6 +28,7 @@ describe("live guidance mapping", () => {
     expect(coachKind("too_dark")).toBe("light");
     expect(coachKind("hold_still")).toBe("still");
     expect(coachKind("palm_not_flat")).toBe("palm");
+    expect(coachKind("index_finger_bent")).toBe("palm");
     expect(coachKind(undefined)).toBe("ok");
   });
 });

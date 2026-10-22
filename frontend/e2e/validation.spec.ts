@@ -32,7 +32,7 @@ test("validation mode records a software-test scan without counting it", async (
   await expect(page.getByLabel("Running accuracy")).toContainText("No scored scans yet");
   // Other specs (the remote pilot) may add test records to the same throwaway file.
   await expect(page.getByText(/Tests \(\d+\)/)).toBeVisible();
-  const row = page.locator(".validation-table tbody tr").filter({ hasText: "E2E-0001" });
+  const row = page.locator(".validation-table tbody tr").filter({ hasText: "E2E-0001" }).first();
   await expect(row).toContainText("E2E-0001");
   await expect(row).toContainText("software test");
   await expect(row).toContainText("185.3 mm");

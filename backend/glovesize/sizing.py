@@ -31,7 +31,7 @@ MEASUREMENT_NAMES = {
 
 HOW_TO_MEASURE = {
     "hand_circumference_mm": "Wrap a soft tape measure around your palm at the knuckles (excluding the thumb) and enter the value.",
-    "palm_breadth_mm": "Measure the width of your palm across the knuckles, excluding the thumb, and enter the value.",
+    "palm_breadth_mm": "Measure across your palm from the outer edge of your index knuckle to the outer edge of your little-finger knuckle (skin edge to skin edge) using a ruler or tape and enter the value.",
     "hand_length_mm": "Measure from the crease where your wrist meets your palm to the tip of your middle finger with a ruler or tape and enter it, or rescan holding your hand flat and still.",
 }
 
@@ -205,6 +205,10 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         explanation.append(
             f"Your {MEASUREMENT_NAMES.get(k, k)} is {_fmt(m.value)}, with an estimated uncertainty of ±{m.sigma:.1f} mm; "
             f"size {chart.sizes[i].label} covers {_range_text(chart, k, i)}."
+        )
+    if len(required) == 1 and required[0] == "hand_length_mm":
+        explanation.append(
+            "This product is sized by hand length only (wrist crease to middle fingertip). Other measurements are shown for reference but do not affect this glove's size."
         )
     if rules.combine == "largest_size" and len(set(idx)) > 1:
         explanation.append(

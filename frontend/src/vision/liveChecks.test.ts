@@ -34,6 +34,14 @@ describe("live capture checks", () => {
     expect(evaluateFrame(f, null, cap, cal).codes).toContain("fingers_bent");
   });
 
+  it("flags a bent index finger", () => {
+    const f = goodFrame();
+    f.landmarks[8].x += 60;
+    const r = evaluateFrame(f, null, cap, cal);
+    expect(r.codes).toContain("index_finger_bent");
+    expect(r.message).toMatch(/straighten your index finger/i);
+  });
+
   it("requires the coin and forwards coin quality reasons", () => {
     const f = goodFrame();
     f.coin = null;

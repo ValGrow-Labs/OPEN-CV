@@ -94,12 +94,13 @@ class ReferenceSelection(_Model):
         return self
 
 
-MANUAL_KEYS = ("hand_circumference_mm", "palm_breadth_mm")
+MANUAL_KEYS = ("hand_circumference_mm", "palm_breadth_mm", "hand_length_mm")
 
 
 class ManualMeasurements(_Model):
     hand_circumference_mm: float | None = Field(default=None, ge=100, le=400)
     palm_breadth_mm: float | None = Field(default=None, ge=50, le=150)
+    hand_length_mm: float | None = Field(default=None, ge=100, le=260)
 
 
 class CaptureContext(_Model):

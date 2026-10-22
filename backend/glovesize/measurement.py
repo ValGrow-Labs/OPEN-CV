@@ -100,10 +100,15 @@ def measure_frame(frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementC
     if frame.world_landmarks is not None:
         world = np.array([[p.x, p.y, p.z] for p in frame.world_landmarks], dtype=np.float64)
     bent: set[str] = set()
+    obscured: set[str] = set()
     for name, chain in LONG_FINGERS.items():
+        chain_pts = lm[list(chain)]
+        segs = np.linalg.norm(np.diff(chain_pts, axis=0), axis=1)
         b2 = chain_bend_deg(lm, chain)
         b3 = chain_bend_deg(world, chain) if world is not None else 0.0
-        if not (b2 <= cap.max_finger_bend_deg) or (world is not None and not (b3 <= cap.max_finger_bend_deg_3d)):
+        if np.isnan(b2) or np.any(segs < 3.0) or not inside_frame(chain_pts, w, h, cap.edge_margin_fraction):
+            obscured.add(name)
+        elif not (b2 <= cap.max_finger_bend_deg) or (world is not None and not (b3 <= cap.max_finger_bend_deg_3d)):
             bent.add(name)
     if "middle" in bent:
         codes.append("fingers_bent")
@@ -159,6 +164,9 @@ def measure_frame(frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementC
         mm = length_px / scale.px_per_mm
         finger = _chain_finger(d.landmarks)
         lo, hi = d.plausible_range_mm
+        if finger in obscured:
+            result.excluded[key] = "finger_obscured"
+            continue
         if finger in bent:
             result.excluded[key] = "finger_bent"
             continue
@@ -222,6 +230,7 @@ def aggregate_measurements(
     kept_values: dict[str, float] = {}
     kept_sigma: dict[str, float] = {}
 
+    min_feature_frames = min(min_frames, max(5, len(accepted) // 2))
     for key, d in cfg.measurements.items():
         idx = [i for i, r in enumerate(accepted) if key in r.values]
         base = dict(
@@ -233,7 +242,8 @@ def aggregate_measurements(
             calibrated=calibrated,
             source="camera_landmarks",
         )
-        if len(idx) < min_frames:
+        req_frames = min_frames if key == HAND_LENGTH else min_feature_frames
+        if len(idx) < req_frames:
             excl = Counter(r.excluded.get(key) for r in accepted if key in r.excluded)
             reason = excl.most_common(1)[0][0] if excl else "too_few_frames"
             out.append(MeasurementOut(**base, value_mm=None, uncertainty_mm=None, interval95_mm=None,
@@ -300,6 +310,29 @@ def aggregate_measurements(
         if show:
             kept_values[key] = value
             kept_sigma[key] = sigma
+
+    if manual and manual.hand_length_mm is not None:
+        v = float(manual.hand_length_mm)
+        s = cfg.uncertainty.manual_measurement_sd_mm
+        hl_entry = MeasurementOut(
+            key=HAND_LENGTH,
+            label=cfg.measurements[HAND_LENGTH].label,
+            value_mm=round(v, 1),
+            uncertainty_mm=s,
+            interval95_mm=(round(v - Z95 * s, 1), round(v + Z95 * s, 1)),
+            status="user_entered",
+            source="user_entered",
+            method="Entered by the customer (tape measure)",
+            definition=cfg.measurements[HAND_LENGTH].definition,
+            calibrated=False,
+            frames_used=0,
+            uncertainty_components_mm={},
+            reasons=[],
+        )
+        out = [m for m in out if m.key != HAND_LENGTH]
+        out.insert(0, hl_entry)
+        kept_values[HAND_LENGTH] = v
+        kept_sigma[HAND_LENGTH] = s
 
     out.extend(_derived_and_manual(calib, kept_values, kept_sigma, manual, cfg))
     if unstable:

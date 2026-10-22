@@ -23,8 +23,11 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
   // Tape measurements the customer can add: circumference whenever the product needs it (a
   // camera cannot measure it), hand length when the camera estimate cannot single out a size.
   const needed = result.recommendation?.needed_measurements ?? [];
-  const manualFields = (["hand_length_mm", "hand_circumference_mm"] as const).filter(
-    (k) => (k === "hand_circumference_mm" && chart.measurements.includes(k)) || (k === "hand_length_mm" && needed.includes(k)),
+  const manualFields = (["hand_length_mm", "hand_circumference_mm", "palm_breadth_mm"] as const).filter(
+    (k) =>
+      (k === "hand_circumference_mm" && chart.measurements.includes(k)) ||
+      (k === "palm_breadth_mm" && chart.measurements.includes(k)) ||
+      (k === "hand_length_mm" && needed.includes(k)),
   );
   const camera = result.measurements.filter((m) => m.source === "camera_landmarks" || m.source === "camera_model_estimate");
   const other = result.measurements.filter((m) => m.source !== "camera_landmarks" && m.source !== "camera_model_estimate");
@@ -245,7 +248,7 @@ function UncRow({ name, value }: { name: string; value: number }) {
   );
 }
 
-export type ManualEntries = { hand_circumference_mm?: number; hand_length_mm?: number };
+export type ManualEntries = { hand_circumference_mm?: number; hand_length_mm?: number; palm_breadth_mm?: number };
 
 const MANUAL_FIELDS = {
   hand_length_mm: {
@@ -259,6 +262,12 @@ const MANUAL_FIELDS = {
     how: "Wrap a soft tape measure around your palm at the knuckles, excluding the thumb. A camera cannot measure circumference.",
     range: [100, 400] as [number, number],
     placeholder: { in: "e.g. 8.5", mm: "e.g. 216" },
+  },
+  palm_breadth_mm: {
+    label: "Palm breadth (skin edge to skin edge)",
+    how: "Measure across your palm from the outer edge of your index knuckle to the outer edge of your little-finger knuckle using a ruler or tape measure.",
+    range: [50, 150] as [number, number],
+    placeholder: { in: "e.g. 3.3", mm: "e.g. 84" },
   },
 };
 
@@ -281,63 +290,99 @@ function ContinuePanel({
 }) {
   const [unit, setUnit] = useState<"in" | "mm">("in");
   const [text, setText] = useState<Record<string, string>>({});
+  const optionalFields = (["palm_breadth_mm", "hand_circumference_mm"] as const).filter((k) => !fields.includes(k));
+  const activeFields: (keyof typeof MANUAL_FIELDS)[] = Array.from(new Set([...fields, ...optionalFields]));
   const parsed = Object.fromEntries(
-    fields.map((k) => {
+    activeFields.map((k) => {
       const v = parseFloat(text[k] ?? "");
       const mm = Number.isFinite(v) ? (unit === "in" ? v * MM_PER_INCH : v) : NaN;
       const [lo, hi] = MANUAL_FIELDS[k].range;
       return [k, { mm, entered: (text[k] ?? "") !== "", valid: Number.isFinite(mm) && mm >= lo && mm <= hi }];
     }),
   ) as Record<string, { mm: number; entered: boolean; valid: boolean }>;
-  const anyInvalid = fields.some((k) => parsed[k].entered && !parsed[k].valid);
-  const manual: ManualEntries = Object.fromEntries(fields.filter((k) => parsed[k].valid).map((k) => [k, parsed[k].mm]));
+  const anyInvalid = activeFields.some((k) => parsed[k].entered && !parsed[k].valid);
+  const manual: ManualEntries = Object.fromEntries(activeFields.filter((k) => parsed[k].valid).map((k) => [k, parsed[k].mm]));
 
   return (
     <div className="card stack" data-reveal>
-      {fields.length > 0 && (
-        <div className="stack">
-          <h2>{fields.includes("hand_length_mm") ? "Add a tape measurement" : "Hand circumference"}</h2>
-          {fields.includes("hand_length_mm") && plausibleSizes.length > 1 && (
-            <p className="small">
-              From the camera alone, sizes {plausibleSizes.join(", ")} are all possible, so we won't pick one for you.
-              A ruler or tape measurement gives a reliable size.
-            </p>
-          )}
-          <div className="row" style={{ gap: 8 }}>
-            <span className="small muted">Units</span>
-            <select className="select" value={unit} onChange={(e) => setUnit(e.target.value as "in" | "mm")} aria-label="Unit">
-              <option value="in">inches</option>
-              <option value="mm">mm</option>
-            </select>
-          </div>
-          {fields.map((k) => {
-            const f = MANUAL_FIELDS[k];
-            const [lo, hi] = f.range;
-            return (
-              <div key={k} className="field">
-                <label htmlFor={`manual-${k}`}>{f.label}</label>
-                <p className="small muted">{f.how}</p>
-                <input
-                  id={`manual-${k}`}
-                  className="input num"
-                  inputMode="decimal"
-                  placeholder={f.placeholder[unit]}
-                  value={text[k] ?? ""}
-                  onChange={(e) => setText({ ...text, [k]: e.target.value })}
-                  aria-invalid={parsed[k].entered && !parsed[k].valid}
-                  style={{ maxWidth: 180 }}
-                />
-                {parsed[k].entered && !parsed[k].valid && (
-                  <p className="small" style={{ color: "var(--bad)" }}>
-                    Enter a value between {(lo / MM_PER_INCH).toFixed(1)} and {(hi / MM_PER_INCH).toFixed(1)} in ({lo}-{hi} mm).
-                  </p>
-                )}
-              </div>
-            );
-          })}
-          <p className="small muted">Entered values are assumed accurate to about ±{manualSd.toFixed(0)} mm.</p>
+      <div className="stack">
+        {fields.length > 0 && (
+          <>
+            <h2>{fields.includes("hand_length_mm") ? "Add a tape measurement" : "Hand circumference"}</h2>
+            {fields.includes("hand_length_mm") && plausibleSizes.length > 1 && (
+              <p className="small">
+                From the camera alone, sizes {plausibleSizes.join(", ")} are all possible, so we won't pick one for you.
+                A ruler or tape measurement gives a reliable size.
+              </p>
+            )}
+          </>
+        )}
+        <div className="row" style={{ gap: 8 }}>
+          <span className="small muted">Units</span>
+          <select className="select" value={unit} onChange={(e) => setUnit(e.target.value as "in" | "mm")} aria-label="Unit">
+            <option value="in">inches</option>
+            <option value="mm">mm</option>
+          </select>
         </div>
-      )}
+        {fields.map((k) => {
+          const f = MANUAL_FIELDS[k];
+          const [lo, hi] = f.range;
+          return (
+            <div key={k} className="field">
+              <label htmlFor={`manual-${k}`}>{f.label}</label>
+              <p className="small muted">{f.how}</p>
+              <input
+                id={`manual-${k}`}
+                className="input num"
+                inputMode="decimal"
+                placeholder={f.placeholder[unit]}
+                value={text[k] ?? ""}
+                onChange={(e) => setText({ ...text, [k]: e.target.value })}
+                aria-invalid={parsed[k].entered && !parsed[k].valid}
+                style={{ maxWidth: 180 }}
+              />
+              {parsed[k].entered && !parsed[k].valid && (
+                <p className="small" style={{ color: "var(--bad)" }}>
+                  Enter a value between {(lo / MM_PER_INCH).toFixed(1)} and {(hi / MM_PER_INCH).toFixed(1)} in ({lo}-{hi} mm).
+                </p>
+              )}
+            </div>
+          );
+        })}
+        {optionalFields.length > 0 && (
+          <details className="disclosure" style={{ marginTop: fields.length > 0 ? 12 : 0, marginBottom: 8 }}>
+            <summary>Add optional tape measurements (palm breadth, circumference)</summary>
+            <div className="stack" style={{ gap: 12, marginTop: 8 }}>
+              {optionalFields.map((k) => {
+                const f = MANUAL_FIELDS[k];
+                const [lo, hi] = f.range;
+                return (
+                  <div key={k} className="field">
+                    <label htmlFor={`manual-${k}`}>{f.label}</label>
+                    <p className="small muted">{f.how}</p>
+                    <input
+                      id={`manual-${k}`}
+                      className="input num"
+                      inputMode="decimal"
+                      placeholder={f.placeholder[unit]}
+                      value={text[k] ?? ""}
+                      onChange={(e) => setText({ ...text, [k]: e.target.value })}
+                      aria-invalid={parsed[k].entered && !parsed[k].valid}
+                      style={{ maxWidth: 180 }}
+                    />
+                    {parsed[k].entered && !parsed[k].valid && (
+                      <p className="small" style={{ color: "var(--bad)" }}>
+                        Enter a value between {(lo / MM_PER_INCH).toFixed(1)} and {(hi / MM_PER_INCH).toFixed(1)} in ({lo}-{hi} mm).
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        )}
+        <p className="small muted">Entered values are assumed accurate to about ±{manualSd.toFixed(0)} mm.</p>
+      </div>
       {error && (
         <div className="notice notice-error" role="alert">
           {error}
