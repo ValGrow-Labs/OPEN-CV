@@ -26,7 +26,7 @@ export class ApiError extends Error {
 
 /** `fieldErrors`: show the server's field-level validation messages (operator screens only;
  *  customers get a generic message). */
-async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 20000, fieldErrors = false): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 25000, fieldErrors = false): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
@@ -38,12 +38,20 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 2000
     });
   } catch (err) {
     const aborted = (err as { name?: string }).name === "AbortError";
-    throw new ApiError(aborted ? "The server took too long to respond." : "Could not reach the sizing service.", null);
+    throw new ApiError(
+      aborted
+        ? "The server took too long to respond. The sizing service may be starting up—please retry."
+        : "Could not reach the sizing service. Please check your network connection.",
+      null,
+    );
   } finally {
     clearTimeout(timer);
   }
   if (!res.ok) {
     let detail = `Request failed (${res.status}).`;
+    if (res.status === 504 || res.status === 502) {
+      detail = "The sizing service is taking longer than usual to start up. Please retry in a few seconds.";
+    }
     try {
       const body = await res.json();
       if (typeof body?.detail === "string") detail = body.detail;
@@ -57,10 +65,19 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 2000
   return (await res.json()) as T;
 }
 
-export const fetchConfig = () => request<PublicConfig>("/api/config");
+/** Pre-warm the backend (e.g. Render spin-up) in the background while the user reads guides or positions their hand. */
+export function warmupService(): void {
+  try {
+    void fetch("/api/health", { method: "GET" }).catch(() => {});
+  } catch {
+    /* ignore pre-warm errors */
+  }
+}
+
+export const fetchConfig = () => request<PublicConfig>("/api/config", {}, 25000);
 
 export const submitScan = (body: ScanRequest) =>
-  request<ScanResponse>("/api/scan", { method: "POST", body: JSON.stringify(body) }, 30000);
+  request<ScanResponse>("/api/scan", { method: "POST", body: JSON.stringify(body) }, 45000);
 
 export const fetchRecommendation = (
   chartId: string,

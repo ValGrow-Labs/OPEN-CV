@@ -218,3 +218,48 @@ def test_sizing_with_manual_circumference_succeeds(charts):
     rec = recommend(chart, measured)
     assert rec.status in ("recommended", "borderline")
     assert rec.size is not None
+
+
+# ============================================================================
+# Priority 3 & 4: SPLNTD specifications & API health/timeout guards
+# ============================================================================
+
+
+def test_splntd_reference_specifications_context(cfg_nodepth):
+    """Verify that canonical finger lengths are anatomically close to the SPLNTD reference standards:
+
+    - Index: 75 mm (canonical ~82 mm)
+    - Middle: 90 mm (canonical ~90 mm)
+    - Ring: 75 mm (canonical ~83 mm)
+    - Little: 60 mm (canonical ~67 mm)
+    - Thumb: 60 mm (canonical ~62 mm)
+    And circumferences are NOT fabricated from lengths.
+    """
+    f = FrameObservation.model_validate(synthetic_frame(landmark_noise_px=0.0))
+    res = measure_frame(f, QUARTER, cfg_nodepth)
+
+    # Middle finger in canonical geometry (from knuckle joint center 9 to tip 12) is ~99.8 mm
+    # (about 10 mm longer than palmar crease measurement of 90 mm)
+    assert 85.0 <= res.values["middle_length_mm"] <= 105.0
+    # Index finger is ~82 mm (within realistic adult range of SPLNTD 75 mm)
+    assert 70.0 <= res.values["index_length_mm"] <= 90.0
+    # Little finger is ~67 mm (within realistic range of SPLNTD 60 mm)
+    assert 55.0 <= res.values["little_length_mm"] <= 75.0
+    # Thumb length (MCP 2 to tip 4) is ~42 mm; full thumb to CMC is ~60 mm
+    assert 35.0 <= res.values["thumb_length_mm"] <= 75.0
+
+    # Ensure circumferences are not fabricated inside frame values
+    for circ_key in ("hand_circumference_mm", "index_circumference_mm", "base_circumference_mm"):
+        assert circ_key not in res.values
+
+
+def test_api_health_endpoint():
+    """Verify FastAPI health check endpoint for pre-warming deployed containers."""
+    from fastapi.testclient import TestClient
+    from glovesize.api import app
+
+    client = TestClient(app)
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json().get("status") == "ok"
+

@@ -3,7 +3,7 @@
 import type { FrameObservation, Point, PublicConfig } from "../api/types";
 import { describeCameraError, openCamera, stopStream, type CameraErrorInfo, type Facing } from "../camera/camera";
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
-import { clear, COLORS, drawCoin, drawRoi, drawSkeleton } from "../vision/draw";
+import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness } from "../vision/frameAnalysis";
 import { dist, insideFrame, MIDDLE_TIP, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandTracker } from "../vision/handTracker";
@@ -383,7 +383,9 @@ export class ScanController {
     clear(ctx);
     if (hand && smoothed) {
       if (roi) drawRoi(ctx, roi, scale);
-      drawSkeleton(ctx, smoothed, live.ok ? COLORS.good : COLORS.neutral, scale);
+      const color = live.ok ? COLORS.good : COLORS.neutral;
+      drawHandOutline(ctx, smoothed, color, scale, live.ok ? 1.0 : 0.6);
+      drawSkeleton(ctx, smoothed, color, scale);
     } else {
       this.smoother.reset();
       this.trackedCoin = null;

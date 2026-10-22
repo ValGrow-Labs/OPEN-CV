@@ -42,6 +42,19 @@ describe("live capture checks", () => {
     expect(r.message).toMatch(/straighten your index finger/i);
   });
 
+  it("flags touching or overlapping fingers", () => {
+    const f = goodFrame();
+    const dx = f.landmarks[12].x - f.landmarks[8].x;
+    const dy = f.landmarks[12].y - f.landmarks[8].y;
+    for (const idx of [5, 6, 7, 8]) {
+      f.landmarks[idx].x += dx * 0.9;
+      f.landmarks[idx].y += dy * 0.9;
+    }
+    const r = evaluateFrame(f, null, cap, cal);
+    expect(r.codes).toContain("fingers_touching");
+    expect(r.message).toMatch(/spread your fingers slightly/i);
+  });
+
   it("requires the coin and forwards coin quality reasons", () => {
     const f = goodFrame();
     f.coin = null;

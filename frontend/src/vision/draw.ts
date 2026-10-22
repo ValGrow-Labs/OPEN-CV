@@ -1,8 +1,6 @@
-// Canvas overlay drawing (landmark skeleton, coin outline, search window).
-// The overlay canvas has the video's intrinsic size, so everything is drawn in raw image
-// pixels; mirroring for the selfie camera is applied with CSS to video and canvas alike.
 import type { CoinObservation, Point } from "../api/types";
 import { HAND_CONNECTIONS } from "./geometry";
+import { computeHandOutline, drawSmoothContour } from "./handOutline";
 
 export const COLORS = {
   good: "#3ddc97",
@@ -14,6 +12,21 @@ export const COLORS = {
 
 export function clear(ctx: CanvasRenderingContext2D): void {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
+export function drawHandOutline(
+  ctx: CanvasRenderingContext2D,
+  pts: Point[],
+  color: string,
+  scale: number,
+  quality = 1.0,
+): void {
+  const { contour } = computeHandOutline(pts);
+  if (contour.length < 3) return;
+  const isGood = color === COLORS.good && quality >= 0.7;
+  const strokeColor = isGood ? COLORS.good : COLORS.warn;
+  const fillColor = isGood ? "rgba(61, 220, 151, 0.09)" : "rgba(255, 176, 32, 0.08)";
+  drawSmoothContour(ctx, contour, strokeColor, fillColor, 2.5 * scale);
 }
 
 export function drawSkeleton(ctx: CanvasRenderingContext2D, pts: Point[], color: string, scale: number): void {

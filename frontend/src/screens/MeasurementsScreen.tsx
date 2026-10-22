@@ -381,6 +381,21 @@ function ContinuePanel({
             </div>
           </details>
         )}
+        <details className="disclosure" style={{ marginTop: 8, marginBottom: 8 }}>
+          <summary>SPLNTD benchmark reference specifications</summary>
+          <div className="stack small muted" style={{ gap: 6, marginTop: 8 }}>
+            <p>
+              Reference benchmarks (SPLNTD standard specifications in mm). 3D circumferences require a flexible tape measure:
+            </p>
+            <ul className="bullets">
+              <li><strong>Index:</strong> 75 mm length · 70 mm base circ · 55 mm tip circ</li>
+              <li><strong>Middle:</strong> 90 mm length · 75 mm base circ · 55 mm tip circ</li>
+              <li><strong>Ring:</strong> 75 mm length · 70 mm base circ · 50 mm tip circ</li>
+              <li><strong>Pinky:</strong> 60 mm length · 65 mm base circ · 45 mm tip circ</li>
+              <li><strong>Thumb:</strong> 60 mm length · 75 mm base circ · 70 mm knuckle circ · 65 mm tip circ</li>
+            </ul>
+          </div>
+        </details>
         <p className="small muted">Entered values are assumed accurate to about ±{manualSd.toFixed(0)} mm.</p>
       </div>
       {error && (

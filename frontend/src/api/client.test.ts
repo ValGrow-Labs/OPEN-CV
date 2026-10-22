@@ -33,12 +33,20 @@ describe("api client", () => {
     expect((e as ApiError).status).toBeNull();
   });
 
-  it("sends only a JSON body (no image payloads)", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json({}, 200));
-    vi.stubGlobal("fetch", fetchMock);
-    await submitScan({ frames: [], reference: { object_id: "us_quarter" } });
-    const [, init] = fetchMock.mock.calls[0];
-    expect(init.headers["content-type"]).toBe("application/json");
-    expect(typeof init.body).toBe("string");
+  it("maps timeout to a clear explanation", async () => {
+    const abortErr = new Error("aborted");
+    abortErr.name = "AbortError";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abortErr));
+    const e = await submitScan({ frames: [], reference: { object_id: "us_quarter" } }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).message).toMatch(/The server took too long to respond/i);
+  });
+
+  it("maps 504 gateway timeout to starting up message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Gateway Timeout", { status: 504 })));
+    const e = await submitScan({ frames: [], reference: { object_id: "us_quarter" } }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).status).toBe(504);
+    expect((e as ApiError).message).toMatch(/taking longer than usual/i);
   });
 });

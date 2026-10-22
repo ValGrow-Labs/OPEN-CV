@@ -2,6 +2,7 @@ import { CameraRotate, HandPalm, Question, X } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import type { CoinObservation, Point } from "../api/types";
 import { HAND_CONNECTIONS } from "../vision/geometry";
+import { computeHandOutline, outlineSvgPath } from "../vision/handOutline";
 import type { Tone } from "./format";
 
 export function Badge({ tone, children }: { tone: Tone | "demo"; children: ReactNode }) {
@@ -67,9 +68,21 @@ export function HandDiagram({
       </g>
     );
   };
+  const outline = computeHandOutline(landmarks).contour;
+
   return (
     <svg className="diagram" viewBox={vb} role="img" aria-label="Diagram of the detected hand landmarks and measurement lines">
       <g transform={mirrored ? `translate(${minX + maxX} 0) scale(-1 1)` : undefined}>
+        {outline.length > 2 && (
+          <path
+            d={outlineSvgPath(outline)}
+            fill="rgba(61, 220, 151, 0.08)"
+            stroke="#3ddc97"
+            strokeWidth={2.5 * s}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
         {coin && (
           // The pop animation lives on the group: CSS transform-origin would also shift the
           // ellipse's own rotate() attribute.

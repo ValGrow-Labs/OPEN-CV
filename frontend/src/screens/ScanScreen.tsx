@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, submitScan } from "../api/client";
+import { ApiError, submitScan, warmupService } from "../api/client";
 import type { FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
 import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
@@ -37,7 +37,11 @@ export function ScanScreen<R = ScanResponse>({
 }: Props<R>) {
   const videoRef = useRef<HTMLVideoElement>(null);
   // Load the measuring tools now, while the coin question and the guide are on screen.
-  useEffect(() => preloadScanTools("scan"), []);
+  // Also pre-warm the sizing service in the background so cold cloud instances boot up early.
+  useEffect(() => {
+    preloadScanTools("scan");
+    warmupService();
+  }, []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<ScanController | null>(null);
   const [status, setStatus] = useState<ScanStatus | null>(null);
@@ -155,6 +159,16 @@ export function ScanScreen<R = ScanResponse>({
     return () => clearInterval(timer);
   }, [phase]);
 
+  const [submittingSec, setSubmittingSec] = useState(0);
+  useEffect(() => {
+    if (!submitting) {
+      setSubmittingSec(0);
+      return;
+    }
+    const timer = setInterval(() => setSubmittingSec((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [submitting]);
+
   const liveCodes = status?.live?.codes ?? [];
   const handSeen = status?.live ? !liveCodes.includes("no_hand") : false;
   const stage = phase === "complete" ? 3 : liveStage(liveCodes);
@@ -230,9 +244,20 @@ export function ScanScreen<R = ScanResponse>({
         {(submitting || submitError) && (
           <div className="stage-message" style={{ background: "rgba(14,16,19,0.7)" }}>
             {submitting ? (
-              <div className="stack" style={{ alignItems: "center" }}>
+              <div className="stack" style={{ alignItems: "center", maxWidth: 320, textAlign: "center" }}>
                 <div className="spinner" />
-                <p>Calculating your measurements…</p>
+                <p>
+                  {submittingSec > 15
+                    ? "Processing hand measurements… almost ready"
+                    : submittingSec > 5
+                    ? "Connecting to sizing service (waking server if idle)…"
+                    : "Calculating your measurements…"}
+                </p>
+                {submittingSec > 8 && (
+                  <span className="small muted" style={{ opacity: 0.75 }}>
+                    Elapsed: {submittingSec}s
+                  </span>
+                )}
               </div>
             ) : (
               <div className="stage-card" role="alert">
@@ -240,11 +265,11 @@ export function ScanScreen<R = ScanResponse>({
                 <p style={{ opacity: 0.85 }}>{submitError}</p>
                 <div className="row" style={{ justifyContent: "center" }}>
                   {pendingFrames && (
-                    <button className="btn btn-primary" onClick={() => void send(pendingFrames)}>
+                    <button className="btn btn-primary" onClick={() => void send(pendingFrames)} disabled={submitting}>
                       Retry
                     </button>
                   )}
-                  <button className="btn" onClick={start}>
+                  <button className="btn" onClick={start} disabled={submitting}>
                     Rescan
                   </button>
                 </div>

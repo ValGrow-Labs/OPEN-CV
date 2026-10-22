@@ -20,6 +20,7 @@ export type LiveCode =
   | "hand_too_small"
   | "fingers_bent"
   | "index_finger_bent"
+  | "fingers_touching"
   | "palm_not_flat"
   | "too_dark"
   | "too_bright"
@@ -44,6 +45,7 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   hand_too_small: "Bring your hand closer to the camera",
   fingers_bent: "Straighten your fingers",
   index_finger_bent: "Straighten your index finger",
+  fingers_touching: "Spread your fingers slightly",
   palm_not_flat: "Hold your palm flat, facing the camera",
   too_dark: "It's too dark. Move to brighter light",
   too_bright: "Too bright. Avoid direct light behind the camera",
@@ -130,6 +132,18 @@ export function evaluateFrame(
   } else if (middleBent) {
     codes.push("fingers_bent");
   }
+
+  // Finger separation check: adjacent fingertips must have clearance
+  const handLen = dist(lm[WRIST], lm[MIDDLE_TIP]);
+  const minFingerGap = handLen * 0.055;
+  const tips = [4, 8, 12, 16, 20];
+  for (let i = 1; i < tips.length - 1; i++) {
+    if (dist(lm[tips[i]], lm[tips[i + 1]]) < minFingerGap) {
+      codes.push("fingers_touching");
+      break;
+    }
+  }
+
   if (frame.world_landmarks && palmTiltDeg(frame.world_landmarks) > capture.max_palm_tilt_deg_model) codes.push("palm_not_flat");
   if (frame.brightness !== null) {
     if (frame.brightness < capture.brightness_range[0]) codes.push("too_dark");
