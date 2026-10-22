@@ -43,6 +43,39 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
         </p>
       </header>
 
+      {result.recommendation?.size && (
+        <div
+          className="card row"
+          style={{
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 16,
+            background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(249, 115, 22, 0.08))",
+            border: "1px solid var(--accent, #ea580c)",
+            padding: "16px 20px",
+          }}
+        >
+          <div className="stack" style={{ gap: 4 }}>
+            <span className="eyebrow" style={{ color: "var(--accent)" }}>Estimated Glove Size</span>
+            <div className="row" style={{ alignItems: "baseline", gap: 12 }}>
+              <span style={{ fontSize: "2.4rem", fontWeight: 800, color: "var(--ink)" }}>{result.recommendation.size}</span>
+              {result.recommendation.confidence_level && (
+                <Badge tone={result.recommendation.confidence_level === "clear" ? "good" : "warn"}>
+                  {result.recommendation.confidence_level.toUpperCase()}
+                </Badge>
+              )}
+              {result.recommendation.alternative_size && (
+                <span className="small muted">or consider {result.recommendation.alternative_size}</span>
+              )}
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={() => onContinue({})}>
+            View Glove Size Details →
+          </button>
+        </div>
+      )}
+
       {result.uncertainty_basis !== "validated" && (
         <div className="notice notice-info small" role="note">
           Uncertainty values are model-based estimates. This system has not yet been validated against tape-measured
@@ -419,6 +452,7 @@ function ContinuePanel({
 function Rejected({ result, onRescan }: { result: ScanResponse; onRescan: () => void }) {
   const errors = result.issues.filter((i) => i.severity === "error");
   const unique = errors.filter((e, i) => errors.findIndex((x) => x.message === e.message) === i);
+  const allReceivedPassed = result.frames_received > 0 && result.frames_accepted === result.frames_received;
   return (
     <main className="page stack" style={{ gap: 24, maxWidth: 720 }}>
       <header className="stack" style={{ gap: 8 }}>
@@ -430,15 +464,24 @@ function Rejected({ result, onRescan }: { result: ScanResponse; onRescan: () => 
       </header>
       <div className="card stack">
         <ul className="bullets">
-          {unique.map((e) => (
-            <li key={e.code}>
-              {e.message}
-              {e.frames_affected ? <span className="muted small"> ({e.frames_affected} frames)</span> : null}
-            </li>
-          ))}
+          {unique.map((e) => {
+            if (e.code === "insufficient_frames" && allReceivedPassed) {
+              return (
+                <li key={e.code}>
+                  All {result.frames_accepted} captured frames passed quality checks, but a minimum of 8 stable frames is required to calculate accurate measurements. Please hold your hand steady a moment longer while scanning.
+                </li>
+              );
+            }
+            return (
+              <li key={e.code}>
+                {e.message}
+                {e.frames_affected ? <span className="muted small"> ({e.frames_affected} frames)</span> : null}
+              </li>
+            );
+          })}
         </ul>
         <p className="small muted">
-          {result.frames_accepted} of {result.frames_received} frames passed all checks.
+          {result.frames_accepted} of {result.frames_received} frames passed all checks{allReceivedPassed ? " (minimum 8 required)" : ""}.
         </p>
       </div>
       <div className="row">

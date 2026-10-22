@@ -36,12 +36,23 @@ HOW_TO_MEASURE = {
 }
 
 
+REASON_DESCRIPTIONS = {
+    "finger_bent": "the finger was not straight enough during scan",
+    "too_few_frames": "too few stable frames captured this landmark",
+    "out_of_plane": "the finger rotated out of the camera plane",
+    "uncertainty_too_large": "measurement uncertainty is too large",
+    "implausible_value": "measurement is outside the expected human range",
+    "requires_validated_model_or_manual_entry": "requires a manual tape measurement or validated model",
+}
+
+
 @dataclass(frozen=True)
 class MeasuredValue:
     key: str
     value: float
     sigma: float
     status: str
+    reasons: tuple[str, ...] = ()
 
 
 def _fmt(v: float) -> str:
@@ -107,14 +118,23 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         basis=[MEASUREMENT_NAMES.get(k, k) for k in required],
     )
     if missing:
+        missing_expl = [f"This product is sized by {', '.join(MEASUREMENT_NAMES.get(k, k) for k in required)}."]
+        for k in missing:
+            m = measured.get(k)
+            if m and m.status == "invalid" and m.reasons:
+                reasons_text = ", ".join(REASON_DESCRIPTIONS.get(r, r) for r in m.reasons)
+                missing_expl.append(
+                    f"Your camera {MEASUREMENT_NAMES.get(k, k)} could not be measured reliably ({reasons_text})."
+                )
+            missing_expl.append(HOW_TO_MEASURE.get(k, f"A reliable {MEASUREMENT_NAMES.get(k, k)} measurement is needed."))
+
         return RecommendationOut(
             **common,
             status="needs_more_data",
             size=None,
             alternative_size=None,
             confidence_level=None,
-            explanation=[f"This product is sized by {', '.join(MEASUREMENT_NAMES.get(k, k) for k in required)}."]
-            + [HOW_TO_MEASURE.get(k, f"A reliable {k} measurement is needed.") for k in missing],
+            explanation=missing_expl,
             needed_measurements=missing,
             by_measurement=[],
         )

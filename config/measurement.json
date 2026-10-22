@@ -67,7 +67,7 @@
   },
   "capture": {
     "frames_target": 24,
-    "frames_min_accepted": 12,
+    "frames_min_accepted": 8,
     "max_frames_per_request": 120,
     "min_hand_length_fraction": 0.3,
     "edge_margin_fraction": 0.02,

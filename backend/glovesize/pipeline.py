@@ -61,9 +61,8 @@ def get_chart(chart_id: str | None):
 def recommendation_from(measurements: list[MeasurementOut], chart_id: str | None) -> RecommendationOut:
     chart = get_chart(chart_id)
     measured = {
-        m.key: MeasuredValue(m.key, m.value_mm, m.uncertainty_mm or 0.0, m.status)
+        m.key: MeasuredValue(m.key, m.value_mm or 0.0, m.uncertainty_mm or 0.0, m.status, tuple(m.reasons))
         for m in measurements
-        if m.value_mm is not None
     }
     return recommend(chart, measured)
 
@@ -115,7 +114,15 @@ def process_scan(req: ScanRequest) -> ScanResponse:
         counts.most_common(3),
     )
 
-    if len(accepted_idx) < cfg.capture.frames_min_accepted:
+    min_required = (
+        8
+        if (req.capture and req.capture.device_class == "mobile")
+        else min(cfg.capture.frames_min_accepted, 8)
+        if len(req.frames) <= 16
+        else cfg.capture.frames_min_accepted
+    )
+
+    if len(accepted_idx) < min_required:
         issues = [_issue("insufficient_frames")] + [_issue(c, n) for c, n in counts.most_common(3)]
         return rejected(issues, dict(counts), len(accepted_idx))
 

@@ -222,7 +222,8 @@ def aggregate_measurements(
     manual: ManualMeasurements | None,
 ) -> AggregateOutput:
     accepted = [r for r in results if r.accepted]
-    unc, min_frames = cfg.uncertainty, cfg.capture.frames_min_accepted
+    unc = cfg.uncertainty
+    min_frames = min(cfg.capture.frames_min_accepted, len(accepted))
     calibrated = calib.status == "calibrated"
     out: list[MeasurementOut] = []
     issue_codes: list[str] = []
@@ -230,7 +231,7 @@ def aggregate_measurements(
     kept_values: dict[str, float] = {}
     kept_sigma: dict[str, float] = {}
 
-    min_feature_frames = min(min_frames, max(5, len(accepted) // 2))
+    min_feature_frames = min(min_frames, max(4, len(accepted) // 2))
     for key, d in cfg.measurements.items():
         idx = [i for i, r in enumerate(accepted) if key in r.values]
         base = dict(
