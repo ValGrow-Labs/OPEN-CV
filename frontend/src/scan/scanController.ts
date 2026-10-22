@@ -6,7 +6,7 @@ import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDe
 import { clear, COLORS, drawCoin, drawRoi, drawSkeleton } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness } from "../vision/frameAnalysis";
 import { dist, insideFrame, MIDDLE_TIP, WRIST } from "../vision/geometry";
-import { actualHandedness, getHandTracker, type HandTracker } from "../vision/handTracker";
+import { actualHandedness, getHandTracker, type DrawnFrame, type HandTracker } from "../vision/handTracker";
 import { evaluateFrame, type LiveResult } from "../vision/liveChecks";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
@@ -242,14 +242,15 @@ export class ScanController {
     return { ctx, w, h, scale: Math.max(1, Math.min(w, h) / 540) };
   }
 
-  private grab(roi: { x: number; y: number; w: number; h: number }): RgbaImage {
+  private grab(roi: { x: number; y: number; w: number; h: number }, frame: DrawnFrame | null): RgbaImage {
     const c = this.roiCanvas;
     if (c.width !== roi.w || c.height !== roi.h) {
       c.width = roi.w;
       c.height = roi.h;
     }
     const ctx = c.getContext("2d", { willReadFrequently: true })!;
-    ctx.drawImage(this.video, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
+    if (frame) ctx.drawImage(frame.canvas, frame.ox + roi.x * frame.k, frame.oy + roi.y * frame.k, roi.w * frame.k, roi.h * frame.k, 0, 0, roi.w, roi.h);
+    else ctx.drawImage(this.video, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
     const img = ctx.getImageData(0, 0, roi.w, roi.h);
     return { data: img.data, width: roi.w, height: roi.h };
   }
@@ -261,9 +262,13 @@ export class ScanController {
     return (1000 * (this.frameTimes.length - 1)) / (now - this.frameTimes[0]);
   }
 
-  private detectInRoi(roi: { x: number; y: number; w: number; h: number }, range: [number, number] | null) {
+  private detectInRoi(
+    roi: { x: number; y: number; w: number; h: number },
+    range: [number, number] | null,
+    frame: DrawnFrame | null = null,
+  ) {
     if (roi.w < 16 || roi.h < 16 || !this.cv) return { coin: null, brightness: null };
-    const image = this.grab(roi);
+    const image = this.grab(roi, frame);
     const p = this.config.coin_detection;
     let coin: CoinDetection | null = null;
     const seed = this.opts.mode === "scan" ? this.trackedCoin : null;
@@ -309,7 +314,7 @@ export class ScanController {
       if (inFrame && minSize) {
         const win = coinSearchWindow(hand.landmarks, w, h, this.config.coin_detection);
         roi = win.roi;
-        const r = this.detectInRoi(win.roi, win.diameterRange);
+        const r = this.detectInRoi(win.roi, win.diameterRange, this.tracker.lastFrame());
         this.timing.coinMs = 0.8 * this.timing.coinMs + 0.2 * (performance.now() - tHand);
         coin = r.coin;
         brightness = r.brightness;

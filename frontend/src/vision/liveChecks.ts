@@ -39,7 +39,7 @@ export type LiveCode =
 
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
   no_hand: "Show your open palm to the camera",
-  hand_out_of_frame: "Move your whole hand inside the frame",
+  hand_out_of_frame: "Hand touches the edge. Move the phone further back",
   hand_too_small: "Bring your hand closer to the camera",
   fingers_bent: "Straighten your fingers",
   palm_not_flat: "Hold your palm flat, facing the camera",

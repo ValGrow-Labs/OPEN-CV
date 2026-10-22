@@ -12,6 +12,14 @@ export const HAND_MODEL_PATH = "/models/hand_landmarker.task";
 // landmarks are mapped back.
 const MAX_SQUARE_PX = 1280;
 
+/** A video frame as drawn on a canvas: frame pixel (x, y) is at (ox + x * k, oy + y * k). */
+export interface DrawnFrame {
+  canvas: HTMLCanvasElement;
+  ox: number;
+  oy: number;
+  k: number;
+}
+
 export interface HandFrame {
   landmarks: Point[]; // image pixels; z is MediaPipe's relative depth scaled by image width
   world: Point[] | null; // metres, model estimate
@@ -73,6 +81,14 @@ export class HandTracker {
   }
 
   private square: HTMLCanvasElement | null = null;
+  private drawn: DrawnFrame | null = null;
+
+  /** The picture most recently given to detect(), exactly as the hand was found in it. The coin
+   *  is cut from this too, so the hand and the coin always come from one frame and one mapping
+   *  (cutting it from the live video element could be offset from the landmarks on a phone). */
+  lastFrame(): DrawnFrame | null {
+    return this.drawn;
+  }
 
   detect(video: HTMLVideoElement, timestampMs: number): HandFrame | null {
     const w = video.videoWidth;
@@ -92,6 +108,7 @@ export class HandTracker {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, side, side);
     ctx.drawImage(video, ox, oy, w * k, h * k);
+    this.drawn = { canvas: c, ox, oy, k };
     const r = this.landmarker.detectForVideo(c, timestampMs);
     if (!r.landmarks.length) return null;
     const cat = r.handedness[0]?.[0];
