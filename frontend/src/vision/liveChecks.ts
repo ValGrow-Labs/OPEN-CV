@@ -41,7 +41,7 @@ export type LiveCode =
 
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
   no_hand: "Show your open palm to the camera",
-  hand_out_of_frame: "Move your hand into the guide",
+  hand_out_of_frame: "Hand touches the edge. Move the phone further back",
   hand_too_small: "Bring your hand closer to the camera",
   fingers_bent: "Straighten your fingers",
   index_finger_bent: "Straighten your index finger",
@@ -57,7 +57,7 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   coin_occluded: "Make sure the whole coin is visible",
   coin_blurry: "Hold still, the image is blurry",
   coin_glare: "Glare on the coin. Tilt away from the light",
-  coin_low_contrast: "Use brighter, even lighting",
+  coin_low_contrast: "Coin hard to see. Use soft, even light, no glare",
   coin_irregular_boundary: "Use a single coin lying flat",
   coin_low_confidence: "Hold still so the coin can be measured",
   coin_ambiguous: "Use one coin only and keep other round objects out of view",

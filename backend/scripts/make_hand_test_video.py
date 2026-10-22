@@ -49,6 +49,7 @@ def main() -> None:
     ap.add_argument("out", type=Path, help="output path without extension")
     ap.add_argument("--config-dir", type=Path, help="config directory to use for the Python cross-check")
     ap.add_argument("--frames", type=int, default=40)
+    ap.add_argument("--portrait", action="store_true", help="720 x 1280 frames, as from a phone held upright")
     args = ap.parse_args()
     if args.config_dir:
         os.environ["GLOVESIZE_CONFIG_DIR"] = str(args.config_dir.resolve())
@@ -66,11 +67,12 @@ def main() -> None:
     if not src.exists():
         urllib.request.urlretrieve(SOURCE_URL, src)  # noqa: S310 - fixed https URL
     photo = cv2.imread(str(src))
+    width, height = (HEIGHT, WIDTH) if args.portrait else (WIDTH, HEIGHT)
     hand = photo[:, 360:]  # the right-hand half: an open hand with straight fingers
-    scale = 600 / hand.shape[0]
+    scale = min(600 / hand.shape[0], 0.9 * width / hand.shape[1])
     hand = cv2.resize(hand, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-    canvas = np.full((HEIGHT, WIDTH, 3), 255, np.uint8)
-    x0, y0 = (WIDTH - hand.shape[1]) // 2, 20
+    canvas = np.full((height, width, 3), 255, np.uint8)
+    x0, y0 = (width - hand.shape[1]) // 2, (height - hand.shape[0]) // 3 if args.portrait else 20
     canvas[y0 : y0 + hand.shape[0], x0 : x0 + hand.shape[1]] = hand
     # Extend the wrist downwards so the wrist landmark is not at the frame edge.
     canvas[y0 + hand.shape[0] :, x0 : x0 + hand.shape[1]] = hand[-1:, :, :]
@@ -91,7 +93,7 @@ def main() -> None:
         for i in range(args.frames):
             dx, dy = rng.uniform(-0.6, 0.6, 2)
             m = np.float32([[1, 0, dx], [0, 1, dy]])
-            f = cv2.warpAffine(base, m, (WIDTH, HEIGHT), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            f = cv2.warpAffine(base, m, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
             f = np.clip(f + rng.normal(0, 1.5, f.shape), 0, 255).astype(np.uint8)
             frames.append(f)
             d = tracker.detect(f)

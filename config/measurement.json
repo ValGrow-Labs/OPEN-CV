@@ -31,7 +31,7 @@
       "max_fit_residual_rel": 0.03,
       "max_edge_width_px": 4.5,
       "max_glare_fraction": 0.2,
-      "min_contrast": 0.025,
+      "min_contrast": 0.02,
       "min_confidence": 0.6
     },
     "narrow_search_fraction": 0.08,

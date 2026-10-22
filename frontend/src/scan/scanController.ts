@@ -6,7 +6,7 @@ import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDe
 import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness } from "../vision/frameAnalysis";
 import { dist, insideFrame, MIDDLE_TIP, WRIST } from "../vision/geometry";
-import { actualHandedness, getHandTracker, type HandTracker } from "../vision/handTracker";
+import { actualHandedness, getHandTracker, type DrawnFrame, type HandTracker } from "../vision/handTracker";
 import { evaluateFrame, type LiveResult } from "../vision/liveChecks";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
@@ -65,6 +65,9 @@ const MIN_FRAME_INTERVAL_MS = 50; // spread collected frames over time (~20 fps 
 // search still runs at least every FULL_COIN_SEARCH_EVERY frames, and whenever tracking fails,
 // so a second coin-like object is still noticed.
 const FULL_COIN_SEARCH_EVERY = 5;
+// A tracked coin is only reused while it still looks like a coin; a weak fit (a tracker that has
+// drifted off the coin) falls back to a full search in the same frame.
+const MIN_TRACK_CONFIDENCE = 0.5;
 
 /** Start loading the measuring tools before the camera is opened (e.g. while the person reads
  *  the coin question and the guide). Failures are ignored here; start() reports them. */
@@ -277,14 +280,15 @@ export class ScanController {
     return { ctx, w, h, scale: Math.max(1, Math.min(w, h) / 540) };
   }
 
-  private grab(roi: { x: number; y: number; w: number; h: number }): RgbaImage {
+  private grab(roi: { x: number; y: number; w: number; h: number }, frame: DrawnFrame | null): RgbaImage {
     const c = this.roiCanvas;
     if (c.width !== roi.w || c.height !== roi.h) {
       c.width = roi.w;
       c.height = roi.h;
     }
     const ctx = c.getContext("2d", { willReadFrequently: true })!;
-    ctx.drawImage(this.video, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
+    if (frame) ctx.drawImage(frame.canvas, frame.ox + roi.x * frame.k, frame.oy + roi.y * frame.k, roi.w * frame.k, roi.h * frame.k, 0, 0, roi.w, roi.h);
+    else ctx.drawImage(this.video, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
     const img = ctx.getImageData(0, 0, roi.w, roi.h);
     return { data: img.data, width: roi.w, height: roi.h };
   }
@@ -296,16 +300,20 @@ export class ScanController {
     return (1000 * (this.frameTimes.length - 1)) / (now - this.frameTimes[0]);
   }
 
-  private detectInRoi(roi: { x: number; y: number; w: number; h: number }, range: [number, number] | null) {
+  private detectInRoi(
+    roi: { x: number; y: number; w: number; h: number },
+    range: [number, number] | null,
+    frame: DrawnFrame | null = null,
+  ) {
     if (roi.w < 16 || roi.h < 16 || !this.cv) return { coin: null, brightness: null };
-    const image = this.grab(roi);
+    const image = this.grab(roi, frame);
     const p = this.config.coin_detection;
     let coin: CoinDetection | null = null;
     const seed = this.opts.mode === "scan" ? this.trackedCoin : null;
     if (seed && this.framesSinceFullSearch < FULL_COIN_SEARCH_EVERY) {
       const local = { ...seed, center_x: seed.center_x - roi.x, center_y: seed.center_y - roi.y };
       const tracked = detectCoin(this.cv, image, p, null, range, local);
-      if (tracked.found) {
+      if (tracked.accepted || (tracked.found && tracked.confidence >= MIN_TRACK_CONFIDENCE)) {
         coin = tracked;
         this.framesSinceFullSearch++;
       }
@@ -318,7 +326,7 @@ export class ScanController {
       coin.center_x += roi.x;
       coin.center_y += roi.y;
     }
-    this.trackedCoin = coin.found && (coin.accepted || coin.confidence >= 0.2) ? coin : null;
+    this.trackedCoin = coin.found && (coin.accepted || coin.confidence >= MIN_TRACK_CONFIDENCE) ? coin : null;
     return { coin, brightness: meanBrightness(image.data) };
   }
 
@@ -344,7 +352,7 @@ export class ScanController {
       if (inFrame && minSize) {
         const win = coinSearchWindow(hand.landmarks, w, h, this.config.coin_detection);
         roi = win.roi;
-        const r = this.detectInRoi(win.roi, win.diameterRange);
+        const r = this.detectInRoi(win.roi, win.diameterRange, this.tracker.lastFrame());
         this.timing.coinMs = 0.8 * this.timing.coinMs + 0.2 * (performance.now() - tHand);
         coin = r.coin;
         brightness = r.brightness;

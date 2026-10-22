@@ -127,7 +127,7 @@ def test_wrong_coin_type_detected_as_implausible(cfg_nodepth):
 
 def test_palm_not_flat_from_world_landmarks(cfg_nodepth):
     f = synthetic_frame()
-    t = math.radians(45)
+    t = math.radians(60)
     world = np.column_stack([CANONICAL_HAND_MM / 1000, np.zeros(21)])
     rot = np.array([[1, 0, 0], [0, math.cos(t), -math.sin(t)], [0, math.sin(t), math.cos(t)]])
     f["world_landmarks"] = [{"x": x, "y": y, "z": z} for x, y, z in world @ rot.T]

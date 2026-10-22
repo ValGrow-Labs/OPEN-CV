@@ -23,7 +23,7 @@ ISSUES: dict[str, tuple[Severity, str]] = {
         "error",
         "There is glare on the coin. Tilt your hand slightly away from the light or move away from direct light.",
     ),
-    "coin_low_contrast": ("error", "The coin is hard to distinguish from your palm. Use brighter, even lighting."),
+    "coin_low_contrast": ("error", "The coin is hard to distinguish from your palm. Avoid glare and over-bright light; use soft, even light."),
     "coin_irregular_boundary": (
         "error",
         "The coin's outline is unclear. Check that only one coin is used and it lies flat.",
