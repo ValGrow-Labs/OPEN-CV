@@ -53,7 +53,7 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   coin_occluded: "Make sure the whole coin is visible",
   coin_blurry: "Hold still, the image is blurry",
   coin_glare: "Glare on the coin. Tilt away from the light",
-  coin_low_contrast: "Use brighter, even lighting",
+  coin_low_contrast: "Coin hard to see. Use soft, even light, no glare",
   coin_irregular_boundary: "Use a single coin lying flat",
   coin_low_confidence: "Hold still so the coin can be measured",
   coin_ambiguous: "Use one coin only and keep other round objects out of view",

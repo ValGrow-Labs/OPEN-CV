@@ -42,6 +42,9 @@ const MIN_FRAME_INTERVAL_MS = 50; // spread collected frames over time (~20 fps 
 // search still runs at least every FULL_COIN_SEARCH_EVERY frames, and whenever tracking fails,
 // so a second coin-like object is still noticed.
 const FULL_COIN_SEARCH_EVERY = 5;
+// A tracked coin is only reused while it still looks like a coin; a weak fit (a tracker that has
+// drifted off the coin) falls back to a full search in the same frame.
+const MIN_TRACK_CONFIDENCE = 0.5;
 
 /** Start loading the measuring tools before the camera is opened (e.g. while the person reads
  *  the coin question and the guide). Failures are ignored here; start() reports them. */
@@ -267,7 +270,7 @@ export class ScanController {
     if (seed && this.framesSinceFullSearch < FULL_COIN_SEARCH_EVERY) {
       const local = { ...seed, center_x: seed.center_x - roi.x, center_y: seed.center_y - roi.y };
       const tracked = detectCoin(this.cv, image, p, null, range, local);
-      if (tracked.found) {
+      if (tracked.accepted || (tracked.found && tracked.confidence >= MIN_TRACK_CONFIDENCE)) {
         coin = tracked;
         this.framesSinceFullSearch++;
       }
@@ -280,7 +283,7 @@ export class ScanController {
       coin.center_x += roi.x;
       coin.center_y += roi.y;
     }
-    this.trackedCoin = coin.found && (coin.accepted || coin.confidence >= 0.2) ? coin : null;
+    this.trackedCoin = coin.found && (coin.accepted || coin.confidence >= MIN_TRACK_CONFIDENCE) ? coin : null;
     return { coin, brightness: meanBrightness(image.data) };
   }
 

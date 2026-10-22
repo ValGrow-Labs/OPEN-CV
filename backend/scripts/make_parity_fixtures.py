@@ -30,6 +30,8 @@ SCENES = {
     "occluded": dict(width=240, height=240, diameter_px=70.0, center=(120, 120), occlusion_depth_fraction=0.3, seed=6),
     "two_coins": dict(width=320, height=200, diameter_px=64.0, center=(90.0, 100.0), creases=False, seed=7),
     "cool_light": dict(width=240, height=240, diameter_px=70.0, center=(120.0, 120.0), seed=8),
+    # A pale (gold-coloured / over-exposed) coin: almost the skin's colour, so low chroma contrast.
+    "pale_coin": dict(width=240, height=240, diameter_px=70.0, center=(120.0, 120.0), seed=9),
 }
 
 
@@ -40,6 +42,9 @@ def post_process(name: str, bgr: np.ndarray) -> np.ndarray:
         cv2.circle(bgr, (230, 100), 30, (190, 192, 190), 2, cv2.LINE_AA)
     if name == "cool_light":
         bgr = np.clip(bgr.astype(np.float64) * np.array([1.2, 1.0, 0.85]), 0, 255).astype(np.uint8)
+    if name == "pale_coin":
+        gray = cv2.cvtColor(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR).astype(np.float64)
+        bgr = np.clip(gray + 0.12 * (bgr.astype(np.float64) - gray), 0, 255).astype(np.uint8)
     return bgr
 
 

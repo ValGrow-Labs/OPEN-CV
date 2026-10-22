@@ -206,6 +206,20 @@ def test_low_contrast_boundary(p, keep):
         assert not det.accepted
 
 
+@pytest.mark.parametrize("diameter", [60.0, 75.0, 90.0])
+def test_pale_coin_is_accepted_and_accurate(p, diameter):
+    # A gold-coloured or over-exposed coin is nearly the skin's colour (chroma contrast about
+    # 0.024, between the 0.02 gate and the 0.0157 of the washed-out case above). Synthetic only:
+    # it shows the gate does not discard a correctly located coin, not real-world accuracy.
+    img, _ = render_coin_scene(diameter_px=diameter, noise_sigma=3.0)
+    gray = cv2.cvtColor(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR).astype(np.float64)
+    pale = np.clip(gray + 0.12 * (img.astype(np.float64) - gray), 0, 255).astype(np.uint8)
+    det = cd.detect_coin(pale, p)
+    assert det.accepted, det.reasons
+    assert 0.02 <= det.contrast < 0.03
+    assert abs(det.major_axis_px - diameter) / diameter < 0.01
+
+
 def test_two_coins_are_ambiguous(p):
     img, _ = render_coin_scene(width=480, height=360, center=(150.0, 180.0), diameter_px=80, creases=False)
     cv2.circle(img, (340, 180), 40, (150, 152, 150), -1, cv2.LINE_AA)
