@@ -57,10 +57,12 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 2000
   return (await res.json()) as T;
 }
 
-export const fetchConfig = () => request<PublicConfig>("/api/config");
+// The free-tier server sleeps when idle and takes about 30-40 s to wake, so the first request of a
+// visit is allowed to take that long (the page says it is waking the service).
+export const fetchConfig = () => request<PublicConfig>("/api/config", {}, 75000);
 
 export const submitScan = (body: ScanRequest) =>
-  request<ScanResponse>("/api/scan", { method: "POST", body: JSON.stringify(body) }, 30000);
+  request<ScanResponse>("/api/scan", { method: "POST", body: JSON.stringify(body) }, 60000);
 
 export const fetchRecommendation = (
   chartId: string,

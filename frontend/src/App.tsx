@@ -54,6 +54,17 @@ export function App() {
 
   useEffect(loadConfig, [loadConfig]);
 
+  // The server sleeps when idle; say so if the first request is slow.
+  const [waking, setWaking] = useState(false);
+  useEffect(() => {
+    if (config || configError) {
+      setWaking(false);
+      return;
+    }
+    const t = setTimeout(() => setWaking(true), 4000);
+    return () => clearTimeout(t);
+  }, [config, configError]);
+
   // Fetch and start the measuring tools (OpenCV.js, the hand model) in the background soon after
   // the page opens, so a scan starts at once instead of waiting for them after "Start camera".
   useEffect(() => {
@@ -157,7 +168,7 @@ export function App() {
               </div>
             </div>
           ) : (
-            <p className="muted">Loading…</p>
+            <p className="muted">{waking ? "Waking up the sizing service. The first visit can take up to a minute." : "Loading…"}</p>
           )}
         </main>
       </div>
