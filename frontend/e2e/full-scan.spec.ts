@@ -57,7 +57,7 @@ async function fullScan(page: Page, tag: string) {
   );
 
   // The value counts up on screen; data-value holds the final number.
-  const value = (await page.locator("tr", { hasText: "Hand length" }).locator("[data-value]").getAttribute("data-value")) ?? "";
+  const value = (await page.locator('[data-measure="hand_length_mm"] [data-value]').getAttribute("data-value")) ?? "";
   const browserMm = parseFloat(value);
   // Browser (OpenCV.js + MediaPipe JS) vs Python (OpenCV + MediaPipe Python) on the same video.
   expect(Math.abs(browserMm - python.python_hand_length_mm) / python.python_hand_length_mm).toBeLessThan(0.02);

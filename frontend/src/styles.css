@@ -67,6 +67,12 @@ h3 {
   line-height: 1.15;
   letter-spacing: -0.015em;
   margin: 0;
+  text-wrap: balance;
+}
+
+p,
+li {
+  text-wrap: pretty;
 }
 
 p {
@@ -334,8 +340,8 @@ h1[tabindex="-1"]:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px 8px;
+  border-radius: 6px;
   font-size: 0.78rem;
   font-weight: 600;
   white-space: nowrap;
@@ -1705,18 +1711,6 @@ details.disclosure[open] summary {
     grid-area: status;
   }
 
-  .size-hero {
-    justify-items: center;
-    text-align: center;
-  }
-  .size-hero .stack {
-    align-items: center;
-    width: 100%;
-  }
-  .size-hero .stack > .stack {
-    width: 100%;
-    align-items: stretch;
-  }
   .kv {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
@@ -1970,4 +1964,359 @@ code {
   background: rgba(0, 0, 0, 0.72);
   border-radius: 6px;
   pointer-events: none;
+}
+
+/* ====================================================== page structure */
+
+.stack-lg {
+  gap: 24px;
+}
+
+.page-narrow {
+  max-width: 760px;
+}
+
+.page-head {
+  display: grid;
+  gap: 8px;
+}
+
+.page-title {
+  font-size: clamp(1.9rem, 5vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.section-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.card .section-head h2 {
+  margin-bottom: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 560px) {
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.fine {
+  max-width: 62ch;
+}
+
+/* ===================================================== result hero */
+
+.size-caption {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.size-facts {
+  gap: 10px;
+}
+
+.confidence {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.confidence-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-hero .why {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 560px) {
+  .size-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .size-tile {
+    justify-self: start;
+  }
+}
+
+/* Size found on the measurements screen: one accent, no extra hues. */
+.size-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px clamp(18px, 3vw, 24px);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(244, 135, 75, 0.16), transparent 60%),
+    var(--surface);
+  box-shadow: inset 0 0 0 1px rgba(244, 135, 75, 0.32), var(--lift);
+}
+
+.size-banner-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.size-banner-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.size-banner-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.size-banner-size {
+  font-size: 2.6rem;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.size-banner .badge {
+  text-transform: capitalize;
+}
+
+/* ================================================== measurement list */
+
+.mgroups {
+  display: grid;
+  gap: 28px;
+}
+
+@media (min-width: 821px) {
+  .mgroups {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 40px;
+  }
+}
+
+.mgroup h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.mlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mrow {
+  display: grid;
+  gap: 6px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mrow:last-child {
+  border-bottom: 0;
+}
+
+.mrow-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.mrow-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mrow-label {
+  font-weight: 600;
+}
+
+.mrow-note,
+.mrow-sub,
+.mrow-reason {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.mrow-value {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.mrow-mm {
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.mrow-sub {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mrow-none {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.mrow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.mrow-reason {
+  max-width: 60ch;
+}
+
+.mrow .disclosure p,
+.mrow .disclosure .kv {
+  margin-top: 6px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.status-good {
+  color: var(--good);
+}
+.status-warn {
+  color: var(--warn);
+}
+.status-bad {
+  color: var(--bad);
+}
+.status-info {
+  color: var(--info);
+}
+.status-neutral {
+  color: var(--ink-2);
+}
+
+.warnings {
+  margin-top: 14px;
+}
+
+/* ============================================ panels (tap to open) */
+
+.panels {
+  display: grid;
+  gap: 12px;
+}
+
+details.panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--ring);
+}
+
+details.panel > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+  padding: 14px clamp(18px, 3vw, 28px);
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 300ms var(--ease-out);
+}
+
+details.panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.panel > summary:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+details.panel > summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-3px) rotate(45deg);
+  transition: transform 300ms var(--ease-out);
+}
+
+details.panel[open] > summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.panel-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.panel-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 clamp(18px, 3vw, 28px) clamp(18px, 3vw, 28px);
+}
+
+/* ======================================================= tape form */
+
+.input-short {
+  max-width: 180px;
+}
+
+.field-error {
+  color: var(--bad);
+}
+
+.unit-row {
+  gap: 8px;
+}
+
+.disclosure-body {
+  gap: 12px;
+  margin-top: 8px;
 }

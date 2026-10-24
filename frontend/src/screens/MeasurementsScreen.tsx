@@ -2,8 +2,9 @@ import { useState } from "react";
 import type { ChartSummary, Measurement, PublicConfig, ScanResponse } from "../api/types";
 import type { ScanTimingBreakdown } from "../scan/scanController";
 import { Badge, HandDiagram } from "../ui/components";
-import { ButtonIcon, CountUp, stagger } from "../ui/motion";
-import { COMPONENTS, fmtIn, MM_PER_INCH, REASONS, SOURCE, STATUS } from "../ui/format";
+import { MM_PER_INCH } from "../ui/format";
+import { MeasureList } from "../ui/measureList";
+import { ButtonIcon, stagger } from "../ui/motion";
 
 interface Props {
   config: PublicConfig;
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming, onRescan, onContinue, busy, error }: Props) {
-  if (result.status === "rejected") return <Rejected result={result} onRescan={onRescan} />;
+  if (result.status === "rejected") return <Rejected result={result} minFrames={config.capture.frames_min_accepted} onRescan={onRescan} />;
 
   // Tape measurements the customer can add: circumference whenever the product needs it (a
   // camera cannot measure it), hand length when the camera estimate cannot single out a size.
@@ -33,45 +34,35 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
   const other = result.measurements.filter((m) => m.source !== "camera_landmarks" && m.source !== "camera_model_estimate");
   const warnings = result.issues.filter((i) => i.severity !== "error");
 
+  const rec = result.recommendation;
+  const asItems = (rows: Measurement[]) => rows.map((m) => ({ key: m.key, label: m.label, m }));
+
   return (
-    <main className="page stack" style={{ gap: 24 }}>
-      <header className="stack" style={{ gap: 8 }}>
-        <h1 style={{ fontSize: "clamp(1.8rem, 4vw, 2.4rem)" }}>Your hand measurements</h1>
+    <main className="page stack stack-lg">
+      <header className="page-head">
+        <span className="eyebrow">Scan complete</span>
+        <h1 className="page-title">Your hand measurements</h1>
         <p className="lead">
           These values are <strong>estimated</strong> from camera landmarks and the coin's size. Each shows its
           estimated uncertainty.
         </p>
       </header>
 
-      {result.recommendation?.size && (
-        <div
-          className="card row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 16,
-            background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(249, 115, 22, 0.08))",
-            border: "1px solid var(--accent, #ea580c)",
-            padding: "16px 20px",
-          }}
-        >
-          <div className="stack" style={{ gap: 4 }}>
-            <span className="eyebrow" style={{ color: "var(--accent)" }}>Estimated Glove Size</span>
-            <div className="row" style={{ alignItems: "baseline", gap: 12 }}>
-              <span style={{ fontSize: "2.4rem", fontWeight: 800, color: "var(--ink)" }}>{result.recommendation.size}</span>
-              {result.recommendation.confidence_level && (
-                <Badge tone={result.recommendation.confidence_level === "clear" ? "good" : "warn"}>
-                  {result.recommendation.confidence_level.toUpperCase()}
-                </Badge>
+      {rec?.size && (
+        <div className="size-banner">
+          <div className="size-banner-copy">
+            <span className="size-banner-label">Estimated glove size</span>
+            <div className="size-banner-line">
+              <span className="size-banner-size">{rec.size}</span>
+              {rec.confidence_level && (
+                <Badge tone={rec.confidence_level === "clear" ? "good" : "warn"}>{rec.confidence_level}</Badge>
               )}
-              {result.recommendation.alternative_size && (
-                <span className="small muted">or consider {result.recommendation.alternative_size}</span>
-              )}
+              {rec.alternative_size && <span className="small muted">or consider {rec.alternative_size}</span>}
             </div>
           </div>
-          <button className="btn btn-primary" onClick={() => onContinue({})}>
-            View Glove Size Details →
+          <button className="btn btn-primary btn-island" onClick={() => onContinue({})}>
+            See size details
+            <ButtonIcon />
           </button>
         </div>
       )}
@@ -84,20 +75,68 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
       )}
 
       <div className="grid-2">
-        <div className="stack">
-          <div className="card stack" data-reveal>
-            <h2>Detected hand</h2>
-            {result.landmarks_px_median && (
-              <HandDiagram landmarks={result.landmarks_px_median} coin={result.coin_median} mirrored={mirrored} />
-            )}
-            <p className="small muted">
-              Dots mark the 21 joint positions found by the hand model (joint centres, not skin edges). The blue outline
-              is the coin used for scale.
-            </p>
+        <section className="card stack" data-reveal aria-labelledby="hand-heading">
+          <h2 id="hand-heading">Detected hand</h2>
+          {result.landmarks_px_median && (
+            <HandDiagram landmarks={result.landmarks_px_median} coin={result.coin_median} mirrored={mirrored} />
+          )}
+          <p className="small muted">
+            Dots mark the 21 joint positions found by the hand model (joint centres, not skin edges). The blue outline
+            is the coin used for scale.
+          </p>
+        </section>
+
+        <section className="card" data-reveal style={stagger(1)} aria-labelledby="camera-heading">
+          <div className="section-head">
+            <h2 id="camera-heading">Camera measurements</h2>
+            <p className="small muted">Tap "How it's measured" for the definition and uncertainty.</p>
           </div>
-          {result.calibration && (
-            <div className="card" data-reveal style={stagger(1)}>
-              <h2>Scale calibration</h2>
+          <MeasureList items={asItems(camera)} showHow countUp />
+          {warnings.length > 0 && (
+            <ul className="bullets small muted warnings">
+              {warnings.map((w) => (
+                <li key={w.code}>{w.message}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <ContinuePanel
+        fields={manualFields}
+        plausibleSizes={rec?.plausible_sizes ?? []}
+        manualSd={config.manual_measurement_sd_mm}
+        onRescan={onRescan}
+        onContinue={onContinue}
+        busy={busy}
+        error={error}
+      />
+
+      <div className="panels">
+        {other.length > 0 && (
+          <details className="panel">
+            <summary>
+              <span>
+                Not measurable by camera
+                <span className="panel-sub">Needs a tape measure</span>
+              </span>
+            </summary>
+            <div className="panel-body">
+              <MeasureList items={asItems(other)} showHow />
+            </div>
+          </details>
+        )}
+        {result.calibration && (
+          <details className="panel">
+            <summary>
+              <span>
+                Scale calibration
+                <span className="panel-sub">
+                  {result.calibration.reference_label}, {result.frames_accepted} of {result.frames_received} frames used
+                </span>
+              </span>
+            </summary>
+            <div className="panel-body">
               <dl className="kv">
                 <dt>Reference</dt>
                 <dd>
@@ -124,14 +163,14 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
                 {scanTiming && (
                   <>
                     <dt>Total elapsed</dt>
-                    <dd><strong>{scanTiming.totalSec.toFixed(2)} s</strong></dd>
+                    <dd>{scanTiming.totalSec.toFixed(2)} s</dd>
                   </>
                 )}
               </dl>
               {scanTiming && (
-                <details className="disclosure" style={{ marginTop: 12 }}>
+                <details className="disclosure">
                   <summary>Scan performance timings</summary>
-                  <dl className="kv small" style={{ marginTop: 8 }}>
+                  <dl className="kv small">
                     <dt>Camera startup</dt>
                     <dd>{scanTiming.cameraStartupMs.toFixed(0)} ms</dd>
                     <dt>Model loading</dt>
@@ -139,61 +178,42 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
                     <dt>Time to first lock</dt>
                     <dd>{scanTiming.firstLockMs > 0 ? `${scanTiming.firstLockMs.toFixed(0)} ms` : "n/a"}</dd>
                     <dt>Frame collection</dt>
-                    <dd>{scanTiming.collectionMs.toFixed(0)} ms ({result.frames_accepted} frames)</dd>
+                    <dd>
+                      {scanTiming.collectionMs.toFixed(0)} ms ({result.frames_accepted} frames)
+                    </dd>
                     <dt>Inference / frame</dt>
-                    <dd>Hand: {scanTiming.handMs.toFixed(1)} ms · Coin: {scanTiming.coinMs.toFixed(1)} ms</dd>
+                    <dd>
+                      Hand: {scanTiming.handMs.toFixed(1)} ms · Coin: {scanTiming.coinMs.toFixed(1)} ms
+                    </dd>
                     <dt>Server processing & API</dt>
                     <dd>{scanTiming.apiMs.toFixed(0)} ms</dd>
                     <dt>Total elapsed time</dt>
-                    <dd><strong>{scanTiming.totalSec.toFixed(2)} s</strong></dd>
+                    <dd>{scanTiming.totalSec.toFixed(2)} s</dd>
                   </dl>
                 </details>
               )}
             </div>
-          )}
-        </div>
-
-        <div className="stack">
-          <div className="card" data-reveal style={stagger(1)}>
-            <h2>Camera measurements</h2>
-            <MeasurementTable rows={camera} />
-          </div>
-          <div className="card" data-reveal style={stagger(2)}>
-            <h2>Not measurable by camera</h2>
-            <MeasurementTable rows={other} />
-          </div>
-          {Object.keys(result.proportions).length > 0 && (
-            <div className="card" data-reveal style={stagger(3)}>
-              <h2>Hand proportions</h2>
+          </details>
+        )}
+        {Object.keys(result.proportions).length > 0 && (
+          <details className="panel">
+            <summary>
+              <span>
+                Hand proportions
+                <span className="panel-sub">Ratios that do not depend on the coin</span>
+              </span>
+            </summary>
+            <div className="panel-body">
               <dl className="kv">
                 {Object.entries(result.proportions).map(([k, v]) => (
                   <PropRow key={k} name={k} value={v} />
                 ))}
               </dl>
-              <p className="small muted" style={{ marginTop: 10 }}>
-                Ratios of landmark distances. They do not depend on the coin scale.
-              </p>
+              <p className="small muted">Ratios of landmark distances. They do not depend on the coin scale.</p>
             </div>
-          )}
-          {warnings.length > 0 && (
-            <ul className="bullets small muted">
-              {warnings.map((w) => (
-                <li key={w.code}>{w.message}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+          </details>
+        )}
       </div>
-
-      <ContinuePanel
-        fields={manualFields}
-        plausibleSizes={result.recommendation?.plausible_sizes ?? []}
-        manualSd={config.manual_measurement_sd_mm}
-        onRescan={onRescan}
-        onContinue={onContinue}
-        busy={busy}
-        error={error}
-      />
     </main>
   );
 }
@@ -210,73 +230,6 @@ function PropRow({ name, value }: { name: string; value: number }) {
     <>
       <dt>{PROPORTION_LABELS[name] ?? name}</dt>
       <dd>{value.toFixed(3)}</dd>
-    </>
-  );
-}
-
-export function MeasurementTable({ rows }: { rows: Measurement[] }) {
-  return (
-    <table className="measure-table">
-      <thead>
-        <tr>
-          <th scope="col">Measurement</th>
-          <th scope="col">Value</th>
-          <th scope="col">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((m, i) => (
-          <tr key={m.key} className="stagger-in" style={stagger(i)}>
-            <td>
-              <div>{m.label}</div>
-              <details className="disclosure">
-                <summary>How it's measured</summary>
-                <p className="small muted">{m.definition}</p>
-                <p className="small muted">{SOURCE[m.source]}.</p>
-                {Object.keys(m.uncertainty_components_mm).length > 0 && (
-                  <dl className="kv small" style={{ marginTop: 8 }}>
-                    {Object.entries(m.uncertainty_components_mm).map(([k, v]) => (
-                      <UncRow key={k} name={k} value={v} />
-                    ))}
-                  </dl>
-                )}
-              </details>
-            </td>
-            <td>
-              {m.value_mm !== null ? (
-                <>
-                  <div className="measure-value">
-                    <CountUp value={m.value_mm} suffix=" mm" />
-                  </div>
-                  <div className="measure-sub num">
-                    {fmtIn(m.value_mm)}
-                    {m.uncertainty_mm !== null && <div>±{m.uncertainty_mm.toFixed(1)} mm</div>}
-                  </div>
-                </>
-              ) : (
-                <span className="muted">n/a</span>
-              )}
-            </td>
-            <td>
-              <Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
-              {m.reasons.map((r) => (
-                <div key={r} className="measure-sub" style={{ marginTop: 4 }}>
-                  {REASONS[r] ?? r}
-                </div>
-              ))}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function UncRow({ name, value }: { name: string; value: number }) {
-  return (
-    <>
-      <dt>{COMPONENTS[name] ?? name}</dt>
-      <dd>±{value.toFixed(1)} mm</dd>
     </>
   );
 }
@@ -337,7 +290,7 @@ function ContinuePanel({
   const manual: ManualEntries = Object.fromEntries(activeFields.filter((k) => parsed[k].valid).map((k) => [k, parsed[k].mm]));
 
   return (
-    <div className="card stack" data-reveal>
+    <section className="card stack continue" data-reveal aria-label="Get your size">
       <div className="stack">
         {fields.length > 0 && (
           <>
@@ -350,7 +303,7 @@ function ContinuePanel({
             )}
           </>
         )}
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row unit-row">
           <span className="small muted">Units</span>
           <select className="select" value={unit} onChange={(e) => setUnit(e.target.value as "in" | "mm")} aria-label="Unit">
             <option value="in">inches</option>
@@ -366,16 +319,15 @@ function ContinuePanel({
               <p className="small muted">{f.how}</p>
               <input
                 id={`manual-${k}`}
-                className="input num"
+                className="input input-short num"
                 inputMode="decimal"
                 placeholder={f.placeholder[unit]}
                 value={text[k] ?? ""}
                 onChange={(e) => setText({ ...text, [k]: e.target.value })}
                 aria-invalid={parsed[k].entered && !parsed[k].valid}
-                style={{ maxWidth: 180 }}
               />
               {parsed[k].entered && !parsed[k].valid && (
-                <p className="small" style={{ color: "var(--bad)" }}>
+                <p className="small field-error">
                   Enter a value between {(lo / MM_PER_INCH).toFixed(1)} and {(hi / MM_PER_INCH).toFixed(1)} in ({lo}-{hi} mm).
                 </p>
               )}
@@ -383,9 +335,9 @@ function ContinuePanel({
           );
         })}
         {optionalFields.length > 0 && (
-          <details className="disclosure" style={{ marginTop: fields.length > 0 ? 12 : 0, marginBottom: 8 }}>
+          <details className="disclosure">
             <summary>Add optional tape measurements (palm breadth, circumference)</summary>
-            <div className="stack" style={{ gap: 12, marginTop: 8 }}>
+            <div className="stack disclosure-body">
               {optionalFields.map((k) => {
                 const f = MANUAL_FIELDS[k];
                 const [lo, hi] = f.range;
@@ -395,16 +347,15 @@ function ContinuePanel({
                     <p className="small muted">{f.how}</p>
                     <input
                       id={`manual-${k}`}
-                      className="input num"
+                      className="input input-short num"
                       inputMode="decimal"
                       placeholder={f.placeholder[unit]}
                       value={text[k] ?? ""}
                       onChange={(e) => setText({ ...text, [k]: e.target.value })}
                       aria-invalid={parsed[k].entered && !parsed[k].valid}
-                      style={{ maxWidth: 180 }}
-                    />
+                          />
                     {parsed[k].entered && !parsed[k].valid && (
-                      <p className="small" style={{ color: "var(--bad)" }}>
+                      <p className="small field-error">
                         Enter a value between {(lo / MM_PER_INCH).toFixed(1)} and {(hi / MM_PER_INCH).toFixed(1)} in ({lo}-{hi} mm).
                       </p>
                     )}
@@ -414,9 +365,9 @@ function ContinuePanel({
             </div>
           </details>
         )}
-        <details className="disclosure" style={{ marginTop: 8, marginBottom: 8 }}>
+        <details className="disclosure">
           <summary>SPLNTD benchmark reference specifications</summary>
-          <div className="stack small muted" style={{ gap: 6, marginTop: 8 }}>
+          <div className="stack small muted disclosure-body">
             <p>
               Reference benchmarks (SPLNTD standard specifications in mm). 3D circumferences require a flexible tape measure:
             </p>
@@ -436,7 +387,7 @@ function ContinuePanel({
           {error}
         </div>
       )}
-      <div className="row">
+      <div className="actions">
         <button className="btn btn-primary btn-lg btn-island" disabled={busy || anyInvalid} onClick={() => onContinue(manual)}>
           {busy ? "Calculating…" : "See my size"}
           <ButtonIcon />
@@ -445,19 +396,19 @@ function ContinuePanel({
           Rescan
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 
-function Rejected({ result, onRescan }: { result: ScanResponse; onRescan: () => void }) {
+function Rejected({ result, minFrames, onRescan }: { result: ScanResponse; minFrames: number; onRescan: () => void }) {
   const errors = result.issues.filter((i) => i.severity === "error");
   const unique = errors.filter((e, i) => errors.findIndex((x) => x.message === e.message) === i);
   const allReceivedPassed = result.frames_received > 0 && result.frames_accepted === result.frames_received;
   return (
-    <main className="page stack" style={{ gap: 24, maxWidth: 720 }}>
-      <header className="stack" style={{ gap: 8 }}>
+    <main className="page page-narrow stack stack-lg">
+      <header className="page-head">
         <span className="eyebrow">Scan not accepted</span>
-        <h1 style={{ fontSize: "clamp(1.8rem, 4vw, 2.4rem)" }}>We couldn't measure your hand reliably</h1>
+        <h1 className="page-title">We couldn't measure your hand reliably</h1>
         <p className="lead">
           To avoid giving you a wrong size, we only accept scans that pass our quality checks. Here's what to adjust:
         </p>
@@ -468,7 +419,7 @@ function Rejected({ result, onRescan }: { result: ScanResponse; onRescan: () => 
             if (e.code === "insufficient_frames" && allReceivedPassed) {
               return (
                 <li key={e.code}>
-                  All {result.frames_accepted} captured frames passed quality checks, but a minimum of 8 stable frames is required to calculate accurate measurements. Please hold your hand steady a moment longer while scanning.
+                  All {result.frames_accepted} captured frames passed quality checks, but a minimum of {minFrames} stable frames is required to calculate accurate measurements. Please hold your hand steady a moment longer while scanning.
                 </li>
               );
             }
@@ -481,10 +432,10 @@ function Rejected({ result, onRescan }: { result: ScanResponse; onRescan: () => 
           })}
         </ul>
         <p className="small muted">
-          {result.frames_accepted} of {result.frames_received} frames passed all checks{allReceivedPassed ? " (minimum 8 required)" : ""}.
+          {result.frames_accepted} of {result.frames_received} frames passed all checks{allReceivedPassed ? ` (minimum ${minFrames} required)` : ""}.
         </p>
       </div>
-      <div className="row">
+      <div className="actions">
         <button className="btn btn-primary btn-lg" onClick={onRescan}>
           Scan again
         </button>

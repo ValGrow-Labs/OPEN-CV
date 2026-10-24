@@ -159,7 +159,7 @@ describe("ResultsScreen", () => {
     // Circumference labelled Not measured
     expect(screen.getAllByText("Not measured").length).toBeGreaterThan(0);
     expect(screen.getByText(/A single 2D camera view cannot measure 3D circumferences/)).toBeTruthy();
-    expect(screen.getByText(/SPLNTD Benchmark Base/)).toBeTruthy();
+    expect(screen.getByText(/SPLNTD benchmark base/i)).toBeTruthy();
   });
 });
 
