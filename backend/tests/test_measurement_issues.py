@@ -370,6 +370,30 @@ def test_sizing_large_uncertainty_needs_more_data(charts):
     assert len(rec.plausible_sizes) >= 3
 
 
+def test_uncertain_scan_names_the_closest_size_without_recommending_it(charts):
+    """The video case: 174 mm +/- 7.7 mm on a chart of 12 mm sizes. No size is recommended, but the
+    customer is told which size the reading falls in and which neighbour it is closer to."""
+    chart = charts["demo-length-v1"]
+    rec = recommend(chart, {"hand_length_mm": MeasuredValue("hand_length_mm", 174.0, 7.7, "low_confidence")})
+    assert rec.status == "needs_more_data"
+    assert rec.size is None and rec.alternative_size is None  # still not a recommendation
+    assert rec.confidence_level == "uncertain"
+    assert rec.plausible_sizes == ["XS", "S", "M", "L"]
+    assert rec.closest_size == "S"  # 163-175 mm
+    assert rec.closest_alternative == "M"  # 174 is 1 mm from the S/M boundary at 175
+
+    lower = recommend(chart, {"hand_length_mm": MeasuredValue("hand_length_mm", 165.0, 7.7, "low_confidence")})
+    assert lower.closest_size == "S" and lower.closest_alternative == "XS"
+
+
+def test_closest_size_is_only_set_when_no_size_is_supported(charts):
+    chart = charts["demo-length-v1"]
+    rec = recommend(chart, {"hand_length_mm": MeasuredValue("hand_length_mm", 181.0, 2.0, "valid")})
+    assert rec.size == "M" and rec.closest_size is None and rec.closest_alternative is None
+    missing = recommend(chart, {})
+    assert missing.closest_size is None
+
+
 def test_missing_hand_length_measurement_explains_reason(charts):
     """When hand_length_mm is invalid with reasons, sizing explains the camera failure honestly."""
     chart = charts["demo-length-v1"]

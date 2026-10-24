@@ -3074,3 +3074,38 @@ details.panel > summary {
   opacity: 0;
   visibility: hidden;
 }
+
+/* A size that is only the closest to the reading, not a recommendation: a lighter plate. */
+.size-plate {
+  min-width: 176px;
+  padding: 22px 30px 24px;
+  border-radius: 32px;
+  text-align: center;
+  background: var(--surface-2);
+  color: var(--ink);
+  box-shadow:
+    inset 0 0 0 1.5px var(--line-strong),
+    0 0 0 7px var(--shell),
+    0 0 0 8px var(--shell-line);
+}
+
+.size-plate .size {
+  display: block;
+  font-family: var(--display);
+  font-size: clamp(4rem, 15vw, 5.8rem);
+  font-weight: 340;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  color: var(--accent-text);
+}
+
+.size-plate-or {
+  font-size: 0.95rem;
+  color: var(--ink-2);
+}
+
+@media (max-width: 560px) {
+  .size-plate {
+    justify-self: start;
+  }
+}

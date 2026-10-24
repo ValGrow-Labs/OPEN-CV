@@ -185,6 +185,14 @@ class RecommendationOut(_Model):
     explanation: list[str]
     needed_measurements: list[str]
     plausible_sizes: list[str] = Field(default_factory=list, description="Sizes overlapping the +/- 2 sigma interval.")
+    closest_size: str | None = Field(
+        default=None,
+        description="Only when no single size is supported: the size whose range contains the reading. "
+        "Not a recommendation (``size`` stays empty).",
+    )
+    closest_alternative: str | None = Field(
+        default=None, description="With ``closest_size``: the neighbouring size the reading is closer to."
+    )
     by_measurement: list[SizeByMeasurement]
 
 

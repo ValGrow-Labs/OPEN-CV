@@ -111,6 +111,27 @@ describe("uncertain recommendations", () => {
     expect(onContinue).toHaveBeenCalledWith({ hand_length_mm: expect.closeTo(184.15, 2) });
   });
 
+  it("says which size the camera reading is closest to, without recommending it", () => {
+    const rec: Recommendation = {
+      ...uncertainRec,
+      plausible_sizes: ["XS", "S", "M", "L"],
+      closest_size: "S",
+      closest_alternative: "M",
+      by_measurement: [{ key: "hand_length_mm", value_mm: 174, uncertainty_mm: 7.7, size: "S", plausible_sizes: ["XS", "S", "M", "L"] }],
+    };
+    const { container } = render(
+      <ResultsScreen recommendation={rec} result={accepted} extraMeasurements={[]} onRescan={() => {}} onBack={() => {}} onStartOver={() => {}} />,
+    );
+    expect(container.querySelector(".size-plate .size")!.textContent).toBe("S");
+    expect(container.querySelector(".size-plate-or")!.textContent).toBe("or M");
+    expect(screen.getByText("Most likely size")).toBeTruthy();
+    expect(screen.getByText(/but could also be XS, M, L/).textContent).toMatch(/A tape measurement would settle it\./);
+    expect(container.querySelector(".size-tile")).toBeNull(); // still no *recommended* size
+    expect(screen.queryByText("Recommended size")).toBeNull();
+    expect(screen.getByText("More information needed")).toBeTruthy();
+    expect(screen.getByLabelText("Sizes that are still possible").textContent).toMatch(/XS.*S.*M.*L/);
+  });
+
   it("shows no size, the still-possible sizes and a way to add a measurement", () => {
     const { container } = render(
       <ResultsScreen recommendation={uncertainRec} result={accepted} extraMeasurements={[]} onRescan={() => {}} onBack={() => {}} onStartOver={() => {}} />,

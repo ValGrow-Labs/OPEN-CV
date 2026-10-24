@@ -39,6 +39,10 @@ const SPLNTD_CIRCUMFERENCES = [
 
 export function ResultsScreen({ recommendation: rec, result, extraMeasurements, onRescan, onBack, onStartOver }: Props) {
   const level = rec.confidence_level;
+  // With no single size supported, say which size the camera reading itself falls in: a fact about
+  // the reading, not a recommendation (the uncertainty still covers the sizes listed).
+  const closest = rec.size === null ? rec.closest_size ?? null : null;
+  const alsoPossible = rec.plausible_sizes.filter((s) => s !== closest);
   const product = [rec.manufacturer, rec.product_model].filter(Boolean).join(", ");
   const byKey = new Map<string, Measurement>();
   for (const m of [...result.measurements, ...extraMeasurements]) byKey.set(m.key, m);
@@ -93,23 +97,44 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
             </div>
           </div>
         ) : (
-          <div className="stack">
-            <h2 id="size-heading">More information needed</h2>
-            <p>A reliable glove size recommendation cannot yet be determined from the available camera data.</p>
-            {rec.plausible_sizes.length > 0 && (
-              <div className="row" aria-label="Sizes that are still possible">
-                <span className="small muted">Plausible sizes:</span>
-                {rec.plausible_sizes.map((s) => (
-                  <Badge key={s} tone="neutral">
-                    {s}
-                  </Badge>
-                ))}
+          <div className={closest ? "size-hero" : "stack"}>
+            {closest && (
+              <div className="size-plate" aria-labelledby="plate-caption">
+                <div className="size-caption" id="plate-caption">
+                  Most likely size
+                </div>
+                <div className="size">{closest}</div>
+                {rec.closest_alternative && <div className="size-plate-or">or {rec.closest_alternative}</div>}
               </div>
             )}
-            <div>
-              <button className="btn btn-primary" onClick={onBack}>
-                Add a tape measurement
-              </button>
+            <div className="stack size-facts">
+              <h2 id="size-heading">More information needed</h2>
+              <p>
+                A reliable glove size recommendation cannot yet be determined from the available camera data.
+                {closest && (
+                  <>
+                    {" "}
+                    Your camera reading falls in size <strong>{closest}</strong>
+                    {alsoPossible.length > 0 && <>, but could also be {alsoPossible.join(", ")}</>}. A tape measurement would settle it.
+                  </>
+                )}
+              </p>
+              {rec.plausible_sizes.length > 0 && (
+                <div className="row" aria-label="Sizes that are still possible">
+                  <span className="small muted">Plausible sizes:</span>
+                  {rec.plausible_sizes.map((s) => (
+                    <Badge key={s} tone={s === closest ? "good" : "neutral"}>
+                      {s}
+                      {s === closest && <span className="visually-hidden"> (closest to your reading)</span>}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div>
+                <button className="btn btn-primary" onClick={onBack}>
+                  Add a tape measurement
+                </button>
+              </div>
             </div>
           </div>
         )}

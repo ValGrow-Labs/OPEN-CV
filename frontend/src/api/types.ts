@@ -125,6 +125,9 @@ export interface Recommendation {
   explanation: string[];
   needed_measurements: string[];
   plausible_sizes: string[];
+  /** Only when no single size is supported: the size the reading falls in, and its nearer neighbour. */
+  closest_size?: string | null;
+  closest_alternative?: string | null;
   by_measurement: SizeByMeasurement[];
 }
 

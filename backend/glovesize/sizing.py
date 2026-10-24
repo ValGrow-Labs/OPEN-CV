@@ -207,6 +207,10 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
         )
         camera_based = [k for k in required if usable[k].status != "user_entered"]
         explanation += [HOW_TO_MEASURE[k] for k in camera_based if k in HOW_TO_MEASURE]
+        # Still not a recommendation: say which size the reading itself falls in, and which
+        # neighbour it is closer to, so the customer is not left with nothing to go on.
+        key = required[idx.index(best)]
+        nearby = _nearest_neighbour(chart, key, usable[key].value, best, r2)
         return RecommendationOut(
             **common,
             status="needs_more_data",
@@ -216,6 +220,8 @@ def recommend(chart: SizingChart, measured: dict[str, MeasuredValue]) -> Recomme
             explanation=explanation,
             needed_measurements=camera_based or list(required),
             plausible_sizes=plausible,
+            closest_size=chart.sizes[best].label,
+            closest_alternative=chart.sizes[nearby].label if nearby != best else None,
             by_measurement=per,
         )
 
