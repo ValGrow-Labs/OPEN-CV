@@ -1,6 +1,6 @@
 import type { Measurement, Recommendation, ScanResponse } from "../api/types";
 import { Badge } from "../ui/components";
-import { CONFIDENCE } from "../ui/format";
+import { CONFIDENCE, fingerBendDetail } from "../ui/format";
 import { MeasureList, type MeasureItem } from "../ui/measureList";
 import { ButtonIcon, stagger } from "../ui/motion";
 
@@ -46,7 +46,11 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
   const product = [rec.manufacturer, rec.product_model].filter(Boolean).join(", ");
   const byKey = new Map<string, Measurement>();
   for (const m of [...result.measurements, ...extraMeasurements]) byKey.set(m.key, m);
-  const items = (defs: Omit<MeasureItem, "m">[]) => defs.map((d) => ({ ...d, m: byKey.get(d.key) }));
+  const items = (defs: Omit<MeasureItem, "m">[]) =>
+    defs.map((d) => {
+      const m = byKey.get(d.key);
+      return { ...d, m, detail: fingerBendDetail(result.finger_bends, d.key, m?.reasons ?? []) };
+    });
 
   return (
     <main className="page stack stack-lg">

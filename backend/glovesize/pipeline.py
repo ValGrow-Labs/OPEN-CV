@@ -17,10 +17,11 @@ from .config import (
     load_sizing_charts,
 )
 from .issues import describe
-from .measurement import HAND_LENGTH, aggregate_measurements, measure_frame
+from .measurement import HAND_LENGTH, aggregate_measurements, measure_frame, scan_bent_fingers, scan_finger_bends
 from .schemas import (
     CalibrationOut,
     CoinObservation,
+    FingerBendOut,
     Issue,
     MeasurementOut,
     Point,
@@ -128,13 +129,19 @@ def process_scan(req: ScanRequest) -> ScanResponse:
         issues = [_issue("insufficient_frames")] + [_issue(c, n) for c, n in counts.most_common(3)]
         return rejected(issues, dict(counts), len(accepted_idx))
 
+    # A finger is bent or straight for the scan as a whole (median of its frames), not per frame.
+    bent_scan = scan_bent_fingers(results, cfg.capture)
+    if "middle" in bent_scan:  # hand length runs to its tip
+        counts["fingers_bent"] = max(counts.get("fingers_bent", 0), len(accepted_idx))
+        return rejected([_issue("fingers_bent", len(accepted_idx))], dict(counts), len(accepted_idx))
+
     # Frame-to-frame consistency: a reliable coin fit and a still pose give nearly the same
     # millimetre hand length in every frame. Large spread means the scale is not trustworthy.
     hl_frames = np.array([results[i].values[HAND_LENGTH] for i in accepted_idx if HAND_LENGTH in results[i].values])
     if hl_frames.size >= 2 and float(np.std(hl_frames, ddof=1) / np.median(hl_frames)) > cfg.capture.max_frame_rel_sd:
         return rejected([_issue("scan_unstable")], dict(counts), len(accepted_idx))
 
-    agg = aggregate_measurements(results, cfg, calib, req.manual_measurements)
+    agg = aggregate_measurements(results, cfg, calib, req.manual_measurements, bent_fingers=bent_scan)
     issues = [_issue(c) for c in agg.issue_codes]
     accepted = [results[i] for i in accepted_idx]
     scales = [r.scale for r in accepted if r.scale is not None]
@@ -209,4 +216,13 @@ def process_scan(req: ScanRequest) -> ScanResponse:
         recommendation=recommendation,
         uncertainty_basis=basis,
         limitations=limitations,
+        finger_bends={
+            name: FingerBendOut(
+                bend_2d_deg=round(b2, 1),
+                bend_3d_deg=None if b3 is None else round(b3, 1),
+                limit_2d_deg=cfg.capture.max_finger_bend_deg,
+                limit_3d_deg=cfg.capture.max_finger_bend_deg_3d,
+            )
+            for name, (b2, b3) in scan_finger_bends(results).items()
+        },
     )

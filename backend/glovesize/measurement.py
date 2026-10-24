@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -55,6 +56,30 @@ class FrameResult:
     landmark_sigma: dict[str, float] = field(default_factory=dict)  # mm
     excluded: dict[str, str] = field(default_factory=dict)  # key -> reason
     scale: FrameScale | None = None
+    # Per finger: (in-image bend, depth bend) in degrees; the depth bend is None without world landmarks.
+    bends: dict[str, tuple[float, float | None]] = field(default_factory=dict)
+
+
+def scan_finger_bends(results: list["FrameResult"]) -> dict[str, tuple[float, float | None]]:
+    """The median bend of each finger over a scan's accepted frames (in-image, depth)."""
+    out: dict[str, tuple[float, float | None]] = {}
+    frames = [r.bends for r in results if r.accepted and r.bends]
+    for name in LONG_FINGERS:
+        two = [b[name][0] for b in frames if name in b and np.isfinite(b[name][0])]
+        three = [b[name][1] for b in frames if name in b and b[name][1] is not None and np.isfinite(b[name][1])]
+        if two:
+            out[name] = (float(np.median(two)), float(np.median(three)) if three else None)
+    return out
+
+
+def scan_bent_fingers(results: list["FrameResult"], cap) -> set[str]:
+    """Fingers that are bent for the scan as a whole: the median in-image bend is over its limit, or
+    the median depth bend is. One noisy frame cannot decide this, a finger that is really curled can."""
+    bent: set[str] = set()
+    for name, (b2, b3) in scan_finger_bends(results).items():
+        if b2 > cap.max_finger_bend_deg or (b3 is not None and b3 > cap.max_finger_bend_deg_3d):
+            bent.add(name)
+    return bent
 
 
 def recheck_coin(coin: CoinObservation, cfg: MeasurementConfig) -> list[str]:
@@ -105,14 +130,21 @@ def measure_frame(
         world = np.array([[p.x, p.y, p.z] for p in frame.world_landmarks], dtype=np.float64)
     bent: set[str] = set()
     obscured: set[str] = set()
+    bends: dict[str, tuple[float, float | None]] = {}
     for name, chain in LONG_FINGERS.items():
         chain_pts = lm[list(chain)]
         segs = np.linalg.norm(np.diff(chain_pts, axis=0), axis=1)
         b2 = chain_bend_deg(lm, chain)
-        b3 = chain_bend_deg(world, chain) if world is not None else 0.0
+        b3 = chain_bend_deg(world, chain) if world is not None else None
+        bends[name] = (b2, b3)
         if np.isnan(b2) or np.any(segs < 3.0) or not inside_frame(chain_pts, w, h, cap.edge_margin_fraction):
             obscured.add(name)
-        elif not (b2 <= cap.max_finger_bend_deg) or (world is not None and not (b3 <= cap.max_finger_bend_deg_3d)):
+        # In-image bend is accurate: judged on every frame. The depth bend is noisy and biased, so a
+        # frame is dropped for it only when it is far over the limit; the limit itself is applied to
+        # the median over the scan (scan_bent_fingers).
+        elif not (b2 <= cap.max_finger_bend_deg) or (
+            b3 is not None and not (b3 <= cap.max_finger_bend_deg_3d * cap.finger_bend_3d_frame_factor)
+        ):
             bent.add(name)
     if "middle" in bent:
         codes.append("fingers_bent")
@@ -158,7 +190,7 @@ def measure_frame(
     pts = scale.rectify(lm)
     # MediaPipe runs the landmark model on a crop about `landmark_roi_scale` times the hand's size.
     sigma_lm_px = unc.landmark_sigma_model_px * unc.landmark_roi_scale * bbox_size(lm) / unc.landmark_model_input_px
-    result = FrameResult(True, [], scale=scale)
+    result = FrameResult(True, [], scale=scale, bends=bends)
     for key, d in cfg.measurements.items():
         if d.kind == "straight":
             length_px = float(np.linalg.norm(pts[d.landmarks[-1]] - pts[d.landmarks[0]]))
@@ -225,6 +257,7 @@ def aggregate_measurements(
     cfg: MeasurementConfig,
     calib: MeasurementCalibration,
     manual: ManualMeasurements | None,
+    bent_fingers: Collection[str] = (),
 ) -> AggregateOutput:
     accepted = [r for r in results if r.accepted]
     unc = cfg.uncertainty
@@ -249,6 +282,10 @@ def aggregate_measurements(
             source="camera_landmarks",
         )
         req_frames = min_frames if key == HAND_LENGTH else min_feature_frames
+        if _chain_finger(d.landmarks) in bent_fingers:
+            out.append(MeasurementOut(**base, value_mm=None, uncertainty_mm=None, interval95_mm=None,
+                                      status="invalid", frames_used=0, reasons=["finger_bent"]))  # fmt: skip
+            continue
         if len(idx) < req_frames:
             excl = Counter(r.excluded.get(key) for r in accepted if key in r.excluded)
             reason = excl.most_common(1)[0][0] if excl else "too_few_frames"

@@ -159,7 +159,11 @@ class CaptureParams(_Strict):
     min_hand_length_fraction: float = Field(gt=0, lt=1)
     edge_margin_fraction: float = Field(ge=0, lt=0.5)
     max_finger_bend_deg: float = Field(gt=0, lt=180)
+    # The depth ("world") bend of a straight finger is biased and noisy (straight real hands read
+    # 19-41 degrees), so it is judged on the median over a scan; a single frame is dropped for it
+    # only beyond this factor times the limit.
     max_finger_bend_deg_3d: float = Field(gt=0, lt=180)
+    finger_bend_3d_frame_factor: float = Field(ge=1, le=5)
     max_palm_tilt_deg_model: float = Field(gt=0, lt=90)
     brightness_range: tuple[float, float]
     max_landmark_jitter_fraction: float = Field(gt=0)

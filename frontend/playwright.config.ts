@@ -18,7 +18,8 @@ const server = (port: number, env: Record<string, string> = {}) => ({
   url: `http://127.0.0.1:${port}/api/health`,
   reuseExistingServer: false,
   timeout: 60_000,
-  env,
+  // The browser tests keep the six-size demo chart: their expectations are written for it.
+  env: { GLOVESIZE_DEFAULT_CHART: "demo-length-v1", ...env },
 });
 
 const fakeCamera = (video: string) => ({

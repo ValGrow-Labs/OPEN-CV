@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChartSummary, Measurement, PublicConfig, ScanResponse } from "../api/types";
 import type { ScanTimingBreakdown } from "../scan/scanController";
 import { Badge, HandDiagram } from "../ui/components";
-import { MM_PER_INCH } from "../ui/format";
+import { fingerBendDetail, MM_PER_INCH } from "../ui/format";
 import { MeasureList } from "../ui/measureList";
 import { ButtonIcon, stagger } from "../ui/motion";
 
@@ -35,7 +35,8 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
   const warnings = result.issues.filter((i) => i.severity !== "error");
 
   const rec = result.recommendation;
-  const asItems = (rows: Measurement[]) => rows.map((m) => ({ key: m.key, label: m.label, m }));
+  const asItems = (rows: Measurement[]) =>
+    rows.map((m) => ({ key: m.key, label: m.label, m, detail: fingerBendDetail(result.finger_bends, m.key, m.reasons) }));
 
   return (
     <main className="page stack stack-lg">
@@ -105,6 +106,7 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
       <ContinuePanel
         fields={manualFields}
         plausibleSizes={rec?.plausible_sizes ?? []}
+        closestSize={rec?.size ? null : rec?.closest_size ?? null}
         manualSd={config.manual_measurement_sd_mm}
         onRescan={onRescan}
         onContinue={onContinue}
@@ -260,6 +262,7 @@ const MANUAL_FIELDS = {
 function ContinuePanel({
   fields,
   plausibleSizes,
+  closestSize,
   manualSd,
   onRescan,
   onContinue,
@@ -268,6 +271,7 @@ function ContinuePanel({
 }: {
   fields: (keyof typeof MANUAL_FIELDS)[];
   plausibleSizes: string[];
+  closestSize: string | null;
   manualSd: number;
   onRescan: () => void;
   onContinue: (manual: ManualEntries) => void;
@@ -298,7 +302,7 @@ function ContinuePanel({
             {fields.includes("hand_length_mm") && plausibleSizes.length > 1 && (
               <p className="small">
                 From the camera alone, sizes {plausibleSizes.join(", ")} are all possible, so we won't pick one for you.
-                A ruler or tape measurement gives a reliable size.
+                {closestSize && <> Your reading is closest to size {closestSize}.</>} A ruler or tape measurement gives a reliable size.
               </p>
             )}
           </>

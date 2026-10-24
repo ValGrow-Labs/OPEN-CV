@@ -73,7 +73,8 @@
     "min_hand_length_fraction": 0.3,
     "edge_margin_fraction": 0.02,
     "max_finger_bend_deg": 30.0,
-    "max_finger_bend_deg_3d": 50.0,
+    "max_finger_bend_deg_3d": 60.0,
+    "finger_bend_3d_frame_factor": 1.5,
     "max_palm_tilt_deg_model": 45.0,
     "brightness_range": [
       50,

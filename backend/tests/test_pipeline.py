@@ -130,7 +130,7 @@ def test_signed_off_calibration_reports_validated_basis(no_depth_config, monkeyp
     )  # fmt: skip
     calibrated = _fitted_calibration().model_copy(update={"validation": evidence})
     monkeypatch.setattr(pipeline, "load_measurement_calibration", lambda: calibrated)
-    r = process_scan(request(make_frames()))
+    r = process_scan(request(make_frames(), chart_id="demo-length-v1"))  # the six-size chart named below
     assert r.uncertainty_basis == "validated"
     assert not any(i.code == "uncertainty_unvalidated" for i in r.issues)
     hl = next(m for m in r.measurements if m.key == "hand_length_mm")
@@ -143,7 +143,7 @@ def test_signed_off_calibration_reports_validated_basis(no_depth_config, monkeyp
 def test_uncalibrated_recommendation_is_not_overconfident(no_depth_config):
     # Unvalidated priors make the hand-length interval wider than one size band: no size is
     # recommended, the plausible sizes are listed and a tape measurement is requested.
-    r = process_scan(request(make_frames(hand_length_mm=181.0)))
+    r = process_scan(request(make_frames(hand_length_mm=181.0), chart_id="demo-length-v1"))  # six 12 mm sizes
     rec = r.recommendation
     assert rec.size is None and rec.status == "needs_more_data"
     assert "M" in rec.plausible_sizes and len(rec.plausible_sizes) >= 2

@@ -9,6 +9,8 @@ export interface MeasureItem {
   label: string;
   note?: string;
   m?: Measurement;
+  /** Extra line under the reasons, e.g. the bend that got a finger refused. */
+  detail?: string;
 }
 
 export function Status({ tone, children }: { tone: Tone; children: string }) {
@@ -67,6 +69,7 @@ function MeasureRow({ item, index, showHow, countUp }: { item: MeasureItem; inde
         </div>
       )}
       {m && m.reasons.length > 0 && <p className="mrow-reason">{m.reasons.map((r) => REASONS[r] ?? r).join(" ")}</p>}
+      {item.detail && <p className="mrow-reason">{item.detail}</p>}
       {showHow && m && (
         <details className="disclosure">
           <summary>How it's measured</summary>

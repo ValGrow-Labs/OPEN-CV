@@ -5,6 +5,7 @@ import type { Recommendation, ScanResponse } from "../api/types";
 import { calibrationParams as cal, captureParams as cap, goodFrame, publicConfig } from "../test/fixtures";
 import { estimatedDistanceMm, evaluateFrame } from "../vision/liveChecks";
 import { MeasurementsScreen } from "./MeasurementsScreen";
+import { fingerBendDetail } from "../ui/format";
 import { ResultsScreen } from "./ResultsScreen";
 import { ScanScreen } from "./ScanScreen";
 
@@ -109,6 +110,26 @@ describe("uncertain recommendations", () => {
     fireEvent.change(screen.getByLabelText("Hand length"), { target: { value: "7.25" } });
     fireEvent.click(screen.getByRole("button", { name: /See my size/ }));
     expect(onContinue).toHaveBeenCalledWith({ hand_length_mm: expect.closeTo(184.15, 2) });
+  });
+
+  it("mentions the closest size on the tape-measurement card", () => {
+    const cfg = publicConfig();
+    const result = { ...accepted, recommendation: { ...uncertainRec, plausible_sizes: ["XS", "S", "M", "L"], closest_size: "S", closest_alternative: "M" } };
+    render(
+      <MeasurementsScreen config={cfg} chart={cfg.charts[0]} result={result} mirrored={false} onRescan={() => {}} onContinue={() => {}} busy={false} error={null} />,
+    );
+    expect(screen.getByText(/sizes XS, S, M, L are all possible/)).toBeTruthy();
+    expect(screen.getByText(/Your reading is closest to size S\./)).toBeTruthy();
+  });
+
+  it("shows the measured bend of a finger that was refused as not straight", () => {
+    const bends = { index: { bend_2d_deg: 12.4, bend_3d_deg: 63.2, limit_2d_deg: 30, limit_3d_deg: 60 } };
+    expect(fingerBendDetail(bends, "index_length_mm", ["finger_bent"])).toBe(
+      "Measured bend: 12° in the image (limit 30°), 63° in the depth estimate (limit 60°).",
+    );
+    expect(fingerBendDetail(bends, "index_length_mm", [])).toBeUndefined(); // only for a refused finger
+    expect(fingerBendDetail(bends, "thumb_length_mm", ["finger_bent"])).toBeUndefined();
+    expect(fingerBendDetail(undefined, "index_length_mm", ["finger_bent"])).toBeUndefined();
   });
 
   it("says which size the camera reading is closest to, without recommending it", () => {

@@ -33,7 +33,7 @@ def test_health(client):
 def test_public_config(client):
     cfg = client.get("/api/config").json()
     assert cfg["reference_objects"]["default"] == "us_quarter"
-    assert cfg["default_chart_id"] == "demo-length-v1"
+    assert cfg["default_chart_id"] == "demo-everyday-v1"
     assert all(c["is_demo"] for c in cfg["charts"])
     assert cfg["coin_detection"]["accept"]["min_confidence"] > 0
     assert cfg["calibration_status"] == "uncalibrated"
@@ -45,7 +45,7 @@ def test_scan_ok(client):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "accepted"
-    assert body["recommendation"]["chart_id"] == "demo-length-v1"
+    assert body["recommendation"]["chart_id"] == "demo-everyday-v1"
 
 
 def test_scan_rejects_wrong_landmark_count(client):

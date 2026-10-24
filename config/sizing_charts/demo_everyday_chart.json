@@ -1,0 +1,18 @@
+{
+  "chart_id": "demo-everyday-v1",
+  "is_demo": true,
+  "disclaimer": "DEMONSTRATION CHART WITH SYNTHETIC VALUES. These three coarse sizes are placeholders so the app can answer during demos; the boundaries are invented, not an official size chart for any glove product. Replace with the manufacturer's documented chart before customer use.",
+  "manufacturer": "Demo Manufacturer (placeholder)",
+  "product_model": "Demo Everyday Glove, 3 sizes (placeholder)",
+  "units": "mm",
+  "rules": {
+    "measurements": ["hand_length_mm"],
+    "combine": "primary_only",
+    "notes": "Size by hand length only (wrist crease to middle fingertip). Three coarse placeholder sizes."
+  },
+  "sizes": [
+    { "label": "S", "ranges": { "hand_length_mm": [null, 165.0] } },
+    { "label": "M", "ranges": { "hand_length_mm": [165.0, 196.0] } },
+    { "label": "L", "ranges": { "hand_length_mm": [196.0, null] } }
+  ]
+}

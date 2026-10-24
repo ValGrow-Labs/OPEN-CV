@@ -338,9 +338,30 @@ Assumptions shared by every camera measurement:
 * **Physical** along the joint chain. It starts at the joint centre, which is proximal to the
   palmar finger crease used in anthropometry, so the camera value is systematically longer than
   a crease-to-tip measurement.
-* **Error sources:** finger curl (a bent finger is excluded from its own measurement in that
-  frame), and fingertip landmark placement. The thumb rotates out of the palm plane, so its
-  length is never better than "low confidence".
+* **Error sources:** finger curl, and fingertip landmark placement. The thumb rotates out of the
+  palm plane, so its length is never better than "low confidence".
+* **When a finger counts as bent.** Each long finger has two bend readings: the bend seen *in the
+  image* (angles between its joint segments in pixels; accurate) and the bend in the hand model's
+  *depth estimate* (the same angles on the model's world landmarks; noisy and biased).
+  * The in-image bend is judged on every frame: over `capture.max_finger_bend_deg` (30°) the
+    finger is left out of that frame (the middle finger rejects the frame, since hand length runs
+    to its tip).
+  * The depth bend is judged on the **median over the scan**: a finger whose median is over
+    `capture.max_finger_bend_deg_3d` (60°) is "not straight enough" for the whole scan (for the
+    middle finger the scan is rejected, `fingers_bent`). A single frame is dropped for it only
+    beyond `finger_bend_3d_frame_factor` (1.5) times that limit.
+  * Why: on two photos of real hands with straight fingers, perturbed 60 times each (rotation ±5°,
+    scale ±8%, noise), the in-image bend read 1–7° but the depth bend read 19–33° for the index,
+    middle and ring fingers and 35–41° for the little finger (medians). The depth bend of a
+    straight finger is therefore far from 0 and close to the old per-frame limit of 50°, so
+    straight fingers lost frames at random and could be left with too few. These are two photos
+    of two hands, not a validation.
+  * Why 60°: a finger with a total bend of 60° over its two joints has a straight-line tip
+    distance about 4.5% shorter than its length (sin(B/2)/(B/2)), inside the 8% uncertainty
+    already reported for finger lengths. The limit is provisional and unvalidated, like the
+    others (`docs/VALIDATION_PLAN.md`).
+  * The response lists each finger's median bends against the limits (`finger_bends`), and a finger
+    that is refused shows them, so a refusal can be checked against real numbers.
 
 ### Proportions
 

@@ -22,6 +22,25 @@ export const SOURCE: Record<MeasurementSource, string> = {
   not_available: "Cannot be measured from a single camera view",
 };
 
+const FINGER_OF_KEY: Record<string, string> = {
+  index_length_mm: "index",
+  middle_length_mm: "middle",
+  ring_length_mm: "ring",
+  little_length_mm: "little",
+};
+
+/** For a finger refused as "not straight enough": the bend that was measured and its limits. */
+export function fingerBendDetail(
+  bends: Record<string, { bend_2d_deg: number; bend_3d_deg: number | null; limit_2d_deg: number; limit_3d_deg: number }> | undefined,
+  key: string,
+  reasons: string[],
+): string | undefined {
+  const b = bends?.[FINGER_OF_KEY[key]];
+  if (!b || !reasons.includes("finger_bent")) return undefined;
+  const depth = b.bend_3d_deg === null ? "" : `, ${Math.round(b.bend_3d_deg)}° in the depth estimate (limit ${Math.round(b.limit_3d_deg)}°)`;
+  return `Measured bend: ${Math.round(b.bend_2d_deg)}° in the image (limit ${Math.round(b.limit_2d_deg)}°)${depth}.`;
+}
+
 export const REASONS: Record<string, string> = {
   out_of_plane: "The thumb usually turns out of the palm plane, so its length is less reliable.",
   unstable: "The value varied between frames.",

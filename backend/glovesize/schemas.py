@@ -134,6 +134,15 @@ MeasurementStatus = Literal["valid", "low_confidence", "invalid", "not_measured"
 MeasurementSource = Literal["camera_landmarks", "camera_model_estimate", "user_entered", "not_available"]
 
 
+class FingerBendOut(_Model):
+    """How bent a finger looked over the scan (median of its accepted frames), against the limits."""
+
+    bend_2d_deg: float = Field(description="Bend seen in the image.")
+    bend_3d_deg: float | None = Field(description="Bend in the hand model's depth estimate (noisy, biased).")
+    limit_2d_deg: float
+    limit_3d_deg: float
+
+
 class MeasurementOut(_Model):
     key: str
     label: str
@@ -212,6 +221,7 @@ class ScanResponse(_Model):
     recommendation: RecommendationOut | None
     uncertainty_basis: Literal["prior_assumptions", "fitted_unvalidated", "validated"]
     limitations: list[str]
+    finger_bends: dict[str, FingerBendOut] = Field(default_factory=dict)
 
 
 class MeasurementInput(_Model):

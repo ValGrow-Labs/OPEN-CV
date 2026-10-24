@@ -12,6 +12,40 @@
 | 6 | Privacy and legal review: consent text, retention, biometric-law assessment | Required before collecting research data | `docs/DATA_COLLECTION_AND_PRIVACY.md` |
 | 7 | Branding: logo, colours, product names and hosting domain (HTTPS is required for cameras) | The UI currently uses neutral placeholders | `frontend/src/styles.css`, `index.html` |
 
+### Placeholder charts now, the client's chart later
+
+Until the client's chart arrives the app ships three **demonstration** charts, each labelled as such
+on the welcome page and on every result. The default is `demo-everyday-v1`: three coarse sizes
+(S below 165 mm, M 165-196 mm, L from 196 mm, by hand length). Its boundaries are invented. They
+are wide on purpose: at the camera's present uncertainty (about ±7.7 mm, mostly stored prior
+allowances, see `docs/MEASUREMENT_METHODOLOGY.md`) a chart of 12 mm sizes cannot be answered from
+the camera alone, whereas this one can, so a demo can run end to end. It says nothing about how any
+glove fits. `demo-length-v1` (six 12 mm sizes) and `demo-length-circumference-v1` remain selectable.
+
+**What to ask the client for** (one chart per product):
+
+1. Size labels in the order they sell them (S/M/L, 7/8/9, ...), and which sizes exist.
+2. The measurement each size is based on (hand length, palm breadth, hand circumference) and its
+   exact **definition** (from which wrist crease, with or without the thumb, tape or caliper).
+3. The boundaries in millimetres (convert inches ourselves; say which edge belongs to which size).
+4. The rule when two measurements point to different sizes (take the larger? the primary only?).
+5. The product and manufacturer names to show, and the wording of the disclaimer they want.
+6. Ideally try-on outcomes (size worn, fit rating) to check the chart against real fit.
+
+**How to add it** (no code change):
+
+1. Copy `config/sizing_charts/demo_everyday_chart.json` to `config/sizing_charts/<product>.json`.
+2. Set `chart_id`, `manufacturer`, `product_model`, the `rules` (`measurements`, `combine`) and the
+   `sizes` bands (`[lower, upper]` in mm, `null` for the open ends of the smallest/largest size).
+3. Set `"is_demo": false` and remove the placeholder disclaimer **only** for a chart the client has
+   signed off. The server refuses a demo chart without a disclaimer and checks that the bands do not
+   overlap and that only the end sizes are open.
+4. Set `default_chart_id` in `config/app.json` to the new `chart_id`.
+5. Run the backend tests. Narrow bands may make the camera answer "most likely size" instead of a
+   single size; that is the honest result until the validation study (`docs/VALIDATION_PLAN.md`)
+   replaces the prior allowances with measured ones. Do not edit the calibration file to make a chart
+   "pass".
+
 ## Risks and limitations
 
 | Risk | Impact | Mitigation in place | Still needed |

@@ -131,6 +131,13 @@ export interface Recommendation {
   by_measurement: SizeByMeasurement[];
 }
 
+export interface FingerBend {
+  bend_2d_deg: number;
+  bend_3d_deg: number | null;
+  limit_2d_deg: number;
+  limit_3d_deg: number;
+}
+
 export interface ScanResponse {
   status: "accepted" | "rejected";
   issues: Issue[];
@@ -147,6 +154,8 @@ export interface ScanResponse {
   recommendation: Recommendation | null;
   uncertainty_basis: "prior_assumptions" | "fitted_unvalidated" | "validated";
   limitations: string[];
+  /** How bent each finger looked over the scan (median of its frames) against the limits. */
+  finger_bends?: Record<string, FingerBend>;
 }
 
 // ----------------------------------------------------------------------------
@@ -215,6 +224,7 @@ export interface CaptureParams {
   edge_margin_fraction: number;
   max_finger_bend_deg: number;
   max_finger_bend_deg_3d: number;
+  finger_bend_3d_frame_factor: number;
   max_palm_tilt_deg_model: number;
   brightness_range: [number, number];
   max_landmark_jitter_fraction: number;
