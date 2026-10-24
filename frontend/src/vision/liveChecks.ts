@@ -115,34 +115,15 @@ export function evaluateFrame(
 
   if (!insideFrame(lm, w, h, capture.edge_margin_fraction)) codes.push("hand_out_of_frame");
   if (dist(lm[WRIST], lm[MIDDLE_TIP]) < capture.min_hand_length_fraction * Math.min(w, h)) codes.push("hand_too_small");
-  const index = LONG_FINGERS.index;
-  const indexBent2d = chainBendDeg(lm, index);
-  const indexBent3d = frame.world_landmarks ? chainBendDeg(frame.world_landmarks, index, true) : 0;
-  const indexBent = !(indexBent2d <= capture.max_finger_bend_deg) || !(indexBent3d <= capture.max_finger_bend_deg_3d);
-
+  // Only the middle finger decides whether a frame is usable (the hand length runs to its tip), as
+  // on the server. A bent index finger or fingers close together only cost those fingers' own
+  // measurements, which the server leaves out ("finger_bent"), so they never hold up a scan: it
+  // should be easy for a customer to finish. (The index_finger_bent / fingers_touching codes stay
+  // defined but are no longer raised.)
   const middle = LONG_FINGERS.middle;
-  const middleBent2d = chainBendDeg(lm, middle);
-  const middleBent3d = frame.world_landmarks ? chainBendDeg(frame.world_landmarks, middle, true) : 0;
-  const middleBent = !(middleBent2d <= capture.max_finger_bend_deg) || !(middleBent3d <= capture.max_finger_bend_deg_3d);
-
-  if (middleBent && indexBent) {
-    codes.push("fingers_bent");
-  } else if (indexBent) {
-    codes.push("index_finger_bent");
-  } else if (middleBent) {
-    codes.push("fingers_bent");
-  }
-
-  // Finger separation check: adjacent fingertips must have clearance
-  const handLen = dist(lm[WRIST], lm[MIDDLE_TIP]);
-  const minFingerGap = handLen * 0.055;
-  const tips = [4, 8, 12, 16, 20];
-  for (let i = 1; i < tips.length - 1; i++) {
-    if (dist(lm[tips[i]], lm[tips[i + 1]]) < minFingerGap) {
-      codes.push("fingers_touching");
-      break;
-    }
-  }
+  const bent2d = chainBendDeg(lm, middle);
+  const bent3d = frame.world_landmarks ? chainBendDeg(frame.world_landmarks, middle, true) : 0;
+  if (!(bent2d <= capture.max_finger_bend_deg) || !(bent3d <= capture.max_finger_bend_deg_3d)) codes.push("fingers_bent");
 
   if (frame.world_landmarks && palmTiltDeg(frame.world_landmarks) > capture.max_palm_tilt_deg_model) codes.push("palm_not_flat");
   if (frame.brightness !== null) {

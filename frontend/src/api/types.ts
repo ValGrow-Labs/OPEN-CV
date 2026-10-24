@@ -219,6 +219,21 @@ export interface CaptureParams {
   max_frame_rel_sd: number;
 }
 
+/** The browser's scan loop (config/measurement.json "live_scan"). */
+export interface LiveScanParams {
+  min_frame_interval_ms: number;
+  full_coin_search_every: number;
+  track_min_confidence: number;
+  palm_mask_grow: number | null;
+  mobile_frames_target: number;
+  mobile_frames_min: number;
+  timeout_s: number;
+  early_stop_frames_mobile: number;
+  early_stop_frames_desktop: number;
+  early_stop_rel_sd: number;
+  early_stop_after_s: number;
+}
+
 export interface CalibrationParams {
   max_tilt_deg: number;
   warn_tilt_deg: number;
@@ -260,6 +275,7 @@ export interface PublicConfig {
   reference_objects: { default: string; objects: ReferenceObject[] };
   coin_detection: CoinDetectionParams;
   capture: CaptureParams;
+  live_scan: LiveScanParams;
   calibration: CalibrationParams;
   measurement_labels: Record<string, string>;
   manual_measurement_sd_mm: number;

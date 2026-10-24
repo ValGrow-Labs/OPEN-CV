@@ -98,6 +98,7 @@ def public_config() -> dict:
         },
         "coin_detection": cfg.coin_detection.model_dump(),
         "capture": cfg.capture.model_dump(),
+        "live_scan": cfg.live_scan.model_dump(),
         "calibration": cfg.calibration.model_dump(),
         "measurement_labels": {k: d.label for k, d in cfg.measurements.items()},
         "manual_measurement_sd_mm": cfg.uncertainty.manual_measurement_sd_mm,

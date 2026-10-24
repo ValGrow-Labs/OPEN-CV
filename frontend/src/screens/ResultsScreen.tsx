@@ -315,6 +315,8 @@ function MeasurementRow({ def, m, index }: { def: FingerDef; m: Measurement | un
               {fmtIn(m.value_mm!)}
               {m.uncertainty_mm !== null && <span> (±{m.uncertainty_mm.toFixed(1)} mm)</span>}
             </div>
+            {/* Where the number came from: the customer's own tape or the camera. */}
+            <div className="small muted">{m.status === "user_entered" ? "entered by you" : "camera estimate"}</div>
           </div>
         ) : (
           <span className="muted" style={{ fontStyle: "italic" }}>

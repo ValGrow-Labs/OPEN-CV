@@ -165,6 +165,23 @@ class CaptureParams(_Strict):
     max_frame_rel_sd: float = Field(gt=0)
 
 
+class LiveScanParams(_Strict):
+    """The browser's scan loop (frontend/src/scan/scanController.ts). These only decide which frames
+    the phone collects and how quickly a scan finishes; the server re-checks every frame."""
+
+    min_frame_interval_ms: float = Field(ge=0)
+    full_coin_search_every: int = Field(ge=1)
+    track_min_confidence: float = Field(ge=0, le=1)
+    palm_mask_grow: float | None = Field(default=None, ge=1)  # None: search the whole window
+    mobile_frames_target: int = Field(ge=1)
+    mobile_frames_min: int = Field(ge=1)
+    timeout_s: float = Field(gt=0)
+    early_stop_frames_mobile: int = Field(ge=1)
+    early_stop_frames_desktop: int = Field(ge=1)
+    early_stop_rel_sd: float = Field(gt=0)
+    early_stop_after_s: float = Field(ge=0)
+
+
 class UncertaintyParams(_Strict):
     landmark_model_input_px: float = Field(gt=0)
     landmark_sigma_model_px: float = Field(ge=0)
@@ -212,6 +229,7 @@ class MeasurementConfig(_Strict):
     coin_detection: CoinDetectionParams
     calibration: CalibrationParams
     capture: CaptureParams
+    live_scan: LiveScanParams
     uncertainty: UncertaintyParams
     depth_model: DepthModelParams
     acceptance: AcceptanceParams

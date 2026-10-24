@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { CalibrationParams, CaptureParams, CoinDetectionParams, FrameObservation, PublicConfig } from "../api/types";
+import type { CalibrationParams, CaptureParams, CoinDetectionParams, FrameObservation, LiveScanParams, PublicConfig } from "../api/types";
 
 // Paths relative to the frontend root (vitest's cwd); import.meta.url is not a file URL under jsdom.
 const measurement = JSON.parse(readFileSync(resolve(process.cwd(), "../config/measurement.json"), "utf-8"));
@@ -8,6 +8,7 @@ const coinScenes = JSON.parse(readFileSync(resolve(process.cwd(), "src/vision/__
 
 export const coinParams = measurement.coin_detection as CoinDetectionParams;
 export const captureParams = measurement.capture as CaptureParams;
+export const liveScanParams = measurement.live_scan as LiveScanParams;
 export const calibrationParams = measurement.calibration as CalibrationParams;
 
 export const searchWindowCase = coinScenes.search_window_case as {
@@ -58,6 +59,7 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
     },
     coin_detection: coinParams,
     capture: captureParams,
+    live_scan: liveScanParams,
     calibration: calibrationParams,
     measurement_labels: {},
     manual_measurement_sd_mm: 4,

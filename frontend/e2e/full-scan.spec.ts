@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const summaryPath = resolve(__dirname, ".media/hand.json");
+const measurement = JSON.parse(readFileSync(resolve(__dirname, "../../config/measurement.json"), "utf-8"));
+// A scan may stop early once its frames agree; phones need fewer frames (config "live_scan").
+const MIN_FRAMES = Math.min(measurement.capture.frames_min_accepted, measurement.live_scan.mobile_frames_min);
 
 test.skip(!existsSync(summaryPath), "hand test video not generated (run npm run e2e)");
 
@@ -47,7 +50,7 @@ async function fullScan(page: Page, tag: string) {
   // Only numeric observations are sent: no image data in the request.
   expect(bodies).toHaveLength(1);
   const body = JSON.parse(bodies[0]);
-  expect(body.frames.length).toBeGreaterThanOrEqual(12);
+  expect(body.frames.length).toBeGreaterThanOrEqual(MIN_FRAMES);
   expect(bodies[0]).not.toMatch(/data:image|base64/);
   expect(Object.keys(body.frames[0]).sort()).toEqual(
     ["brightness", "coin", "handedness", "handedness_score", "image_height", "image_width", "landmarks", "timestamp_ms", "world_landmarks"].sort(),
@@ -69,7 +72,7 @@ async function fullScan(page: Page, tag: string) {
   await page.getByLabel("Unit").selectOption("mm");
   await page.getByLabel("Hand length").fill("181");
   await page.getByRole("button", { name: "See my size" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your glove size");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your glove size results");
   // 181 mm +/- 4 mm (tape) sits inside M (175-187 mm).
   await expect(page.locator(".size-tile .size")).toHaveText("M");
   await expect(page.getByText(/entered by you/)).toBeVisible();

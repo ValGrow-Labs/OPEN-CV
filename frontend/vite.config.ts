@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: { exclude: ["@techstark/opencv-js"] },
   build: { chunkSizeWarningLimit: 12000 },
+  // The coin worker is a module worker (vision/coinEngine.ts).
+  worker: { format: "es" },
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],

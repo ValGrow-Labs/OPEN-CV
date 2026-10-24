@@ -34,15 +34,16 @@ describe("live capture checks", () => {
     expect(evaluateFrame(f, null, cap, cal).codes).toContain("fingers_bent");
   });
 
-  it("flags a bent index finger", () => {
+  it("does not hold up the scan for a bent index finger (the server just leaves that finger out)", () => {
     const f = goodFrame();
     f.landmarks[8].x += 60;
     const r = evaluateFrame(f, null, cap, cal);
-    expect(r.codes).toContain("index_finger_bent");
-    expect(r.message).toMatch(/straighten your index finger/i);
+    expect(r.codes).not.toContain("index_finger_bent");
+    expect(r.codes).not.toContain("fingers_bent");
+    expect(r.ok).toBe(true);
   });
 
-  it("flags touching or overlapping fingers", () => {
+  it("does not hold up the scan for fingers that are close together", () => {
     const f = goodFrame();
     const dx = f.landmarks[12].x - f.landmarks[8].x;
     const dy = f.landmarks[12].y - f.landmarks[8].y;
@@ -51,8 +52,8 @@ describe("live capture checks", () => {
       f.landmarks[idx].y += dy * 0.9;
     }
     const r = evaluateFrame(f, null, cap, cal);
-    expect(r.codes).toContain("fingers_touching");
-    expect(r.message).toMatch(/spread your fingers slightly/i);
+    expect(r.codes).not.toContain("fingers_touching");
+    expect(r.ok).toBe(true);
   });
 
   it("requires the coin and forwards coin quality reasons", () => {
