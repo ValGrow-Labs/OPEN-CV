@@ -16,6 +16,7 @@
     "e2e": "node e2e/prepare.mjs && playwright test"
   },
   "dependencies": {
+    "@fontsource-variable/fraunces": "5.3.0",
     "@fontsource-variable/geist": "5.2.9",
     "@mediapipe/tasks-vision": "0.10.35",
     "@phosphor-icons/react": "2.1.10",

@@ -46,6 +46,9 @@ export function WelcomeScreen({ config, chartId, reference, onChartChange, onRef
     <main className="welcome">
       <section className="hero-split" aria-labelledby="welcome-title">
         <div className="hero-copy">
+          <span className="eyebrow stagger-in" style={stagger(0)}>
+            Glove fitting by camera
+          </span>
           <h1 id="welcome-title">
             <SplitWords text="Find your glove size" delay={100} />
           </h1>
