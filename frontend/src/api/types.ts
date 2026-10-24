@@ -232,6 +232,9 @@ export interface LiveScanParams {
   early_stop_frames_desktop: number;
   early_stop_rel_sd: number;
   early_stop_after_s: number;
+  hint_after_s: number;
+  issue_window_s: number;
+  show_live_measurements: boolean;
 }
 
 export interface CalibrationParams {

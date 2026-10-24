@@ -180,6 +180,11 @@ class LiveScanParams(_Strict):
     early_stop_frames_desktop: int = Field(ge=1)
     early_stop_rel_sd: float = Field(gt=0)
     early_stop_after_s: float = Field(ge=0)
+    # Guidance: after hint_after_s without a usable frame, name the most common problem over the
+    # last issue_window_s seconds. Live (per-frame, rough) lengths drawn on the camera picture.
+    hint_after_s: float = Field(ge=0)
+    issue_window_s: float = Field(gt=0)
+    show_live_measurements: bool
 
 
 class UncertaintyParams(_Strict):

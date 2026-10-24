@@ -207,6 +207,7 @@ export function ScanScreen<R = ScanResponse>({
               `hand ${Math.round(status.timing.handMs)} ms  coin ${Math.round(status.timing.coinMs)} ms`,
               `coin ${status.coin?.found ? `${status.coin.method} d=${status.coin.major_axis_px.toFixed(1)}px conf=${status.coin.confidence.toFixed(2)} ${status.coin.accepted ? "ok" : (status.coin.reasons ?? []).join(",")}` : "not found"}`,
               `checks ${status.live?.codes.join(",") || "ok"}`,
+              `main ${status.topIssue ? `${status.topIssue.code} ${Math.round(status.topIssue.share * 100)}%` : "-"}`,
             ].join("\n")}
           </pre>
         )}
@@ -323,16 +324,22 @@ export function ScanScreen<R = ScanResponse>({
             );
           })}
         </ol>
-        {runningSec >= 15 && phase === "running" && (status?.collected ?? 0) < 6 && (
-          <div className="row" style={{ justifyContent: "center", alignItems: "center", marginTop: 8, gap: 10 }}>
-            <span className="small muted">
-              Tip: Hold your palm steady and flat ~30 cm away in bright light.
+        {status?.liveMm && phase === "running" && (
+          <div className="live-meter" aria-live="off">
+            <span className="live-meter-label">Hand length, live</span>
+            <span className="live-meter-value num">{Math.round(status.liveMm.handMm)} mm</span>
+            <span className="live-meter-sub num">{(status.liveMm.handMm / 25.4).toFixed(2)} in · final value after the scan</span>
+          </div>
+        )}
+        {runningSec >= config.live_scan.hint_after_s &&
+          phase === "running" &&
+          (status?.collected ?? 0) < config.live_scan.mobile_frames_min &&
+          status?.topIssue && (
+          <div className="scan-hint" role="status">
+            <span className="small">
+              Main problem right now: <strong>{status.topIssue.message}</strong>
             </span>
-            <button
-              className="btn btn-quiet"
-              style={{ padding: "3px 10px", fontSize: "0.75rem" }}
-              onClick={() => controllerRef.current?.resetCollection()}
-            >
+            <button className="btn btn-quiet scan-hint-btn" onClick={() => controllerRef.current?.resetCollection()}>
               Reset
             </button>
           </div>

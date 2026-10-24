@@ -5,11 +5,12 @@ import { describeCameraError, isMobileDevice, openCamera, stopStream, type Camer
 import { getCoinEngine, type CoinEngine } from "../vision/coinEngine";
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import type { CoinJobResult } from "../vision/coinJob";
-import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton } from "../vision/draw";
+import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton, drawTag } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow } from "../vision/frameAnalysis";
 import { dist, insideFrame, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
-import { evaluateFrame, type LiveResult } from "../vision/liveChecks";
+import { evaluateFrame, LIVE_MESSAGES, type LiveCode, type LiveResult } from "../vision/liveChecks";
+import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
 
@@ -28,6 +29,17 @@ export interface ScanStatus {
   /** Rolling average processing time per frame (ms): hand landmarks, coin detection. */
   timing: { handMs: number; coinMs: number };
   error: CameraErrorInfo | null;
+  /** The problem shown most often over the last live_scan.issue_window_s seconds. */
+  topIssue: TopIssue | null;
+  /** Rough lengths from the current frame (live_scan.show_live_measurements), once the coin is found. */
+  liveMm: LiveLengths | null;
+}
+
+export interface TopIssue {
+  code: LiveCode;
+  message: string;
+  /** Share of recent camera frames that showed it (0-1). */
+  share: number;
 }
 
 export interface ScanTimingInfo {
@@ -100,6 +112,10 @@ export class ScanController {
   private generation = 0; // bumped by reset/stop so late coin results are dropped
   private lastCoin: CoinDetection | null = null;
   private lastBrightness: number | null = null;
+  // Why camera frames could not be used: recent ones for live guidance, totals for the timeout.
+  private issueLog: { t: number; code: LiveCode | null }[] = [];
+  private issueTotals = new Map<LiveCode, number>();
+  private framesSeen = 0;
   private running = false;
   private disposed = false;
   private frames: FrameObservation[] = [];
@@ -150,6 +166,8 @@ export class ScanController {
       fps: 0,
       timing: { handMs: 0, coinMs: 0 },
       error: null,
+      topIssue: null,
+      liveMm: null,
     };
   }
 
@@ -268,6 +286,9 @@ export class ScanController {
     this.trackedCoin = null;
     this.framesSinceFullSearch = 0;
     this.lastCoin = null;
+    this.issueLog = [];
+    this.issueTotals.clear();
+    this.framesSeen = 0;
     this.lastLandmarks = null;
     this.smoother.reset();
     this.startScanMs = performance.now();
@@ -319,15 +340,40 @@ export class ScanController {
           error: {
             kind: "unknown",
             title: "Scan timed out",
-            message: n > 0
-              ? `Only ${n} stable frames captured in ${this.config.live_scan.timeout_s}s. Try better lighting or hold steadier.`
-              : "No valid frames could be captured. Make sure the coin is visible and the image is sharp.",
+            message: (n > 0
+              ? `Only ${n} stable frames captured in ${this.config.live_scan.timeout_s}s.`
+              : "No usable frames were captured.") + this.mainProblemText(),
             canRetry: true,
           },
         },
         true,
       );
     }
+  }
+
+  private recordIssue(now: number, code: LiveCode | null): void {
+    this.framesSeen++;
+    if (code) this.issueTotals.set(code, (this.issueTotals.get(code) ?? 0) + 1);
+    this.issueLog.push({ t: now, code });
+    const since = now - this.config.live_scan.issue_window_s * 1000;
+    while (this.issueLog.length && this.issueLog[0].t < since) this.issueLog.shift();
+  }
+
+  private topIssue(): TopIssue | null {
+    const counts = new Map<LiveCode, number>();
+    for (const e of this.issueLog) if (e.code) counts.set(e.code, (counts.get(e.code) ?? 0) + 1);
+    let best: LiveCode | null = null;
+    for (const [code, n] of counts) if (best === null || n > counts.get(best)!) best = code;
+    return best ? { code: best, message: LIVE_MESSAGES[best], share: counts.get(best)! / this.issueLog.length } : null;
+  }
+
+  /** For the timeout message: what the scan screen said most often, and how often. */
+  private mainProblemText(): string {
+    let best: LiveCode | null = null;
+    for (const [code, n] of this.issueTotals) if (best === null || n > this.issueTotals.get(best)!) best = code;
+    if (!best || this.framesSeen === 0) return " Make sure your whole hand and the coin are visible and hold still.";
+    const pct = Math.round((100 * this.issueTotals.get(best)!) / this.framesSeen);
+    return ` Most of the time (${pct}% of camera frames) the problem was: “${LIVE_MESSAGES[best]}”.`;
   }
 
   private schedule(): void {
@@ -500,6 +546,12 @@ export class ScanController {
     const coin = hand ? this.lastCoin : null;
     const live = this.evaluate(hand ? this.observe(hand, now, w, h, coin, this.lastBrightness) : null, this.lastLandmarks);
     this.lastLandmarks = smoothed;
+    this.recordIssue(now, live.ok ? null : live.codes[0]);
+    const ref = this.opts.referenceDiameterMm ?? NaN;
+    const liveMm =
+      this.config.live_scan.show_live_measurements && smoothed && coin?.found && coin.accepted
+        ? liveLengths(smoothed, coin.major_axis_px, ref)
+        : null;
 
     clear(ctx);
     if (hand && smoothed) {
@@ -509,6 +561,11 @@ export class ScanController {
       drawSkeleton(ctx, smoothed, color, scale);
     }
     if (coin?.found) drawCoin(ctx, coin, scale);
+    if (liveMm && smoothed) {
+      for (const f of Object.keys(FINGER_TIPS) as FingerName[]) {
+        drawTag(ctx, labelAnchor(smoothed, f, 22 * scale), `${Math.round(liveMm.fingersMm[f])} mm`, scale, this.status.mirrored);
+      }
+    }
 
     if (!this.running) return; // finished by a coin result
     this.emit({
@@ -519,6 +576,8 @@ export class ScanController {
       collected: this.frames.length,
       target: this.effectiveTarget,
       handedness: hand ? actualHandedness(hand.handedness) : this.status.handedness,
+      topIssue: this.topIssue(),
+      liveMm,
     });
   }
 

@@ -2384,3 +2384,50 @@ details.panel[open] > summary::after {
   gap: 12px;
   margin-top: 8px;
 }
+
+/* =================================================== scan: live meter, main problem */
+
+.live-meter {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-top: 12px;
+}
+
+.live-meter-label {
+  grid-column: 1 / -1;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.live-meter-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.live-meter-sub {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.scan-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--ink);
+}
+
+.scan-hint-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}

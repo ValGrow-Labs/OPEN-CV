@@ -93,7 +93,10 @@
     "early_stop_frames_mobile": 10,
     "early_stop_frames_desktop": 14,
     "early_stop_rel_sd": 0.018,
-    "early_stop_after_s": 8
+    "early_stop_after_s": 8,
+    "hint_after_s": 6,
+    "issue_window_s": 4,
+    "show_live_measurements": true
   },
   "uncertainty": {
     "landmark_model_input_px": 224,

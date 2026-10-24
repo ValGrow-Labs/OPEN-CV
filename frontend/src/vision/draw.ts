@@ -69,3 +69,24 @@ export function drawRoi(ctx: CanvasRenderingContext2D, roi: { x: number; y: numb
   ctx.strokeRect(roi.x, roi.y, roi.w, roi.h);
   ctx.restore();
 }
+
+/** A small dark tag with white text, e.g. a live finger length. The overlay canvas is flipped with
+ *  CSS for the selfie camera, so the text is flipped back to stay readable. */
+export function drawTag(ctx: CanvasRenderingContext2D, at: { x: number; y: number }, text: string, scale: number, mirrored: boolean): void {
+  ctx.save();
+  ctx.translate(at.x, at.y);
+  if (mirrored) ctx.scale(-1, 1);
+  ctx.font = `600 ${13 * scale}px "Geist Variable", system-ui, sans-serif`;
+  const w = ctx.measureText(text).width + 12 * scale;
+  const h = 20 * scale;
+  ctx.fillStyle = "rgba(10, 11, 14, 0.78)";
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") ctx.roundRect(-w / 2, -h / 2, w, h, 6 * scale);
+  else ctx.rect(-w / 2, -h / 2, w, h);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 0, 0.5 * scale);
+  ctx.restore();
+}
