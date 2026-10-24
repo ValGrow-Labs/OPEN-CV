@@ -83,7 +83,11 @@ def _chain_finger(chain: list[int]) -> str | None:
     return None
 
 
-def measure_frame(frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementConfig) -> FrameResult:
+def measure_frame(
+    frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementConfig, tilt_deg: float | None = None
+) -> FrameResult:
+    """Check one frame and measure it. ``tilt_deg`` is the coin tilt estimated from the frames around
+    it (calibration.smoothed_coin_tilts); without it the frame's own, noisier, tilt is used."""
     cap, unc = cfg.capture, cfg.uncertainty
     w, h = frame.image_width, frame.image_height
     lm = np.array([[p.x, p.y] for p in frame.landmarks], dtype=np.float64)
@@ -137,10 +141,11 @@ def measure_frame(frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementC
             (coin.center_x, coin.center_y), palm_polygon(lm)
         ):
             codes.append("coin_not_on_palm")
-        if coin_tilt_deg(coin) > cfg.calibration.max_tilt_deg:
+        tilt = coin_tilt_deg(coin) if tilt_deg is None else tilt_deg
+        if tilt > cfg.calibration.max_tilt_deg:
             codes.append("coin_tilted")
         if not codes:
-            scale = frame_scale(coin, ref, w, h, cfg)
+            scale = frame_scale(coin, ref, w, h, cfg, tilt)
             # Guided positioning: very close hands magnify depth differences between the coin
             # and the finger joints (see docs/CALIBRATION_STUDY.md).
             if math.sqrt(scale.distance_range_mm[0] * scale.distance_range_mm[1]) < cap.min_camera_distance_mm:

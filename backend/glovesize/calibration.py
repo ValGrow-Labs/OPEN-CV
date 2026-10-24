@@ -21,6 +21,7 @@ Two corrections extend that local scale to the hand landmarks:
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -85,6 +86,38 @@ def coin_tilt_deg(coin: CoinObservation) -> float:
     return math.degrees(math.acos(ratio))
 
 
+def _shape_matrix(coin: CoinObservation) -> np.ndarray:
+    """The coin ellipse as a 2x2 shape matrix: (major/2)^2 along its axis, (minor/2)^2 across."""
+    t = math.radians(coin.angle_deg)
+    u = np.array([math.cos(t), math.sin(t)])
+    v = np.array([-math.sin(t), math.cos(t)])
+    a, b = coin.major_axis_px / 2.0, min(coin.minor_axis_px, coin.major_axis_px) / 2.0
+    return a * a * np.outer(u, u) + b * b * np.outer(v, v)
+
+
+def smoothed_coin_tilts(coins: Sequence[CoinObservation | None], window: int) -> list[float | None]:
+    """Coin tilt for each frame, estimated from the average ellipse of the frames around it.
+
+    One frame's tilt is acos(minor / major). For a coin lying flat that ratio is 1 and any edge
+    noise can only pull it below 1, so a single frame reads a spurious tilt (a 1% error in the
+    ratio reads as about 8 degrees) that averaging the angles cannot remove. Averaging the
+    ellipse *shapes* does: noise has no preferred direction, so the mean shape converges to a
+    circle, while a really tilted coin keeps one consistent direction and keeps its tilt.
+    ``window`` is the number of frames averaged (odd; 1 reproduces the per-frame tilt).
+    """
+    half = max(1, int(window)) // 2
+    mats = [None if c is None else _shape_matrix(c) for c in coins]
+    out: list[float | None] = []
+    for i, c in enumerate(coins):
+        if c is None:
+            out.append(None)
+            continue
+        near = [m for m in mats[max(0, i - half) : i + half + 1] if m is not None]
+        w = np.linalg.eigvalsh(sum(near) / len(near))  # ascending
+        out.append(math.degrees(math.acos(min(1.0, math.sqrt(max(w[0], 0.0) / w[1])))))
+    return out
+
+
 def camera_distance_range_mm(
     coin_px: float, diameter_mm: float, image_w: int, image_h: int, hfov_deg: tuple[float, float]
 ) -> tuple[float, float]:
@@ -99,7 +132,12 @@ def camera_distance_range_mm(
 
 
 def frame_scale(
-    coin: CoinObservation, ref: ReferenceSpec, image_w: int, image_h: int, cfg: MeasurementConfig
+    coin: CoinObservation,
+    ref: ReferenceSpec,
+    image_w: int,
+    image_h: int,
+    cfg: MeasurementConfig,
+    tilt_deg: float | None = None,
 ) -> FrameScale:
     cal, unc, depth = cfg.calibration, cfg.uncertainty, cfg.depth_model
     major, minor = coin.major_axis_px, min(coin.minor_axis_px, coin.major_axis_px)
@@ -108,7 +146,7 @@ def frame_scale(
     rel_random = 2.0 * coin.fit_residual_px / math.sqrt(max(coin.n_edge_points, 1)) / major
     rel_sys = math.hypot(cal.diameter_edge_floor_px, ref.diameter_uncertainty_mm * px_per_mm_coin) / major
 
-    tilt = coin_tilt_deg(coin)
+    tilt = coin_tilt_deg(coin) if tilt_deg is None else tilt_deg
     corrected = cal.tilt_rectification and tilt >= cal.tilt_correction_min_deg
     if corrected:
         theta = math.radians(coin.angle_deg)

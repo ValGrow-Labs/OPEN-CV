@@ -2,6 +2,7 @@
 // All image processing happens in the browser; only numeric FrameObservations leave it.
 import type { FrameObservation, Point, PublicConfig } from "../api/types";
 import { describeCameraError, isMobileDevice, openCamera, stopStream, type CameraErrorInfo, type Facing } from "../camera/camera";
+import { ExposureController } from "../camera/exposure";
 import { getCoinEngine, type CoinEngine } from "../vision/coinEngine";
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import type { CoinJobResult } from "../vision/coinJob";
@@ -9,10 +10,12 @@ import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton, drawTa
 import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow } from "../vision/frameAnalysis";
 import { dist, insideFrame, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
+import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
 import { evaluateFrame, LIVE_MESSAGES, type LiveCode, type LiveResult } from "../vision/liveChecks";
 import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
+import { dominantIssue, GuidanceDebouncer, type IssueSample } from "./guidance";
 
 export type ScanMode = "scan" | "calibration";
 export type Phase = "starting" | "loading" | "running" | "complete" | "error";
@@ -31,6 +34,10 @@ export interface ScanStatus {
   error: CameraErrorInfo | null;
   /** The problem shown most often over the last live_scan.issue_window_s seconds. */
   topIssue: TopIssue | null;
+  /** The coin's tilt: this frame's own reading and the average over recent frames (diagnostics). */
+  tilt: { rawDeg: number | null; smoothedDeg: number | null };
+  /** Camera exposure compensation in EV, null when the browser does not allow it. */
+  exposureEv: number | null;
   /** Rough lengths from the current frame (live_scan.show_live_measurements), once the coin is found. */
   liveMm: LiveLengths | null;
 }
@@ -112,8 +119,13 @@ export class ScanController {
   private generation = 0; // bumped by reset/stop so late coin results are dropped
   private lastCoin: CoinDetection | null = null;
   private lastBrightness: number | null = null;
+  // Recent coin ellipses, to judge tilt on their average (vision/coinTilt.ts).
+  private recentCoins: CoinDetection[] = [];
+  private tiltDeg: number | null = null;
+  private guidance: GuidanceDebouncer;
+  private exposure: ExposureController | null = null;
   // Why camera frames could not be used: recent ones for live guidance, totals for the timeout.
-  private issueLog: { t: number; code: LiveCode | null }[] = [];
+  private issueLog: IssueSample[] = [];
   private issueTotals = new Map<LiveCode, number>();
   private framesSeen = 0;
   private running = false;
@@ -152,6 +164,7 @@ export class ScanController {
     this.facing = opts.facing;
     this.roiCanvas = document.createElement("canvas");
     this.mobile = isMobileDevice();
+    this.guidance = new GuidanceDebouncer(config.live_scan);
     const ls = config.live_scan;
     this.effectiveTarget = this.mobile ? Math.min(ls.mobile_frames_target, config.capture.frames_target) : config.capture.frames_target;
     this.effectiveMin = this.mobile ? Math.min(ls.mobile_frames_min, config.capture.frames_min_accepted) : config.capture.frames_min_accepted;
@@ -167,6 +180,8 @@ export class ScanController {
       timing: { handMs: 0, coinMs: 0 },
       error: null,
       topIssue: null,
+      tilt: { rawDeg: null, smoothedDeg: null },
+      exposureEv: null,
       liveMm: null,
     };
   }
@@ -245,6 +260,7 @@ export class ScanController {
     }
     this.stream = stream;
     const track = this.stream.getVideoTracks()[0];
+    this.exposure = new ExposureController(this.config.live_scan, track ?? null);
     const facingMode = track?.getSettings().facingMode;
     // Selfie cameras (and laptop webcams, which report no facing mode) are shown mirrored.
     const mirrored = facingMode ? facingMode === "user" : this.facing === "user";
@@ -286,6 +302,9 @@ export class ScanController {
     this.trackedCoin = null;
     this.framesSinceFullSearch = 0;
     this.lastCoin = null;
+    this.recentCoins = [];
+    this.tiltDeg = null;
+    this.guidance.reset();
     this.issueLog = [];
     this.issueTotals.clear();
     this.framesSeen = 0;
@@ -360,11 +379,8 @@ export class ScanController {
   }
 
   private topIssue(): TopIssue | null {
-    const counts = new Map<LiveCode, number>();
-    for (const e of this.issueLog) if (e.code) counts.set(e.code, (counts.get(e.code) ?? 0) + 1);
-    let best: LiveCode | null = null;
-    for (const [code, n] of counts) if (best === null || n > counts.get(best)!) best = code;
-    return best ? { code: best, message: LIVE_MESSAGES[best], share: counts.get(best)! / this.issueLog.length } : null;
+    const top = dominantIssue(this.issueLog, -Infinity);
+    return top ? { ...top, message: LIVE_MESSAGES[top.code] } : null;
   }
 
   /** For the timeout message: what the scan screen said most often, and how often. */
@@ -480,11 +496,18 @@ export class ScanController {
     this.trackedCoin = coin.found && (coin.accepted || coin.confidence >= ls.track_min_confidence) ? coin : null;
     this.lastCoin = coin;
     this.lastBrightness = snap.brightness;
+    if (coin.found && (coin.accepted || coin.confidence >= ls.track_min_confidence)) {
+      this.recentCoins.push(coin);
+      while (this.recentCoins.length > this.config.calibration.tilt_window_frames) this.recentCoins.shift();
+    } else if (!coin.found) {
+      this.recentCoins = [];
+    }
+    this.tiltDeg = smoothedTiltDeg(this.recentCoins);
     if (IS_DEBUG && coin.found && !coin.accepted) {
       console.debug(`[coin] rejected: reasons=${coin.reasons.join(",")} edge_w=${coin.edge_width_px.toFixed(2)} conf=${coin.confidence.toFixed(3)} contrast=${coin.contrast.toFixed(3)}`);
     }
     const frame = this.observe(snap.hand, snap.now, snap.w, snap.h, coin, snap.brightness);
-    const live = this.evaluate(frame, snap.prevLandmarks);
+    const live = this.evaluate(frame, snap.prevLandmarks, this.tiltDeg);
     if (live.ok && this.tFirstLock === 0) this.tFirstLock = snap.now;
     if (live.ok && snap.now - this.lastAcceptMs >= ls.min_frame_interval_ms) {
       if (this.frames.length === 0) this.tFirstFrameCollected = snap.now;
@@ -508,11 +531,26 @@ export class ScanController {
     });
   }
 
-  private evaluate(frame: FrameObservation | null, prevLandmarks: Point[] | null): LiveResult {
-    return evaluateFrame(frame, prevLandmarks, this.config.capture, this.config.calibration, {
-      referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
-      assumedHfovDeg: this.config.assumed_hfov_deg,
-    });
+  private evaluate(frame: FrameObservation | null, prevLandmarks: Point[] | null, tiltDeg: number | null = null): LiveResult {
+    return evaluateFrame(
+      frame,
+      prevLandmarks,
+      this.config.capture,
+      this.config.calibration,
+      {
+        referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
+        assumedHfovDeg: this.config.assumed_hfov_deg,
+      },
+      tiltDeg,
+    );
+  }
+
+  /** What the customer is told: the per-frame result with its message settled by the guidance
+   *  debouncer (frames are still collected only when the per-frame result is ok). */
+  private shown(live: LiveResult, now: number): LiveResult {
+    const code = this.guidance.update(now, live.codes);
+    if (code === null) return { ok: true, codes: [], message: "Hold still while we measure" };
+    return { ok: false, codes: [code, ...live.codes.filter((c) => c !== code)], message: LIVE_MESSAGES[code] };
   }
 
   /** Every camera frame: track the hand, start a coin search when none is running, draw the
@@ -541,12 +579,16 @@ export class ScanController {
       this.smoother.reset();
       this.trackedCoin = null;
       this.lastCoin = null;
+      this.recentCoins = [];
+      this.tiltDeg = null;
+      this.generation++; // a coin search still running belongs to a hand that is gone
     }
 
     const coin = hand ? this.lastCoin : null;
-    const live = this.evaluate(hand ? this.observe(hand, now, w, h, coin, this.lastBrightness) : null, this.lastLandmarks);
+    const frameLive = this.evaluate(hand ? this.observe(hand, now, w, h, coin, this.lastBrightness) : null, this.lastLandmarks, this.tiltDeg);
+    const live = this.shown(frameLive, now);
     this.lastLandmarks = smoothed;
-    this.recordIssue(now, live.ok ? null : live.codes[0]);
+    this.recordIssue(now, frameLive.ok ? null : frameLive.codes[0]);
     const ref = this.opts.referenceDiameterMm ?? NaN;
     const liveMm =
       this.config.live_scan.show_live_measurements && smoothed && coin?.found && coin.accepted
@@ -568,6 +610,11 @@ export class ScanController {
     }
 
     if (!this.running) return; // finished by a coin result
+    const top = this.topIssue();
+    if (this.exposure?.ev != null) {
+      const recent = dominantIssue(this.issueLog, Math.max(now - this.config.live_scan.issue_window_s * 1000, this.exposure.lastStepMs));
+      this.exposure.consider(now, recent?.code ?? null, recent?.share ?? 0);
+    }
     this.emit({
       live,
       fps,
@@ -576,7 +623,9 @@ export class ScanController {
       collected: this.frames.length,
       target: this.effectiveTarget,
       handedness: hand ? actualHandedness(hand.handedness) : this.status.handedness,
-      topIssue: this.topIssue(),
+      topIssue: top,
+      tilt: { rawDeg: coin?.found ? coinTiltDeg(coin) : null, smoothedDeg: this.tiltDeg },
+      exposureEv: this.exposure?.ev ?? null,
       liveMm,
     });
   }

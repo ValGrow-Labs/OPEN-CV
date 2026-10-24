@@ -3045,3 +3045,32 @@ details.panel > summary {
 .eyebrow-pill {
   letter-spacing: 0.2em;
 }
+
+/* The two rows under the progress steps always take their space, so the camera never resizes. */
+.live-meter,
+.scan-hint {
+  transition: opacity 500ms var(--ease-lux);
+}
+
+.live-meter {
+  min-height: 4.4rem;
+  align-content: start;
+}
+
+.scan-hint {
+  height: 4.2rem;
+  overflow: hidden;
+}
+
+.scan-hint .small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.live-meter.is-idle,
+.scan-hint.is-idle {
+  opacity: 0;
+  visibility: hidden;
+}

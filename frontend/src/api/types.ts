@@ -235,10 +235,22 @@ export interface LiveScanParams {
   hint_after_s: number;
   issue_window_s: number;
   show_live_measurements: boolean;
+  guidance_window_ms: number;
+  guidance_hold_ms: number;
+  guidance_min_share: number;
+  guidance_keep_share: number;
+  guidance_switch_margin: number;
+  auto_exposure: boolean;
+  exposure_step_ev: number;
+  exposure_min_ev: number;
+  exposure_max_ev: number;
+  exposure_hold_ms: number;
+  exposure_min_share: number;
 }
 
 export interface CalibrationParams {
   max_tilt_deg: number;
+  tilt_window_frames: number;
   warn_tilt_deg: number;
   tilt_correction_min_deg: number;
   tilt_rectification: boolean;

@@ -8,7 +8,7 @@ from collections import Counter
 
 import numpy as np
 
-from .calibration import resolve_reference
+from .calibration import resolve_reference, smoothed_coin_tilts
 from .config import (
     default_chart_id,
     load_measurement_calibration,
@@ -104,7 +104,9 @@ def process_scan(req: ScanRequest) -> ScanResponse:
     if obj is not None and obj.size_check and not req.reference.size_checked:
         return rejected([_issue("reference_size_unchecked")])
 
-    results = [measure_frame(f, ref, cfg) for f in req.frames]
+    # The coin's tilt is judged on the average ellipse of neighbouring frames, not on one noisy frame.
+    tilts = smoothed_coin_tilts([f.coin for f in req.frames], cfg.calibration.tilt_window_frames)
+    results = [measure_frame(f, ref, cfg, tilt_deg=t) for f, t in zip(req.frames, tilts)]
     accepted_idx = [i for i, r in enumerate(results) if r.accepted]
     counts = Counter(c for r in results for c in set(r.codes))
     log.info(

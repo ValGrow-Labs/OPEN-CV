@@ -141,6 +141,8 @@ class CoinDetectionParams(_Strict):
 
 class CalibrationParams(_Strict):
     max_tilt_deg: float = Field(gt=0, lt=60)
+    # Frames averaged to estimate the coin tilt (see calibration.smoothed_coin_tilts); 1 = per frame.
+    tilt_window_frames: int = Field(ge=1, le=15)
     warn_tilt_deg: float = Field(gt=0, lt=60)
     tilt_correction_min_deg: float = Field(ge=0, lt=60)
     tilt_rectification: bool
@@ -185,6 +187,21 @@ class LiveScanParams(_Strict):
     hint_after_s: float = Field(ge=0)
     issue_window_s: float = Field(gt=0)
     show_live_measurements: bool
+    # Live guidance is shown for the problem that dominates the last guidance_window_ms (at least
+    # guidance_min_share of frames), kept for guidance_hold_ms, so the message does not flicker.
+    guidance_window_ms: float = Field(gt=0)
+    guidance_hold_ms: float = Field(ge=0)
+    guidance_min_share: float = Field(gt=0, le=1)
+    guidance_keep_share: float = Field(ge=0, le=1)
+    guidance_switch_margin: float = Field(ge=0, le=1)  # a new problem must beat the shown one by this share
+    # Camera exposure compensation (where the browser allows it): eased down while the coin is
+    # blown out, up while the picture is dark, in steps no faster than exposure_hold_ms.
+    auto_exposure: bool
+    exposure_step_ev: float = Field(gt=0)
+    exposure_min_ev: float
+    exposure_max_ev: float
+    exposure_hold_ms: float = Field(ge=0)
+    exposure_min_share: float = Field(gt=0, le=1)
 
 
 class UncertaintyParams(_Strict):

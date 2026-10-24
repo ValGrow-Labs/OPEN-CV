@@ -171,6 +171,10 @@ export function ScanScreen<R = ScanResponse>({
     return () => clearInterval(timer);
   }, [submitting]);
 
+  const showHint =
+    runningSec >= config.live_scan.hint_after_s &&
+    (status?.collected ?? 0) < config.live_scan.mobile_frames_min &&
+    status?.topIssue != null;
   const liveCodes = status?.live?.codes ?? [];
   const handSeen = status?.live ? !liveCodes.includes("no_hand") : false;
   const stage = phase === "complete" ? 3 : liveStage(liveCodes);
@@ -208,6 +212,7 @@ export function ScanScreen<R = ScanResponse>({
               `coin ${status.coin?.found ? `${status.coin.method} d=${status.coin.major_axis_px.toFixed(1)}px conf=${status.coin.confidence.toFixed(2)} ${status.coin.accepted ? "ok" : (status.coin.reasons ?? []).join(",")}` : "not found"}`,
               `checks ${status.live?.codes.join(",") || "ok"}`,
               `main ${status.topIssue ? `${status.topIssue.code} ${Math.round(status.topIssue.share * 100)}%` : "-"}`,
+              `tilt ${status.tilt.rawDeg?.toFixed(1) ?? "-"} -> ${status.tilt.smoothedDeg?.toFixed(1) ?? "-"} deg  glare ${status.coin?.found ? `${Math.round(status.coin.glare_fraction * 100)}%` : "-"}  ev ${status.exposureEv ?? "n/a"}`,
             ].join("\n")}
           </pre>
         )}
@@ -324,25 +329,33 @@ export function ScanScreen<R = ScanResponse>({
             );
           })}
         </ol>
-        {status?.liveMm && phase === "running" && (
-          <div className="live-meter" aria-live="off">
-            <span className="live-meter-label">Hand length, live</span>
-            <span className="live-meter-value num">{Math.round(status.liveMm.handMm)} mm</span>
-            <span className="live-meter-sub num">{(status.liveMm.handMm / 25.4).toFixed(2)} in · final value after the scan</span>
-          </div>
-        )}
-        {runningSec >= config.live_scan.hint_after_s &&
-          phase === "running" &&
-          (status?.collected ?? 0) < config.live_scan.mobile_frames_min &&
-          status?.topIssue && (
-          <div className="scan-hint" role="status">
-            <span className="small">
-              Main problem right now: <strong>{status.topIssue.message}</strong>
-            </span>
-            <button className="btn btn-quiet scan-hint-btn" onClick={() => controllerRef.current?.resetCollection()}>
-              Reset
-            </button>
-          </div>
+        {/* Both rows keep their space whether or not they have anything to say, so the camera
+            picture above never changes size while the scan runs. */}
+        {phase !== "error" && (
+          <>
+            <div className={`live-meter ${status?.liveMm ? "" : "is-idle"}`} aria-live="off" aria-hidden={!status?.liveMm}>
+              <span className="live-meter-label">Hand length, live</span>
+              <span className="live-meter-value num">{status?.liveMm ? Math.round(status.liveMm.handMm) : 0} mm</span>
+              <span className="live-meter-sub num">
+                {((status?.liveMm?.handMm ?? 0) / 25.4).toFixed(2)} in · final value after the scan
+              </span>
+            </div>
+            <div className={`scan-hint ${showHint ? "" : "is-idle"}`} role="status" aria-hidden={!showHint}>
+              <span className="small">
+                Main problem: <strong>{status?.topIssue?.message ?? ""}</strong>
+              </span>
+              <button
+                className="btn btn-quiet scan-hint-btn"
+                tabIndex={showHint ? 0 : -1}
+                onClick={() => {
+                  controllerRef.current?.resetCollection();
+                  setRunningSec(0);
+                }}
+              >
+                Reset
+              </button>
+            </div>
+          </>
         )}
       </div>
 

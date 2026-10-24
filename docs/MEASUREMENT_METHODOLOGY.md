@@ -29,11 +29,56 @@ centre of the palm.
    `0.7 × palm length`.
 4. **Coin detection** (§2) runs on that window only.
 5. **Live checks** mirror the server gates and give immediate guidance (move back, flatten the
-   hand, uncover the coin, and so on). Frames that pass every check are collected, at most one
-   every 60 ms, until there are 24.
+   hand, uncover the coin, and so on; §1.1). Frames that pass every check are collected, at most
+   one every `live_scan.min_frame_interval_ms` (50 ms), until the target
+   (`capture.frames_target`, 24; `live_scan.mobile_frames_target`, 16, on phones) or until the
+   frames agree closely enough to stop early (`live_scan.early_stop_*`). After
+   `live_scan.timeout_s` (45 s) the scan finishes with what it has, or says why it could not.
 6. Only numbers are sent to `/api/scan`: landmarks, the coin ellipse with its quality metrics,
    and brightness. **No pixels leave the device.** The server re-applies every gate
    authoritatively.
+
+### 1.1 Live guidance, layout and exposure
+
+The per-frame checks decide which frames are *usable*. What the customer is *told* is a separate,
+steadier signal. Neither changes a gate or a threshold.
+
+* **Steady messages.** Frame by frame the checks flip (a flat coin reads "tilted" now and "fine" a
+  moment later), and a message that changes every few hundred milliseconds cannot be acted on.
+  `scan/guidance.ts` shows the problem that dominates the last `live_scan.guidance_window_ms`
+  (1200 ms), provided it covers at least `guidance_min_share` (35%) of those frames and the window
+  holds at least a third of its length in frames. A message is kept for at least
+  `guidance_hold_ms` (1000 ms), and afterwards while it still covers `guidance_keep_share` (20%).
+  A different problem replaces it only when its share exceeds the shown one's by
+  `guidance_switch_margin` (15 points), so two problems of similar weight do not take turns.
+  "No hand" is shown at once and restarts the window. Frames are still collected only when the
+  *per-frame* result is fine, so the steady message never lets an unusable frame through.
+* **Main problem.** After `live_scan.hint_after_s` (6 s) without enough frames, the screen names
+  the most frequent per-frame problem over the last `issue_window_s` (4 s), and the timeout
+  message names it with its share of camera frames. This is a count, not a judgement of cause.
+* **Fixed layout.** The live hand-length row and the "main problem" row keep their space even
+  when empty (the hint row has a fixed height and shows at most two lines), so the camera
+  picture does not change size while the scan runs.
+* **Live lengths** (`live_scan.show_live_measurements`) are single-frame landmark distances
+  scaled by that frame's coin. They only show that measuring is happening; the reported values
+  come from the server, which combines all frames, and they are labelled as such.
+* **Automatic exposure** (`live_scan.auto_exposure`). A phone camera exposes for the whole
+  picture; a dark background can make it brighten the scene until the coin is blown out and
+  refused for glare (`coin_glare`: more than `max_glare_fraction` = 20% of the coin's pixels at
+  or above `glare_level` = 250). Where the browser exposes `exposureCompensation` on the camera
+  track (Chrome on Android does; Safari on iOS does not), the exposure is eased down by
+  `exposure_step_ev` (0.5 EV) while glare or `too_bright` dominates (at least
+  `exposure_min_share` = 40% of the main-problem window), and up while the picture is too dark,
+  no faster than once per `exposure_hold_ms` (1500 ms) and within `exposure_min_ev` /
+  `exposure_max_ev` (−2 / +1 EV) and the camera's own range. A camera that refuses the request
+  is left alone for the rest of the scan. This is untested on real phones. After each step the
+  decision uses only the camera frames taken since that step (the earlier ones describe the old
+  picture), so a step is not repeated on stale readings. The glare gate and the brightness gate
+  are unchanged and still apply.
+
+The `?debug=1` panel shows, for the current frame, the coin's tilt as read from this frame alone
+and as averaged (§3.1), the coin's glare percentage, the exposure setting if it can be
+controlled, and the main problem with its share.
 
 ## 2. Coin detection
 
@@ -98,7 +143,7 @@ A circle viewed at tilt τ appears as an ellipse with `minor/major ≈ cos τ`. 
 perspective, however, the ellipse's apparent tilt is itself distorted. In the simulation, a
 true ±10° pitch read as 7.0° or 13.8°, depending on direction. Therefore:
 
-* τ > 12° → frame rejected (`coin_tilted`).
+* τ > 12° → frame rejected (`coin_tilted`). τ is the tilt estimated as in §3.1.1.
 * 8° ≤ τ ≤ 12° → accepted with a warning to hold the hand flatter.
 * No rectification is applied by default. The foreshortening residual
   `0.23 · sin τ / √3` (a uniform distribution over the possible tilt axes, with the coefficient
@@ -106,6 +151,90 @@ true ±10° pitch read as 7.0° or 13.8°, depending on direction. Therefore:
 
 Rectification can be enabled for experiments (`calibration.tilt_rectification: true`). In the
 simulation it over-corrected an 18° pitch by +2.5% and a 25° pitch by +5.5%.
+
+#### 3.1.1 Estimating the tilt from several frames
+
+One frame's tilt is `acos(minor / major)`. For a coin lying flat the true ratio is 1, and edge
+noise can only pull a measured ratio *below* 1 (the long axis is always the larger one), so a
+single frame reads a spurious tilt that averaging the angles cannot remove. The angle is also
+very sensitive near 1: a 1% error in the ratio reads as about 8°, and 2% as about 11.5°. The
+12° gate therefore sits inside the noise of a single frame.
+
+The tilt used for the gate, for the choice of tilt handling and for the tilt term of the
+uncertainty (§5) is instead taken from the **average ellipse of neighbouring frames**. Each
+coin ellipse is written as a 2 × 2 shape matrix
+
+    Σ = (major / 2)² · u uᵀ + (minor / 2)² · v vᵀ      (u: unit vector along the long axis, v ⟂ u)
+
+the matrices of the frames in the window are averaged, and the tilt is
+`acos(√(λmin / λmax))` of the average. Noise has no preferred direction, so the average shape
+converges to a circle for a flat coin, while a really tilted coin keeps one consistent direction
+and keeps its tilt. The window is `calibration.tilt_window_frames` (7).
+
+* **Server** (`calibration.smoothed_coin_tilts`, used in `pipeline.process_scan`): a window
+  centred on each submitted frame, shorter at the ends and skipping frames without a coin.
+  `measure_frame` and `frame_scale` receive the result as `tilt_deg`; without it they fall back
+  to the frame's own tilt.
+* **Phone** (`vision/coinTilt.ts`, used in `scan/scanController.ts`): the last 7 coin results
+  that were found and either accepted or at least `live_scan.track_min_confidence` confident,
+  cleared when the coin is lost or the hand goes. The window is causal, not centred, so near the
+  limit a frame the phone passes can still be refused by the server.
+* The two implementations give the same numbers on the same input: `frontend/src/vision/coinTilt.test.ts`
+  asserts the values the Python code produced for two fixed sets of seven ellipses
+  (5.300297645880132° and 19.802423221423975°). The Python side is covered by
+  `backend/tests/test_tilt_smoothing.py`.
+
+*Synthetic evidence only.* Ellipses of a coin of 60 px with axis-ratio noise σ and a random
+direction (`tests/test_tilt_smoothing.py` and the experiment behind it; these numbers describe
+the estimator on made-up data, **not real-world accuracy**):
+
+| flat coin, noise σ on the axis ratio | frames over 12°, one frame | frames over 12°, window 7 |
+|---|---|---|
+| 0.010 | 1.8% | 0.0% |
+| 0.015 | 12.8% | 0.0% |
+| 0.020 | 25.5% | 0.0% |
+| 0.030 | 45.0% | 2.2% |
+
+| true tilt (one direction, σ = 0.02) | frames flagged, one frame | frames flagged, window 7 |
+|---|---|---|
+| 10° (inside the limit) | 36.0% | 18.2% |
+| 15° | 73.8% | 97.2% |
+| 20° | 97.2% | 100% |
+
+A second synthetic model describes the noise more faithfully: every frame's shape matrix gets
+an error with no preferred direction (σ = 14 px² on a 30 px radius, so a flat coin is over 12°
+in 13% of single frames), while a real tilt keeps its direction. The window-7 average is then
+unbiased (a true 14° reads 14.0° on average) and the gate becomes a sharp step:
+
+| true tilt | frames over 12°, one frame | frames over 12°, window 7 |
+|---|---|---|
+| 0° (flat) | 12.6% | 0.0% |
+| 6° | 17.4% | 0.0% |
+| 10° | 37.6% | 7.1% |
+| 12° | 59.1% | 50.3% |
+| 14° | 82.7% | 98.1% |
+| 16° | 95.6% | 100% |
+
+Averaging therefore removes most false rejections of a flat coin and makes a really tilted coin
+easier to flag, but a coin whose true tilt is just inside the limit is still refused fairly
+often (18% of frames at 10°, σ = 0.02). In a separate synthetic test, rendered flat coins with
+heavy blur and noise (σ_blur 2 px, σ_noise 5) read a median of 10.7° at 45 px diameter, with 29%
+of frames over 12°. The average ellipse is also sensitive to a single bad ellipse: one coin
+with axis ratio 0.85 among seven flat ones lifts the average to about 11.5° for all seven
+frames.
+
+**The 12° gate itself is unchanged and unvalidated.** Nothing here shows that 12° (or 8°, or
+the uncertainty coefficient 0.23) is the right limit for real hands; the change only makes the
+estimate of the tilt less noisy, which also removes a spurious tilt term from the uncertainty
+of a flat coin.
+
+**What a real recording showed.** In a phone screen recording of 2026-10-24 (about 15 s, 0 of
+16 frames collected, "keep your palm and the coin flat" the commonest message), the coin
+ellipse the app drew read about 20° tilt (median axis ratio about 0.94, measured on the drawn
+ring in 118 frames) in about 95% of the frames. A compressed screen recording cannot show
+whether that is a really tilted palm and phone or estimator noise (the ring was only about 26 px
+across). The debug panel now shows the single-frame and averaged tilt, the glare percentage and
+the exposure, to settle that on the next phone test.
 
 ### 3.2 Depth layers
 
@@ -295,3 +424,6 @@ fits, and no percentage is displayed.
    an implausible implied hand size is rejected.
 6. All quoted error figures come from synthetic tests or the simulation. **None of them is a
    real-world accuracy result.**
+7. The tilt gate (12°) has not been checked on real hands, and the averaging in §3.1.1 does not
+   say whether a phone recording's consistent 20° reading is real tilt or noise. Automatic
+   exposure (§1.1) has not been tried on a real phone.

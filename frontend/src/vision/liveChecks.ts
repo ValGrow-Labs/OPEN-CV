@@ -1,6 +1,7 @@
 // Live, per-frame capture guidance. These checks mirror the server's frame gates so the
 // customer gets immediate feedback; the server re-applies all of them authoritatively.
 import type { CalibrationParams, CaptureParams, FrameObservation, Point } from "../api/types";
+import { coinTiltDeg } from "./coinTilt";
 import {
   LONG_FINGERS,
   MIDDLE_TIP,
@@ -52,7 +53,7 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   coin_missing: "Place the coin flat in the centre of your palm",
   coin_not_found: "Place the coin flat in the centre of your palm",
   coin_not_on_palm: "Move the coin to the centre of your palm",
-  coin_tilted: "Keep your palm and the coin flat to the camera",
+  coin_tilted: "Hold your phone level, parallel to your palm",
   coin_too_small: "Bring your hand a little closer",
   coin_occluded: "Make sure the whole coin is visible",
   coin_blurry: "Hold still, the image is blurry",
@@ -106,6 +107,8 @@ export function evaluateFrame(
   capture: CaptureParams,
   calibration: CalibrationParams,
   scale?: ScaleContext,
+  /** The coin tilt averaged over recent frames (vision/coinTilt.ts); one frame's own is too noisy. */
+  smoothedTiltDeg?: number | null,
 ): LiveResult {
   const codes: LiveCode[] = [];
   if (!frame) return result(["no_hand"]);
@@ -138,7 +141,7 @@ export function evaluateFrame(
     for (const r of coin.reasons) if (COIN_CODES.has(r)) codes.push(r as LiveCode);
     const poly = PALM_POLYGON.map((i) => lm[i]);
     if (calibration.require_coin_on_palm && !pointInPolygon(coin.center_x, coin.center_y, poly)) codes.push("coin_not_on_palm");
-    const tilt = (Math.acos(Math.min(1, coin.minor_axis_px / coin.major_axis_px)) * 180) / Math.PI;
+    const tilt = smoothedTiltDeg ?? coinTiltDeg(coin);
     if (tilt > calibration.max_tilt_deg) codes.push("coin_tilted");
     if (
       scale &&
