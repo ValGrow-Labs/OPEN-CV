@@ -77,6 +77,15 @@ export function coinConfirmed(sel: ReferenceSelection): boolean {
   }
 }
 
+/** Forget the coin confirmation, so the coin question is asked again at the next scan. */
+export function clearCoinConfirmed(): void {
+  try {
+    window.sessionStorage.removeItem(COIN_KEY);
+  } catch {
+    /* storage unavailable: the question is simply asked again */
+  }
+}
+
 export function markCoinConfirmed(sel: ReferenceSelection): void {
   try {
     window.sessionStorage.setItem(COIN_KEY, JSON.stringify(sel));

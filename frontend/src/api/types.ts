@@ -237,6 +237,8 @@ export interface CaptureView {
   messages: Record<string, string>;
   /** Largest coin tilt accepted in this view; null/absent uses calibration.max_tilt_deg. */
   max_coin_tilt_deg?: number | null;
+  /** Frames to collect in this view on a phone (null/absent: live_scan.mobile_frames_target). */
+  mobile_frames_target?: number | null;
 }
 
 export interface ViewSummary {
@@ -343,6 +345,10 @@ export interface ChartSummary {
 export interface PublicConfig {
   reference_objects: { default: string; objects: ReferenceObject[] };
   coin_detection: CoinDetectionParams;
+  /** The hand length the server accepts, mm [lowest, highest]. */
+  hand_length_plausible_mm: [number, number];
+  /** What a customer may enter with a tape measure, mm [lowest, highest], by field (config). */
+  manual_entry_range_mm: Record<"hand_length_mm" | "hand_circumference_mm" | "palm_breadth_mm", [number, number]>;
   capture: CaptureParams;
   live_scan: LiveScanParams;
   calibration: CalibrationParams;

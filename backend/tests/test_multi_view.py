@@ -488,3 +488,48 @@ def test_a_coin_tilted_beyond_the_back_views_limit_is_still_refused(use):
     resp = process_scan(request(palm() + domed_back(32.0)))
     assert resp.status == "rejected" and codes(resp)[0] == "required_view_failed"
     assert resp.frame_rejection_counts.get("coin_tilted", 0) > 0
+
+
+# --- every hand: children to very large adults; a gross scale error is still explained -----------
+
+
+@pytest.mark.parametrize("hand_mm,px_per_mm", [(75, 3.8), (90, 3.8), (110, 3.8), (130, 3.6), (230, 3.0), (255, 2.8), (270, 2.7)])
+def test_hands_from_a_young_child_to_a_very_large_adult_are_measured(use, hand_mm, px_per_mm):
+    """The accepted range used to be 120 to 240 mm: a hand of about 115 mm (a child, or a small adult
+    read a few mm short in some frames) had its frames refused. It is now 70 to 280 mm. SYNTHETIC hands
+    with the coin as the ruler: they show the gates let these sizes through, not real-world accuracy."""
+    use(("palm", "back"))
+    palm_f = tag(make_frames(n=24, seed=1, hand_length_mm=float(hand_mm), px_per_mm=px_per_mm), "palm")
+    back_f = tag(make_frames(n=24, seed=2, hand_length_mm=float(hand_mm), px_per_mm=px_per_mm), "back")
+    resp = process_scan(request(palm_f + back_f))
+    assert resp.status == "accepted", codes(resp)
+    assert "implausible_scale" not in resp.frame_rejection_counts
+    assert by_key(resp).value_mm == pytest.approx(hand_mm, rel=0.03)
+    assert resp.recommendation is not None
+
+
+def test_a_gross_scale_error_is_still_explained_with_what_was_measured():
+    """A coin far from the selected one makes the hand come out the wrong size by a lot (beyond 70 to
+    280 mm); the rejection then says what was measured and what is expected."""
+    from glovesize.config import load_measurement_config, load_reference_objects
+    from glovesize.calibration import resolve_reference
+    from glovesize.measurement import FrameResult
+    from glovesize.pipeline import _implausible_scale_issue
+    from glovesize.schemas import ReferenceSelection
+
+    cfg = load_measurement_config()
+    ref = resolve_reference(ReferenceSelection(object_id="us_quarter", confirmed=True), load_reference_objects())
+    tiny = [FrameResult(False, ["implausible_scale"], implied_hand_length_mm=55.0) for _ in range(8)]
+    issue = _implausible_scale_issue(tiny, ref, cfg, 8)
+    assert issue.code == "implausible_scale" and issue.frames_affected == 8
+    assert "your hand measured about 55 mm" in issue.message and "too small" in issue.message
+    assert "70 to 280 mm" in issue.message and "US quarter" in issue.message and "24.3 mm" in issue.message
+    huge = [FrameResult(False, ["implausible_scale"], implied_hand_length_mm=310.0) for _ in range(8)]
+    assert "too large" in _implausible_scale_issue(huge, ref, cfg, 8).message
+    # With nothing measured the generic guidance is kept.
+    assert "measured about" not in _implausible_scale_issue([FrameResult(False, ["implausible_scale"])], ref, cfg, 1).message
+
+
+def test_the_phone_is_told_the_accepted_hand_length_range(client):
+    cfg = client.get("/api/config").json()
+    assert cfg["hand_length_plausible_mm"] == [70.0, 280.0]

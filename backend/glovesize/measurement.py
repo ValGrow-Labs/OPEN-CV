@@ -56,6 +56,9 @@ class FrameResult:
     landmark_sigma: dict[str, float] = field(default_factory=dict)  # mm
     excluded: dict[str, str] = field(default_factory=dict)  # key -> reason
     scale: FrameScale | None = None
+    # The hand length (mm) this frame implied when it was refused as implausible (``implausible_scale``):
+    # with the selected coin the hand came out outside the human range, so the coin is probably wrong.
+    implied_hand_length_mm: float | None = None
     # Per finger: (in-image bend, depth bend) in degrees; the depth bend is None without world landmarks.
     bends: dict[str, tuple[float, float | None]] = field(default_factory=dict)
 
@@ -215,7 +218,7 @@ def measure_frame(
             continue
         if not lo <= mm <= hi:
             if key == HAND_LENGTH:
-                return FrameResult(False, ["implausible_scale"])
+                return FrameResult(False, ["implausible_scale"], implied_hand_length_mm=mm)
             result.excluded[key] = "implausible_value"
             continue
         result.values[key] = mm

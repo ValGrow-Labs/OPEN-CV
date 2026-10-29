@@ -38,6 +38,7 @@ export type LiveCode =
   | "coin_ambiguous"
   | "too_close"
   | "coin_not_found"
+  | "implausible_scale"
   | "hold_still";
 
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
@@ -63,6 +64,7 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   coin_low_confidence: "Hold still so the coin can be measured",
   coin_ambiguous: "Use one coin only and keep other round objects out of view",
   too_close: "Move your hand a little farther from the camera",
+  implausible_scale: "This hand looks the wrong size for the coin you selected. Check you are using that coin",
   hold_still: "Hold still…",
 };
 
@@ -133,6 +135,29 @@ export function estimatedDistanceMm(
 export interface ScaleContext {
   referenceDiameterMm: number;
   assumedHfovDeg: [number, number];
+  /** The hand length the server accepts, mm [lowest, highest] (config hand_length_plausible_mm). */
+  plausibleHandMm?: [number, number];
+}
+
+/** The server adds a depth correction of a few percent to every length, so the phone only calls a
+ *  hand the wrong size when it is clearly outside the accepted range. */
+const SCALE_SLACK = 0.05;
+
+/** Hand length (mm) this frame implies with the coin as the ruler (no depth correction). */
+export function liveHandLengthMm(frame: FrameObservation, referenceDiameterMm: number): number | null {
+  const coin = frame.coin;
+  if (!coin || !(coin.major_axis_px > 0) || !(referenceDiameterMm > 0)) return null;
+  return dist(frame.landmarks[WRIST], frame.landmarks[MIDDLE_TIP]) / (coin.major_axis_px / referenceDiameterMm);
+}
+
+/** True when the hand comes out clearly outside the human range with the selected coin: the coin on the
+ *  hand is probably not the one that was selected (or was not found properly). */
+export function implausibleScale(frame: FrameObservation, scale: ScaleContext | undefined): boolean {
+  if (!scale?.plausibleHandMm) return false;
+  const mm = liveHandLengthMm(frame, scale.referenceDiameterMm);
+  if (mm === null) return false;
+  const [lo, hi] = scale.plausibleHandMm;
+  return mm < lo * (1 - SCALE_SLACK) || mm > hi * (1 + SCALE_SLACK);
 }
 
 export interface LiveResult {
@@ -190,6 +215,8 @@ export function evaluateFrame(
     ) {
       codes.push("too_close");
     }
+    // A wrong-size hand is the root cause of everything else (tilt, distance): say it first.
+    if (coin.accepted && implausibleScale(frame, scale)) codes.unshift("implausible_scale");
   }
   if (codes.length === 0 && previousLandmarks && jitterFraction(lm, previousLandmarks) > capture.max_landmark_jitter_fraction) {
     codes.push("hold_still");

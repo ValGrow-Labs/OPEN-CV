@@ -188,6 +188,8 @@ export function coachKind(code: LiveCode | undefined): CoachKind {
     case "hand_out_of_frame":
     case "too_close":
       return "frame";
+    case "implausible_scale":
+      return "coin";
     case "hand_too_small":
     case "coin_too_small":
       return "closer";

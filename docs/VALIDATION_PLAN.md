@@ -338,3 +338,23 @@ split's error SD, as §5 does for hand length (it does not carry over from the h
    summary and the view agreement in each record.
 3. Update the pilot consent text and have it reviewed (`docs/PILOT_PROTOCOL.md` §7).
 4. Add the side view to the image study of §1 if a silhouette method is to be developed.
+
+## 8. Coverage across hands (every hand has to work)
+
+The product is meant for every customer, so the validation sample must be built to show whether it
+works for every hand, not only for an average one. This is a **requirement on the study design**, not
+a result.
+
+* **Recruit across hand size** (hand length from the smallest to the largest the product is sold
+  for, and children if it has child sizes), **skin tone** (a recorded scale such as the Monk or
+  Fitzpatrick scale, assessed by the operator, not asked of the participant unless consented),
+  **sex and age**, **left and right hands**, and hand conditions that make a flat open hand hard
+  (stiff or arthritic fingers, scars, bandages), each in enough numbers to say something: a few
+  participants per group tell nothing, so state the minimum per group before recruiting.
+* **Report the results per group**, not only overall: the error, the share of scans refused, the share that
+  needed the tape fallback and the time to a size, for every group. A good overall error that hides a
+  poor result for a group is a failure of this requirement.
+* **Acceptance criteria per group** are fixed before looking at the data (section 7.3 applies): the tool is
+  not declared ready for a group whose held-out participants miss the criteria; it can still be
+  offered with the tape measurement as the default for that group, said plainly.
+* The tape fallback must be tested as a path in its own right (time, errors on entry, the size it gives).

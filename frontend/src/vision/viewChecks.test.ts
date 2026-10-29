@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calibrationParams as cal, captureParams as cap, goodFrame } from "../test/fixtures";
-import { BASIC_LIVE_CODES, evaluateBasicFrame, evaluateFrame, LIVE_MESSAGES, liveMessage, type LiveCode } from "./liveChecks";
+import { calibrationParams as cal, captureParams as cap, goodFrame, publicConfig } from "../test/fixtures";
+import { BASIC_LIVE_CODES, evaluateBasicFrame, evaluateFrame, implausibleScale, liveHandLengthMm, LIVE_MESSAGES, liveMessage, type LiveCode, type ScaleContext } from "./liveChecks";
 
 const [palm, back, side] = cap.views;
 
@@ -122,5 +122,83 @@ describe("coin tilt limit per view (the domed back of the hand tilts a coin what
 
   it("a coin tilted past the back view's limit is still refused", () => {
     expect(evaluateFrame(tilted(32), null, cap, withLimit(back.max_coin_tilt_deg), undefined).codes).toContain("coin_tilted");
+  });
+});
+
+describe("a hand the wrong size for the selected coin is caught at once (before three views are wasted)", () => {
+  // The phone recordings: a hand read about 134 mm instead of 173-182 mm, and a scan was refused at the
+  // end with "outside the expected human range"; now the customer is told on the first frame.
+  const ref = 24.26;
+  const scale: ScaleContext = { referenceDiameterMm: ref, assumedHfovDeg: [55, 80], plausibleHandMm: [120, 240] };
+  const withCoinScale = (factor: number) => {
+    const f = goodFrame();
+    f.coin!.major_axis_px *= factor; // a bigger coin in the picture = a smaller hand in mm
+    f.coin!.minor_axis_px = f.coin!.major_axis_px;
+    return f;
+  };
+
+  it("measures the hand with the coin as the ruler", () => {
+    const f = goodFrame();
+    expect(liveHandLengthMm(f, ref)).toBeGreaterThan(150);
+    expect(liveHandLengthMm({ ...f, coin: null }, ref)).toBeNull();
+  });
+
+  it("is quiet for a normal hand", () => {
+    expect(implausibleScale(goodFrame(), scale)).toBe(false);
+    expect(evaluateFrame(goodFrame(), null, cap, cal, scale).codes).not.toContain("implausible_scale");
+  });
+
+  it("flags a hand far too small for the coin (a bigger coin than selected) and says it first", () => {
+    const f = withCoinScale(2.0); // about 92 mm
+    expect(implausibleScale(f, scale)).toBe(true);
+    const r = evaluateFrame(f, null, cap, cal, scale);
+    expect(r.codes[0]).toBe("implausible_scale");
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/wrong size for the coin you selected/i);
+  });
+
+  it("flags a hand far too large for the coin (a smaller coin than selected)", () => {
+    expect(implausibleScale(withCoinScale(0.5), scale)).toBe(true);
+  });
+
+  it("leaves the borderline to the server (which adds its own depth correction)", () => {
+    const f = goodFrame();
+    const mm = liveHandLengthMm(f, ref)!;
+    const justBelow = withCoinScale(mm / 117); // about 117 mm: under 120 but within the 5% slack
+    expect(implausibleScale(justBelow, scale)).toBe(false);
+  });
+
+  it("does nothing without the accepted range or without an accepted coin", () => {
+    expect(implausibleScale(withCoinScale(2.0), { ...scale, plausibleHandMm: undefined })).toBe(false);
+    const f = withCoinScale(2.0);
+    f.coin!.accepted = false;
+    expect(evaluateFrame(f, null, cap, cal, scale).codes).not.toContain("implausible_scale");
+  });
+});
+
+describe("every hand is let through: small and large, with the range the server uses", () => {
+  const [lo, hi] = publicConfig().hand_length_plausible_mm;
+  const scale: ScaleContext = { referenceDiameterMm: 24.26, assumedHfovDeg: [55, 80], plausibleHandMm: [lo, hi] };
+  /** The frame of a hand of `mm` (the test frame's hand rescaled against its coin). */
+  const handOf = (mm: number) => {
+    const f = goodFrame();
+    const factor = liveHandLengthMm(f, 24.26)! / mm;
+    f.coin!.major_axis_px *= factor;
+    f.coin!.minor_axis_px = f.coin!.major_axis_px;
+    return f;
+  };
+
+  it("the accepted range covers young children to very large adults (config, not code)", () => {
+    expect(lo).toBeLessThanOrEqual(75);
+    expect(hi).toBeGreaterThanOrEqual(270);
+  });
+
+  it.each([75, 90, 110, 134, 175, 230, 270])("a %i mm hand is not called the wrong size", (mm) => {
+    expect(implausibleScale(handOf(mm), scale)).toBe(false);
+  });
+
+  it("only a gross scale error is flagged, from either side", () => {
+    expect(implausibleScale(handOf(40), scale)).toBe(true);
+    expect(implausibleScale(handOf(340), scale)).toBe(true);
   });
 });

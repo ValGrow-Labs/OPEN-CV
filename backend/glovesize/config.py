@@ -170,6 +170,9 @@ class CaptureView(_Strict):
     # Largest coin tilt (degrees) accepted in this view; None uses calibration.max_tilt_deg. The back of
     # the hand is domed, so a coin resting on it is tilted a little however level the phone is held.
     max_coin_tilt_deg: float | None = Field(default=None, gt=0, lt=60)
+    # Frames collected in this view on a phone (None: live_scan.mobile_frames_target). The extra views
+    # need fewer: the back view only cross-checks the palm, and the side view is not measured at all.
+    mobile_frames_target: int | None = Field(default=None, ge=1, le=60)
 
 
 class CaptureParams(_Strict):
@@ -296,6 +299,19 @@ class MeasurementConfig(_Strict):
     depth_model: DepthModelParams
     acceptance: AcceptanceParams
     measurements: dict[str, MeasurementDef]
+    # What a customer may enter with a tape measure (mm): wide enough for every hand, small children
+    # to very large adults. Used by the server's input checks and shown to the phone.
+    manual_entry_range_mm: dict[str, tuple[float, float]]
+
+    @model_validator(mode="after")
+    def _manual_ranges(self) -> MeasurementConfig:
+        need = {"hand_length_mm", "hand_circumference_mm", "palm_breadth_mm"}
+        if set(self.manual_entry_range_mm) != need:
+            raise ValueError(f"manual_entry_range_mm needs exactly {sorted(need)}")
+        for k, (lo, hi) in self.manual_entry_range_mm.items():
+            if not 0 < lo < hi:
+                raise ValueError(f"manual_entry_range_mm {k}: need 0 < low < high")
+        return self
 
 
 # --------------------------------------------------------------------------- #

@@ -10,6 +10,7 @@ import {
   tagFrames,
   viewsForScan,
   viewStepLabel,
+  viewFrameTarget,
   viewStepOf,
   withViewFrames,
 } from "./views";
@@ -129,5 +130,35 @@ describe("phone orientation between views", () => {
 
   it("has the hint wording", () => {
     expect(SAME_WAY_UP_HINT).toBe("Keep your phone the same way up for every view");
+  });
+});
+
+describe("frames to collect per view (a faster guided scan on a phone)", () => {
+  const live = 16; // live_scan.mobile_frames_target: the palm
+  const full = 24; // capture.frames_target
+  const min = 8; // what the server needs per view on a phone
+
+  it("the config gives the palm the usual target and the extra views fewer", () => {
+    expect(palm.mobile_frames_target ?? null).toBeNull();
+    expect(back.mobile_frames_target).toBe(10);
+    expect(side.mobile_frames_target).toBe(8);
+  });
+
+  it("uses each view's own phone target, the usual one for the palm, and the full target off a phone", () => {
+    expect(viewFrameTarget(palm, true, live, full, min)).toBe(16);
+    expect(viewFrameTarget(back, true, live, full, min)).toBe(10);
+    expect(viewFrameTarget(side, true, live, full, min)).toBe(8);
+    expect(viewFrameTarget(back, false, live, full, min)).toBe(24);
+    expect(viewFrameTarget(null, true, live, full, min)).toBe(16);
+  });
+
+  it("never goes below the server's minimum or above the full-scan target", () => {
+    expect(viewFrameTarget({ mobile_frames_target: 3 }, true, live, full, min)).toBe(8);
+    expect(viewFrameTarget({ mobile_frames_target: 99 }, true, live, full, min)).toBe(24);
+  });
+
+  it("the three views together ask for 34 frames on a phone instead of 48", () => {
+    const total = views.reduce((n, v) => n + viewFrameTarget(v, true, live, full, min), 0);
+    expect(total).toBe(34);
   });
 });

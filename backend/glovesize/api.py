@@ -97,6 +97,9 @@ def public_config() -> dict:
             "objects": [o.model_dump() for o in refs.objects],
         },
         "coin_detection": cfg.coin_detection.model_dump(),
+        # The hand length the server accepts (mm); the phone uses it to tell a wrong coin at once.
+        "hand_length_plausible_mm": list(cfg.measurements["hand_length_mm"].plausible_range_mm),
+        "manual_entry_range_mm": {k: list(v) for k, v in cfg.manual_entry_range_mm.items()},
         "capture": cfg.capture.model_dump(),
         "live_scan": cfg.live_scan.model_dump(),
         "calibration": cfg.calibration.model_dump(),

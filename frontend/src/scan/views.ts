@@ -61,3 +61,19 @@ export function viewStepLabel(view: CaptureView | undefined, primary: CaptureVie
   if (stepIndex !== 0 || !view || !primary || view.id === primary.id) return stepShort;
   return `Show ${view.label.toLowerCase()}`;
 }
+
+/** Frames to collect in a view. On a phone: the view's own target (the extra views need fewer: the back
+ *  view only cross-checks the palm and the side view is not measured), otherwise the usual
+ *  live_scan.mobile_frames_target; never below the minimum the server needs and never above the
+ *  full-scan target. Off a phone: the full-scan target. */
+export function viewFrameTarget(
+  view: Pick<CaptureView, "mobile_frames_target"> | null | undefined,
+  mobile: boolean,
+  liveMobileTarget: number,
+  fullTarget: number,
+  minFrames: number,
+): number {
+  if (!mobile) return fullTarget;
+  const own = view?.mobile_frames_target ?? liveMobileTarget;
+  return Math.max(minFrames, Math.min(own, fullTarget));
+}

@@ -99,9 +99,23 @@ MANUAL_KEYS = ("hand_circumference_mm", "palm_breadth_mm", "hand_length_mm")
 
 
 class ManualMeasurements(_Model):
-    hand_circumference_mm: float | None = Field(default=None, ge=100, le=400)
-    palm_breadth_mm: float | None = Field(default=None, ge=50, le=150)
-    hand_length_mm: float | None = Field(default=None, ge=100, le=260)
+    """Tape measurements entered by the customer. The allowed ranges are configuration
+    (measurement.json manual_entry_range_mm), wide enough for every hand."""
+
+    hand_circumference_mm: float | None = Field(default=None, gt=0, lt=1000)
+    palm_breadth_mm: float | None = Field(default=None, gt=0, lt=1000)
+    hand_length_mm: float | None = Field(default=None, gt=0, lt=1000)
+
+    @model_validator(mode="after")
+    def _in_range(self) -> ManualMeasurements:
+        from .config import load_measurement_config  # late: config is loaded when first needed
+
+        ranges = load_measurement_config().manual_entry_range_mm
+        for key, (lo, hi) in ranges.items():
+            v = getattr(self, key)
+            if v is not None and not lo <= v <= hi:
+                raise ValueError(f"{key} must be between {lo:g} and {hi:g} mm")
+        return self
 
 
 class CaptureContext(_Model):

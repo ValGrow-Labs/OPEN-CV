@@ -308,6 +308,7 @@ export function ScanScreen<R = ScanResponse>({
               `checks ${status.live?.codes.join(",") || "ok"}`,
               `main ${status.topIssue ? `${status.topIssue.code} ${Math.round(status.topIssue.share * 100)}%` : "-"}`,
               `tilt ${status.tilt.rawDeg?.toFixed(1) ?? "-"} -> ${status.tilt.smoothedDeg?.toFixed(1) ?? "-"} deg  glare ${status.coin?.found ? `${Math.round(status.coin.glare_fraction * 100)}%` : "-"}  ev ${status.exposureEv ?? "n/a"}`,
+              `coin ${ref.diameter.toFixed(1)} mm selected, hand ${status.liveMm ? `${Math.round(status.liveMm.handMm)} mm` : "-"} (accepted ${config.hand_length_plausible_mm[0]}-${config.hand_length_plausible_mm[1]})`,
             ].join("\n")}
           </pre>
         )}

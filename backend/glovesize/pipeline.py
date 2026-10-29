@@ -130,7 +130,10 @@ def _process_view(view_id: str, frames: list[FrameObservation], ref, cfg, calib,
         else cfg.capture.frames_min_accepted
     )
     if len(accepted_idx) < min_required:
-        issues = [_issue("insufficient_frames")] + [_issue(c, n) for c, n in counts.most_common(3)]
+        issues = [_issue("insufficient_frames")] + [
+            _implausible_scale_issue(results, ref, cfg, n) if c == "implausible_scale" else _issue(c, n)
+            for c, n in counts.most_common(3)
+        ]
         out.failure = (issues, len(accepted_idx))
         return out
 
@@ -150,6 +153,27 @@ def _process_view(view_id: str, frames: list[FrameObservation], ref, cfg, calib,
 
     out.camera = aggregate_camera(results, cfg, calib, out.bent)
     return out
+
+
+def _implausible_scale_issue(results: list[FrameResult], ref, cfg, n: int) -> Issue:
+    """The generic 'implausible scale' guidance plus what was actually measured, so a customer (and we)
+    can tell a wrong coin from a small hand."""
+    implied = [r.implied_hand_length_mm for r in results if r.implied_hand_length_mm is not None]
+    base = _issue("implausible_scale", n)
+    if not implied:
+        return base
+    lo, hi = cfg.measurements[HAND_LENGTH].plausible_range_mm
+    mm = float(np.median(implied))
+    side = "small" if mm < lo else "large"
+    return base.model_copy(
+        update={
+            "message": (
+                f"With the selected coin ({ref.label}, {ref.diameter_mm:.1f} mm) your hand measured about {mm:.0f} mm, "
+                f"which is too {side} (expected {lo:.0f} to {hi:.0f} mm). Check that the coin on your hand is the "
+                "one you selected; if you are not sure, measure it across with a ruler."
+            )
+        }
+    )
 
 
 def _usable_for_count(f: FrameObservation) -> bool:

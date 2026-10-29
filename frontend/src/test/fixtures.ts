@@ -58,6 +58,8 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
       ],
     },
     coin_detection: coinParams,
+    hand_length_plausible_mm: measurement.measurements.hand_length_mm.plausible_range_mm as [number, number],
+    manual_entry_range_mm: measurement.manual_entry_range_mm,
     capture: captureParams,
     live_scan: liveScanParams,
     calibration: calibrationParams,

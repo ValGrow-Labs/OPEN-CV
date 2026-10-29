@@ -14,13 +14,27 @@ interface Props {
   mirrored: boolean;
   scanTiming?: ScanTimingBreakdown | null;
   onRescan: () => void;
+  /** Go back to the coin choice (offered when the hand came out the wrong size for the selected coin). */
+  onChangeCoin?: () => void;
   onContinue: (manual: ManualEntries) => void;
   busy: boolean;
   error: string | null;
 }
 
-export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming, onRescan, onContinue, busy, error }: Props) {
-  if (result.status === "rejected") return <Rejected result={result} minFrames={config.capture.frames_min_accepted} onRescan={onRescan} />;
+export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming, onRescan, onChangeCoin, onContinue, busy, error }: Props) {
+  if (result.status === "rejected") {
+    // Tape-measure fields for this product: whatever its chart is sized by.
+    const tapeFields = (["hand_length_mm", "hand_circumference_mm", "palm_breadth_mm"] as const).filter((k) => chart.measurements.includes(k));
+    return (
+      <Rejected
+        result={result}
+        minFrames={config.capture.frames_min_accepted}
+        onRescan={onRescan}
+        onChangeCoin={onChangeCoin}
+        tape={{ fields: tapeFields, ranges: config.manual_entry_range_mm, manualSd: config.manual_measurement_sd_mm, onContinue, busy, error }}
+      />
+    );
+  }
 
   // Tape measurements the customer can add: circumference whenever the product needs it (a
   // camera cannot measure it), hand length when the camera estimate cannot single out a size.
@@ -108,6 +122,7 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
 
       <ContinuePanel
         fields={manualFields}
+        ranges={config.manual_entry_range_mm}
         plausibleSizes={rec?.plausible_sizes ?? []}
         closestSize={rec?.size ? null : rec?.closest_size ?? null}
         manualSd={config.manual_measurement_sd_mm}
@@ -260,25 +275,23 @@ const MANUAL_FIELDS = {
   hand_length_mm: {
     label: "Hand length",
     how: "Measure from the crease where your wrist meets your palm to the tip of your middle finger, with your hand flat.",
-    range: [100, 260] as [number, number],
     placeholder: { in: "e.g. 7.3", mm: "e.g. 185" },
   },
   hand_circumference_mm: {
     label: "Hand circumference",
     how: "Wrap a soft tape measure around your palm at the knuckles, excluding the thumb. A camera cannot measure circumference.",
-    range: [100, 400] as [number, number],
     placeholder: { in: "e.g. 8.5", mm: "e.g. 216" },
   },
   palm_breadth_mm: {
     label: "Palm breadth (skin edge to skin edge)",
     how: "Measure across your palm from the outer edge of your index knuckle to the outer edge of your little-finger knuckle using a ruler or tape measure.",
-    range: [50, 150] as [number, number],
     placeholder: { in: "e.g. 3.3", mm: "e.g. 84" },
   },
 };
 
 function ContinuePanel({
   fields,
+  ranges,
   plausibleSizes,
   closestSize,
   manualSd,
@@ -286,8 +299,12 @@ function ContinuePanel({
   onContinue,
   busy,
   error,
+  heading,
+  intro,
+  showRescan = true,
 }: {
   fields: (keyof typeof MANUAL_FIELDS)[];
+  ranges: PublicConfig["manual_entry_range_mm"];
   plausibleSizes: string[];
   closestSize: string | null;
   manualSd: number;
@@ -295,6 +312,10 @@ function ContinuePanel({
   onContinue: (manual: ManualEntries) => void;
   busy: boolean;
   error: string | null;
+  /** Replace the usual heading/introduction (used when the camera could not measure the hand). */
+  heading?: string;
+  intro?: string;
+  showRescan?: boolean;
 }) {
   const [unit, setUnit] = useState<"in" | "mm">("in");
   const [text, setText] = useState<Record<string, string>>({});
@@ -304,7 +325,7 @@ function ContinuePanel({
     activeFields.map((k) => {
       const v = parseFloat(text[k] ?? "");
       const mm = Number.isFinite(v) ? (unit === "in" ? v * MM_PER_INCH : v) : NaN;
-      const [lo, hi] = MANUAL_FIELDS[k].range;
+      const [lo, hi] = ranges[k];
       return [k, { mm, entered: (text[k] ?? "") !== "", valid: Number.isFinite(mm) && mm >= lo && mm <= hi }];
     }),
   ) as Record<string, { mm: number; entered: boolean; valid: boolean }>;
@@ -316,7 +337,8 @@ function ContinuePanel({
       <div className="stack">
         {fields.length > 0 && (
           <>
-            <h2>{fields.includes("hand_length_mm") ? "Add a tape measurement" : "Hand circumference"}</h2>
+            <h2>{heading ?? (fields.includes("hand_length_mm") ? "Add a tape measurement" : "Hand circumference")}</h2>
+            {intro && <p className="small">{intro}</p>}
             {fields.includes("hand_length_mm") && plausibleSizes.length > 1 && (
               <p className="small">
                 From the camera alone, sizes {plausibleSizes.join(", ")} are all possible, so we won't pick one for you.
@@ -334,7 +356,7 @@ function ContinuePanel({
         </div>
         {fields.map((k) => {
           const f = MANUAL_FIELDS[k];
-          const [lo, hi] = f.range;
+          const [lo, hi] = ranges[k];
           return (
             <div key={k} className="field">
               <label htmlFor={`manual-${k}`}>{f.label}</label>
@@ -362,7 +384,7 @@ function ContinuePanel({
             <div className="stack disclosure-body">
               {optionalFields.map((k) => {
                 const f = MANUAL_FIELDS[k];
-                const [lo, hi] = f.range;
+                const [lo, hi] = ranges[k];
                 return (
                   <div key={k} className="field">
                     <label htmlFor={`manual-${k}`}>{f.label}</label>
@@ -414,17 +436,43 @@ function ContinuePanel({
           {busy ? "Calculating…" : "See my size"}
           <ButtonIcon />
         </button>
-        <button className="btn" onClick={onRescan}>
-          Rescan
-        </button>
+        {showRescan && (
+          <button className="btn" onClick={onRescan}>
+            Rescan
+          </button>
+        )}
       </div>
     </section>
   );
 }
 
-function Rejected({ result, minFrames, onRescan }: { result: ScanResponse; minFrames: number; onRescan: () => void }) {
+interface TapeFallback {
+  fields: (keyof typeof MANUAL_FIELDS)[];
+  ranges: PublicConfig["manual_entry_range_mm"];
+  manualSd: number;
+  onContinue: (manual: ManualEntries) => void;
+  busy: boolean;
+  error: string | null;
+}
+
+function Rejected({
+  result,
+  minFrames,
+  onRescan,
+  onChangeCoin,
+  tape,
+}: {
+  result: ScanResponse;
+  minFrames: number;
+  onRescan: () => void;
+  onChangeCoin?: () => void;
+  tape?: TapeFallback;
+}) {
   const errors = result.issues.filter((i) => i.severity === "error");
-  const unique = errors.filter((e, i) => errors.findIndex((x) => x.message === e.message) === i);
+  const wrongCoin = errors.some((e) => e.code === "implausible_scale");
+  // A specific cause comes first, and the generic "not enough frames" line only when nothing explains it.
+  const specific = errors.filter((e) => e.code !== "insufficient_frames" || !errors.some((x) => x.code !== "insufficient_frames"));
+  const unique = specific.filter((e, i) => specific.findIndex((x) => x.message === e.message) === i);
   const allReceivedPassed = result.frames_received > 0 && result.frames_accepted === result.frames_received;
   return (
     <main className="page page-narrow stack stack-lg">
@@ -458,10 +506,37 @@ function Rejected({ result, minFrames, onRescan }: { result: ScanResponse; minFr
         </p>
       </div>
       <div className="actions">
-        <button className="btn btn-primary btn-lg" onClick={onRescan}>
-          Scan again
-        </button>
+        {wrongCoin && onChangeCoin ? (
+          <>
+            <button className="btn btn-primary btn-lg" onClick={onChangeCoin}>
+              Choose my coin again
+            </button>
+            <button className="btn" onClick={onRescan}>
+              Scan again
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-primary btn-lg" onClick={onRescan}>
+            Scan again
+          </button>
+        )}
       </div>
+      {tape && tape.fields.length > 0 && (
+        <ContinuePanel
+          fields={tape.fields}
+          ranges={tape.ranges}
+          plausibleSizes={[]}
+          closestSize={null}
+          manualSd={tape.manualSd}
+          onRescan={onRescan}
+          onContinue={tape.onContinue}
+          busy={tape.busy}
+          error={tape.error}
+          heading="Or measure with a tape instead"
+          intro="Some hands are hard for a camera to measure: a finger that cannot be straightened, a bandage, a very small or very large hand. You can still get a size by measuring with a ruler or tape."
+          showRescan={false}
+        />
+      )}
     </main>
   );
 }

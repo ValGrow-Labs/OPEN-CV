@@ -58,7 +58,11 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
       <header className="page-head">
         <span className="eyebrow">Your size</span>
         <h1 className="page-title">Your glove size results</h1>
-        <p className="lead">Based on {result.frames_accepted} camera frames that passed every quality check.</p>
+        <p className="lead">
+          {result.status === "rejected"
+            ? "Based on the tape measurement you entered."
+            : `Based on ${result.frames_accepted} camera frames that passed every quality check.`}
+        </p>
       </header>
 
       {rec.is_demo_chart && (
@@ -220,46 +224,48 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
           </div>
         </details>
 
-        <details className="panel">
-          <summary>
-            <span>
-              Scan evidence
-              <span className="panel-sub">
-                {result.frames_accepted} of {result.frames_received} frames passed all checks
+        {result.status !== "rejected" && (
+          <details className="panel">
+            <summary>
+              <span>
+                Scan evidence
+                <span className="panel-sub">
+                  {result.frames_accepted} of {result.frames_received} frames passed all checks
+                </span>
               </span>
-            </span>
-          </summary>
-          <div className="panel-body">
-            {hasViews(result) && <ViewsTable result={result} />}
-            <dl className="kv">
-              <dt>Frames used</dt>
-              <dd>
-                {result.frames_accepted} of {result.frames_received}
-              </dd>
-              {result.calibration && (
-                <>
-                  <dt>Scale reference</dt>
-                  <dd>
-                    {result.calibration.reference_label} ({result.calibration.reference_diameter_mm.toFixed(2)} mm)
-                  </dd>
-                  <dt>Camera scale</dt>
-                  <dd>
-                    {result.calibration.px_per_mm.toFixed(2)} px/mm (±
-                    {(result.calibration.px_per_mm_rel_uncertainty * 100).toFixed(1)}%)
-                  </dd>
-                  <dt>Palm tilt</dt>
-                  <dd>
-                    {result.calibration.coin_tilt_deg.toFixed(1)}°{result.calibration.tilt_corrected ? " (corrected)" : ""}
-                  </dd>
-                  <dt>Camera distance</dt>
-                  <dd>
-                    {result.calibration.estimated_camera_distance_mm[0]} to {result.calibration.estimated_camera_distance_mm[1]} mm
-                  </dd>
-                </>
-              )}
-            </dl>
-          </div>
-        </details>
+            </summary>
+            <div className="panel-body">
+              {hasViews(result) && <ViewsTable result={result} />}
+              <dl className="kv">
+                <dt>Frames used</dt>
+                <dd>
+                  {result.frames_accepted} of {result.frames_received}
+                </dd>
+                {result.calibration && (
+                  <>
+                    <dt>Scale reference</dt>
+                    <dd>
+                      {result.calibration.reference_label} ({result.calibration.reference_diameter_mm.toFixed(2)} mm)
+                    </dd>
+                    <dt>Camera scale</dt>
+                    <dd>
+                      {result.calibration.px_per_mm.toFixed(2)} px/mm (±
+                      {(result.calibration.px_per_mm_rel_uncertainty * 100).toFixed(1)}%)
+                    </dd>
+                    <dt>Palm tilt</dt>
+                    <dd>
+                      {result.calibration.coin_tilt_deg.toFixed(1)}°{result.calibration.tilt_corrected ? " (corrected)" : ""}
+                    </dd>
+                    <dt>Camera distance</dt>
+                    <dd>
+                      {result.calibration.estimated_camera_distance_mm[0]} to {result.calibration.estimated_camera_distance_mm[1]} mm
+                    </dd>
+                  </>
+                )}
+              </dl>
+            </div>
+          </details>
+        )}
 
         <details className="panel">
           <summary>

@@ -99,6 +99,111 @@ const accepted: ScanResponse = {
   limitations: [],
 };
 
+describe("a scan refused because the hand is the wrong size for the selected coin", () => {
+  const rejected: ScanResponse = {
+    ...accepted,
+    status: "rejected",
+    recommendation: null,
+    measurements: [],
+    frames_received: 18,
+    frames_accepted: 0,
+    issues: [
+      { code: "insufficient_frames", severity: "error", message: "Not enough good-quality frames were captured. Please scan again.", frames_affected: null },
+      {
+        code: "implausible_scale",
+        severity: "error",
+        message: "With the selected coin (Indian 2-rupee coin, 23.0 mm) your hand measured about 98 mm, which is too small (expected 120 to 240 mm). Check that the coin on your hand is the one you selected.",
+        frames_affected: 8,
+      },
+    ],
+  };
+  const show = (onChangeCoin?: () => void, onRescan = () => {}) => {
+    const cfg = publicConfig();
+    return render(
+      <MeasurementsScreen config={cfg} chart={cfg.charts[0]} result={rejected} mirrored={false} onRescan={onRescan} onChangeCoin={onChangeCoin} onContinue={() => {}} busy={false} error={null} />,
+    );
+  };
+
+  it("says what was measured, and drops the generic line that only repeats the problem", () => {
+    show(() => {});
+    expect(screen.getByText(/your hand measured about 98 mm, which is too small/)).toBeTruthy();
+    expect(screen.queryByText(/Not enough good-quality frames/)).toBeNull();
+  });
+
+  it("offers 'Choose my coin again' first, and still 'Scan again'", () => {
+    const changeCoin = vi.fn();
+    const rescan = vi.fn();
+    show(changeCoin, rescan);
+    fireEvent.click(screen.getByRole("button", { name: "Choose my coin again" }));
+    expect(changeCoin).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Scan again" }));
+    expect(rescan).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the generic line when nothing explains the refusal, and only 'Scan again'", () => {
+    const cfg = publicConfig();
+    const plain = { ...rejected, issues: [rejected.issues[0]] };
+    render(<MeasurementsScreen config={cfg} chart={cfg.charts[0]} result={plain} mirrored={false} onRescan={() => {}} onChangeCoin={() => {}} onContinue={() => {}} busy={false} error={null} />);
+    expect(screen.getByText(/Not enough good-quality frames/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Choose my coin again" })).toBeNull();
+  });
+});
+
+describe("a hand the camera cannot measure still gets a size (every hand has to work)", () => {
+  const refused: ScanResponse = {
+    ...accepted,
+    status: "rejected",
+    recommendation: null,
+    measurements: [],
+    frames_received: 18,
+    frames_accepted: 0,
+    issues: [{ code: "fingers_bent", severity: "error", message: "Straighten your fingers and keep them flat.", frames_affected: 18 }],
+  };
+  const open = (onContinue = vi.fn()) => {
+    const cfg = publicConfig();
+    render(
+      <MeasurementsScreen config={cfg} chart={cfg.charts[0]} result={refused} mirrored={false} onRescan={() => {}} onContinue={onContinue} busy={false} error={null} />,
+    );
+    return onContinue;
+  };
+
+  it("offers a tape measurement right under the reasons, with no second 'Rescan' button", () => {
+    open();
+    expect(screen.getByText("Or measure with a tape instead")).toBeTruthy();
+    expect(screen.getByText(/a finger that cannot be straightened, a bandage, a very small or very large hand/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /See my size/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Rescan" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Scan again" })).toBeTruthy();
+  });
+
+  it.each([
+    ["a small child's hand (3.0 in)", "3.0", 76.2],
+    ["an average hand (7.0 in)", "7.0", 177.8],
+    ["a very large hand (11.0 in)", "11.0", 279.4],
+  ])("takes %s", (_label, typed, mm) => {
+    const onContinue = open();
+    fireEvent.change(screen.getByLabelText("Hand length"), { target: { value: typed } });
+    fireEvent.click(screen.getByRole("button", { name: /See my size/ }));
+    expect(onContinue).toHaveBeenCalledWith({ hand_length_mm: expect.closeTo(mm, 1) });
+  });
+
+  it("still refuses a typing slip, using the configured range", () => {
+    const onContinue = open();
+    fireEvent.change(screen.getByLabelText("Hand length"), { target: { value: "25" } }); // 25 in
+    expect(screen.getByText(/Enter a value between 2\.4 and 11\.8 in \(60-300 mm\)/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: /See my size/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("the results say the size comes from the tape, not from camera frames", () => {
+    const rec: Recommendation = { ...uncertainRec, status: "recommended", size: "S", confidence_level: "likely", plausible_sizes: ["S"], by_measurement: [] };
+    const { container } = render(<ResultsScreen recommendation={rec} result={refused} extraMeasurements={[]} onRescan={() => {}} onBack={() => {}} onStartOver={() => {}} />);
+    expect(screen.getByText("Based on the tape measurement you entered.")).toBeTruthy();
+    expect(screen.queryByText(/camera frames that passed every quality check/)).toBeNull();
+    expect(container.textContent).not.toContain("Scan evidence");
+  });
+});
+
 describe("uncertain recommendations", () => {
   it("offers a tape measurement of hand length and converts inches to mm", () => {
     const cfg = publicConfig();

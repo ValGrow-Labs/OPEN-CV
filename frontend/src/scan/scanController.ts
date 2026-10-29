@@ -17,6 +17,7 @@ import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLength
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
 import { dominantIssue, GuidanceDebouncer, type IssueSample } from "./guidance";
+import { viewFrameTarget } from "./views";
 import { visibilityAction } from "./visibility";
 
 export type ScanMode = "scan" | "calibration";
@@ -174,8 +175,8 @@ export class ScanController {
     this.view = opts.view ?? null;
     this.guidance = new GuidanceDebouncer(config.live_scan);
     const ls = config.live_scan;
-    this.effectiveTarget = this.mobile ? Math.min(ls.mobile_frames_target, config.capture.frames_target) : config.capture.frames_target;
     this.effectiveMin = this.mobile ? Math.min(ls.mobile_frames_min, config.capture.frames_min_accepted) : config.capture.frames_min_accepted;
+    this.effectiveTarget = this.targetFor(this.view);
     this.status = {
       phase: "starting",
       live: null,
@@ -368,11 +369,18 @@ export class ScanController {
     void this.wakeLock.release();
   }
 
+  /** Frames to collect in a view: on a phone the view's own target (never below the minimum the
+   *  server needs), otherwise the usual one. */
+  private targetFor(view: CaptureView | null): number {
+    return viewFrameTarget(view, this.mobile, this.config.live_scan.mobile_frames_target, this.config.capture.frames_target, this.effectiveMin);
+  }
+
   /** Scan another view with the camera still open (after the previous view completed): clears what
    *  the last view collected, switches the guidance wording and starts the loop again. */
   startView(view: CaptureView): void {
     if (this.disposed || !this.stream || !this.tracker || !this.engine) return;
     this.view = view;
+    this.effectiveTarget = this.targetFor(view);
     if (this.scanTimeoutId) {
       clearTimeout(this.scanTimeoutId);
       this.scanTimeoutId = null;
@@ -621,6 +629,7 @@ export class ScanController {
       {
         referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
         assumedHfovDeg: this.config.assumed_hfov_deg,
+        plausibleHandMm: this.config.hand_length_plausible_mm,
       },
       tiltDeg,
     );

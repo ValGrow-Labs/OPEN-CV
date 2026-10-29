@@ -17,7 +17,7 @@ import { ValidationScreen } from "./screens/ValidationScreen";
 import { WelcomeScreen } from "./screens/WelcomeScreen";
 import { BrandMark } from "./ui/components";
 import { observeReveals } from "./ui/motion";
-import { loadChart, loadReference, saveChart, saveReference } from "./ui/settings";
+import { clearCoinConfirmed, loadChart, loadReference, saveChart, saveReference } from "./ui/settings";
 
 type Screen = "welcome" | "scan" | "measurements" | "results" | "calibration" | "validation";
 
@@ -242,6 +242,10 @@ export function App() {
           mirrored={mirrored}
           scanTiming={scanTiming}
           onRescan={startScan}
+          onChangeCoin={() => {
+            clearCoinConfirmed();
+            goHome();
+          }}
           onContinue={(m) => void onContinue(m)}
           busy={busy}
           error={error}

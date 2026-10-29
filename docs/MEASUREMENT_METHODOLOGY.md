@@ -485,6 +485,45 @@ unchanged (the coin's long axis still gives the scale) and raises the combined �
 8.5 mm and marks it `low_confidence` from about 15°; a coin tilted beyond 25° is still refused. The
 hand's own flatness is still checked separately (`palm_not_flat`).
 
+**Every hand size is accepted; only a gross scale error is not.** The hand length the server accepts
+is **70 to 280 mm** (`measurements.hand_length_mm.plausible_range_mm`, sent to the phone as
+`hand_length_plausible_mm`; the finger, palm and span ranges were widened alongside). It was 120 to
+240 mm, which refused the frames of a small hand (a phone recording read one at about 134 mm, and
+frames a few mm shorter were rejected as "outside the expected human range"): the range now covers
+young children to very large adults. The check cannot tell a small hand from a larger coin than the
+one selected, and it never could for the realistic look-alikes (an older 27 mm 2-rupee coin against 23 mm
+is 17%, a nickel against a quarter 14%, a half dollar 26%: all inside any human range), so it only
+catches a gross error, a coin far from the one selected. The protection against a wrong coin is the
+customer's confirmation of the coin's size (`size_checked`), not this range. The range is provisional
+and unvalidated. The phone compares each frame's hand length (coin as ruler) with the range, with a 5%
+slack because the server adds a few percent of depth correction, and says first, before any frame is
+collected: "This hand looks the wrong size for the coin you selected." If a scan still reaches the
+server and is refused for it, the message states what was measured and what is expected, and the phone
+offers "Choose my coin again". SYNTHETIC check of the gates: hands of 75, 90, 110, 130, 230, 255 and 270 mm
+are accepted end to end, and the coin detector accepts a coin on skin tones from very pale to very
+dark with under 1% size error (rendered scenes only, not real skin).
+
+**Every hand has to work: what is covered today.** No gate assumes an average hand.
+SYNTHETIC tests (`backend/tests/test_every_hand.py`, `test_multi_view.py`) accept: hand lengths from 75 to
+270 mm; long or short fingers (±18%), wide or narrow palms (+28% / -22%) and long or short thumbs;
+left and right hands; hands turned up to 45° in the picture; and coin scenes on skin tones from very pale to very
+dark (under 1% size error in rendered scenes). When the camera cannot measure a hand (a finger that
+cannot be straightened, a bandage, an unusual pose) a refused scan is **not a dead end**: the screen offers a
+tape measurement of the quantities the product is sized by, entered in inches or mm, and sizes from
+that alone (the same ±4 mm treatment as a tape value after a good scan). The tape ranges are
+configuration (`manual_entry_range_mm`: hand length 60 to 300 mm, circumference 80 to 450 mm, palm
+breadth 30 to 180 mm); a typing slip outside them is still refused. **Not covered, and not claimed:** real hands
+across sizes and skin tones (the coin detector, the hand model and the uncertainty allowances have only
+been exercised on rendered scenes and a handful of real recordings), gloves, rings that hide a joint,
+missing fingers, tremor, children below the range of the hand model's training data (unknown to us). Whether the
+camera estimate is as accurate for a child's or a very large hand as for an average one is an open
+question that only a study across those groups can answer (`docs/VALIDATION_PLAN.md`, section 8).
+
+**Frames per view on a phone** are configurable (`capture.views[].mobile_frames_target`): palm 16 (the
+usual target, early stop at 10 stable frames), back 10 and side 8 (the server needs at least 8 usable
+frames per required view). The extra views need fewer frames: the back view only cross-checks the
+palm and the side view is not measured. Three views ask for 34 frames instead of 48.
+
 **The side view is captured but not used.** The client asked for a side view of the hand (like
 their photo), so `capture.views` has a third entry, `side`, with `used_for_size: false`. For such
 a view the server only *counts* frames: a frame is "accepted" when its landmarks are finite (the coin
