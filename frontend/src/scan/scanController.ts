@@ -610,11 +610,14 @@ export class ScanController {
 
   private evaluate(frame: FrameObservation | null, prevLandmarks: Point[] | null, tiltDeg: number | null = null): LiveResult {
     if (this.captureOnly) return evaluateBasicFrame(frame, this.config.capture, this.view);
+    // The view's own coin-tilt limit (the domed back of the hand tilts a coin whatever the phone does).
+    const limit = this.view?.max_coin_tilt_deg;
+    const calibration = limit == null ? this.config.calibration : { ...this.config.calibration, max_tilt_deg: limit };
     return evaluateFrame(
       frame,
       prevLandmarks,
       this.config.capture,
-      this.config.calibration,
+      calibration,
       {
         referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,
         assumedHfovDeg: this.config.assumed_hfov_deg,

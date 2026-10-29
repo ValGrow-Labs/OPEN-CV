@@ -167,6 +167,9 @@ class CaptureView(_Strict):
     note: str = Field(default="", max_length=160)
     # Live-guidance texts that differ from the palm wording, by live-check code (see liveChecks.ts).
     messages: dict[str, str] = Field(default_factory=dict)
+    # Largest coin tilt (degrees) accepted in this view; None uses calibration.max_tilt_deg. The back of
+    # the hand is domed, so a coin resting on it is tilted a little however level the phone is held.
+    max_coin_tilt_deg: float | None = Field(default=None, gt=0, lt=60)
 
 
 class CaptureParams(_Strict):

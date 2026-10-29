@@ -26,7 +26,7 @@ reword the instructions without changing the program.
 |---|---|---|
 | **Palm** | **Yes, it drives the size** | The primary view. Hand length and finger lengths come from here. |
 | **Back of hand** | **Yes, as a cross-check** | A second, independent reading of hand length. |
-| **Side of hand** | **No, not yet** | Captured with basic checks only (the hand and the coin are found). Not used in the size. |
+| **Side of hand** | **No, not yet** | Captured with basic checks only (a hand in frame, large enough, in usable light; the coin is optional). Not used in the size. |
 
 **How the back view is used.** Each view is measured on its own, then the views are averaged (one
 vote per view, not per frame). **How much the two views disagree is added to the uncertainty**, so a

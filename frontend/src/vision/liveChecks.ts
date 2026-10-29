@@ -74,8 +74,6 @@ export const BASIC_LIVE_CODES: readonly LiveCode[] = [
   "hand_too_small",
   "too_dark",
   "too_bright",
-  "coin_missing",
-  "coin_not_found",
 ];
 
 /** Live checks for a view that is captured but not used for size (config used_for_size: false, e.g.
@@ -93,7 +91,8 @@ export function evaluateBasicFrame(frame: FrameObservation | null, capture: Capt
     if (frame.brightness < capture.brightness_range[0]) codes.push("too_dark");
     else if (frame.brightness > capture.brightness_range[1]) codes.push("too_bright");
   }
-  if (!frame.coin) codes.push("coin_missing"); // a coin that was found is enough, accepted or not
+  // No coin check: the view is only captured, not measured, and a coin seen edge-on must not hold
+  // a customer up (the server counts its frames whether or not a coin was seen).
   return basicResult(codes, view);
 }
 

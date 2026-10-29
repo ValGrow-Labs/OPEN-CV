@@ -74,12 +74,12 @@ describe("basic live checks (a view that is captured but not used for size)", ()
     expect(evaluateBasicFrame(bright, cap, side).codes).toEqual(["too_bright"]);
   });
 
-  it("needs the coin to have been found at all", () => {
+  it("does not need a coin: the view is only captured, and a coin seen edge-on must not block it", () => {
     const f = goodFrame();
     f.coin = null;
     const r = evaluateBasicFrame(f, cap, side);
-    expect(r.codes).toEqual(["coin_missing"]);
-    expect(r.message).toBe("Rest the coin flat on the side of your hand");
+    expect(r.ok).toBe(true);
+    expect(r.codes).toEqual([]);
   });
 
   it("only ever raises the basic codes", () => {
@@ -89,12 +89,38 @@ describe("basic live checks (a view that is captured but not used for size)", ()
     f.landmarks[12].y = -10;
     for (const code of evaluateBasicFrame(f, cap, side).codes) expect(BASIC_LIVE_CODES).toContain(code);
     expect([...BASIC_LIVE_CODES].sort()).toEqual(
-      ["coin_missing", "coin_not_found", "hand_out_of_frame", "hand_too_small", "no_hand", "too_bright", "too_dark"].sort(),
+      ["hand_out_of_frame", "hand_too_small", "no_hand", "too_bright", "too_dark"].sort(),
     );
   });
 
   it("is driven by the view's used_for_size flag, which the side view has off and the others on", () => {
     expect(side.used_for_size).toBe(false);
     expect(palm.used_for_size && back.used_for_size).toBe(true);
+  });
+});
+
+describe("coin tilt limit per view (the domed back of the hand tilts a coin whatever the phone does)", () => {
+  const tilted = (deg: number) => {
+    const f = goodFrame();
+    f.coin!.minor_axis_px = f.coin!.major_axis_px * Math.cos((deg * Math.PI) / 180);
+    return f;
+  };
+  const withLimit = (limit: number | null | undefined) => (limit == null ? cal : { ...cal, max_tilt_deg: limit });
+
+  it("the config gives the back view a larger limit than the palm's", () => {
+    expect(palm.max_coin_tilt_deg ?? null).toBeNull();
+    expect(back.max_coin_tilt_deg).toBe(25);
+    expect(cal.max_tilt_deg).toBe(12);
+  });
+
+  it("a coin tilted about 20 degrees is refused with the palm's limit and accepted with the back view's", () => {
+    // From a phone recording of the back of the hand: the coin read about 20 degrees in most frames.
+    expect(evaluateFrame(tilted(20), null, cap, withLimit(palm.max_coin_tilt_deg), undefined).codes).toContain("coin_tilted");
+    const ok = evaluateFrame(tilted(20), null, cap, withLimit(back.max_coin_tilt_deg), undefined);
+    expect(ok.codes).not.toContain("coin_tilted");
+  });
+
+  it("a coin tilted past the back view's limit is still refused", () => {
+    expect(evaluateFrame(tilted(32), null, cap, withLimit(back.max_coin_tilt_deg), undefined).codes).toContain("coin_tilted");
   });
 });

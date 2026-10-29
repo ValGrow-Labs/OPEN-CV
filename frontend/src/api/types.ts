@@ -235,6 +235,8 @@ export interface CaptureView {
   instruction: string;
   /** Live-guidance texts that differ from the palm wording, by live-check code. */
   messages: Record<string, string>;
+  /** Largest coin tilt accepted in this view; null/absent uses calibration.max_tilt_deg. */
+  max_coin_tilt_deg?: number | null;
 }
 
 export interface ViewSummary {

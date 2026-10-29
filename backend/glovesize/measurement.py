@@ -109,10 +109,16 @@ def _chain_finger(chain: list[int]) -> str | None:
 
 
 def measure_frame(
-    frame: FrameObservation, ref: ReferenceSpec, cfg: MeasurementConfig, tilt_deg: float | None = None
+    frame: FrameObservation,
+    ref: ReferenceSpec,
+    cfg: MeasurementConfig,
+    tilt_deg: float | None = None,
+    max_tilt_deg: float | None = None,
 ) -> FrameResult:
     """Check one frame and measure it. ``tilt_deg`` is the coin tilt estimated from the frames around
-    it (calibration.smoothed_coin_tilts); without it the frame's own, noisier, tilt is used."""
+    it (calibration.smoothed_coin_tilts); without it the frame's own, noisier, tilt is used.
+    ``max_tilt_deg`` is the view's own coin-tilt limit (config capture.views[].max_coin_tilt_deg);
+    without it calibration.max_tilt_deg applies."""
     cap, unc = cfg.capture, cfg.uncertainty
     w, h = frame.image_width, frame.image_height
     lm = np.array([[p.x, p.y] for p in frame.landmarks], dtype=np.float64)
@@ -174,7 +180,7 @@ def measure_frame(
         ):
             codes.append("coin_not_on_palm")
         tilt = coin_tilt_deg(coin) if tilt_deg is None else tilt_deg
-        if tilt > cfg.calibration.max_tilt_deg:
+        if tilt > (cfg.calibration.max_tilt_deg if max_tilt_deg is None else max_tilt_deg):
             codes.append("coin_tilted")
         if not codes:
             scale = frame_scale(coin, ref, w, h, cfg, tilt)

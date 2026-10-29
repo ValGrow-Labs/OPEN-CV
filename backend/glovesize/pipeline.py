@@ -109,7 +109,8 @@ def _process_view(view_id: str, frames: list[FrameObservation], ref, cfg, calib,
     # The coin's tilt is judged on the average ellipse of neighbouring frames, not on one noisy frame
     # (of this view's own frames: a view boundary is never smoothed across).
     tilts = smoothed_coin_tilts([f.coin for f in frames], cfg.calibration.tilt_window_frames)
-    results = [measure_frame(f, ref, cfg, tilt_deg=t) for f, t in zip(frames, tilts)]
+    view_tilt_limit = next((v.max_coin_tilt_deg for v in cfg.capture.views if v.id == view_id), None)
+    results = [measure_frame(f, ref, cfg, tilt_deg=t, max_tilt_deg=view_tilt_limit) for f, t in zip(frames, tilts)]
     accepted_idx = [i for i, r in enumerate(results) if r.accepted]
     counts = Counter(c for r in results for c in set(r.codes))
     log.info(
@@ -152,8 +153,9 @@ def _process_view(view_id: str, frames: list[FrameObservation], ref, cfg, calib,
 
 
 def _usable_for_count(f: FrameObservation) -> bool:
-    """A frame of a capture-only view counts as accepted when its landmarks are finite and a coin was seen."""
-    return f.coin is not None and all(math.isfinite(p.x) and math.isfinite(p.y) for p in f.landmarks)
+    """A frame of a capture-only view counts as accepted when its landmarks are finite. The coin is
+    optional: the view is not measured, and a coin seen edge-on must not hold a customer up."""
+    return all(math.isfinite(p.x) and math.isfinite(p.y) for p in f.landmarks)
 
 
 def _view_summaries(view_defs, outcomes: list[ViewOutcome], capture_only: dict[str, list[FrameObservation]]) -> list[ViewSummary]:

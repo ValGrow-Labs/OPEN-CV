@@ -424,8 +424,8 @@ size.
   rejected (`unknown_view`). A *required* size-used view (the back view) that fails any hard gate
   (too few good frames, curled middle finger, unstable hand length) **rejects the whole scan** with
   `required_view_failed` followed by the gate's own guidance. A *required* capture-only view (the
-  side view) needs at least `min(frames_min_accepted, 8)` frames that each have finite landmarks
-  and a coin, else `required_view_failed`.
+  side view) needs at least `min(frames_min_accepted, 8)` frames with finite landmarks (a coin is
+  not required), else `required_view_failed`.
 * **Optional views** (a view with `required: false`; none is configured today) keep the earlier
   behaviour: a size-used one that fails a gate is **dropped, not rejected** (`used: false`, a
   `reason`, and the warning `view_dropped`).
@@ -469,16 +469,33 @@ The 6% agreement threshold is provisional and unvalidated.
 | two views, scale differing by 2% | 185.0 ± 6.5 mm | 0.11 mm | yes (0.2 mm apart) |
 | two views, second view's hand 20% longer | 203.5 ± 19.6 mm | 18.4 mm | no (36.8 mm apart) |
 
+**The coin tilt limit is per view.** A coin resting on the *domed back of the hand* is tilted a
+little whatever the phone does, and the customer cannot flatten it. In a phone recording of the back
+view (2026-10-29), the coin was segmented out of the video frames (the dark hand region with the bright
+disc inside it) and its axis ratio measured: median 0.937, about **20° of tilt in 93% of frames**, with a
+consistent direction (major-axis concentration 0.78; direction-free noise gives about 0.4), so it was
+real tilt and not estimator noise. With the palm's 12° limit every frame was refused (`coin_tilted`),
+the counter stayed at 1 of 16 for 25 s and the side view was never reached. Each view may therefore
+carry its own limit, `capture.views[].max_coin_tilt_deg` (null: `calibration.max_tilt_deg`): the palm
+keeps 12°, the back of the hand has **25°** (provisional, unvalidated; chosen from that one recording
+of one hand and kept above its 90th percentile of about 24° after averaging). The phone and the server
+apply the same limit. The tilt is not hidden: it enters the uncertainty (`tilt` component), so a
+coin tilted 20° on the back view (SYNTHETIC, production config, flat hand) leaves the hand length
+unchanged (the coin's long axis still gives the scale) and raises the combined ± from 7.3 to about
+8.5 mm and marks it `low_confidence` from about 15°; a coin tilted beyond 25° is still refused. The
+hand's own flatness is still checked separately (`palm_not_flat`).
+
 **The side view is captured but not used.** The client asked for a side view of the hand (like
 their photo), so `capture.views` has a third entry, `side`, with `used_for_size: false`. For such
-a view the server only *counts* frames: a frame is "accepted" when its landmarks are finite and a
-coin was seen. It runs **no** size gate (no tilt, bend or flatness check, no hand-length check),
+a view the server only *counts* frames: a frame is "accepted" when its landmarks are finite (the coin
+is optional: the view is not measured, and a coin seen edge-on must not hold a customer up; the phone
+likewise needs only a hand in frame, large enough, in usable light). It runs **no** size gate (no tilt, bend or flatness check, no hand-length check),
 and it never enters a measurement, the calibration, the view agreement or the combine step; it
 cannot reject the scan or drop a view and adds no warning. Its `ViewSummary` reads
 `used: false`, `hand_length_mm: null`, `reason: "not_used_for_size"`. `frames_received`,
 `frames_accepted` and `frame_rejection_counts` of the scan cover the size-used views only, so the
 side frames do not change any number a customer sees. The only way a side view can affect a scan
-is by being absent or having too few coin frames while it is required (above). Side frames alone
+is by being absent or having too few usable frames while it is required (above). Side frames alone
 (no palm) are rejected (`primary_view_missing`); an unknown view id is still rejected. The primary view must have
 `used_for_size: true` (the config refuses anything else).
 

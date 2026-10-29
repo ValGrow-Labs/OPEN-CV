@@ -92,6 +92,7 @@
         "label": "Back of hand",
         "required": true,
         "used_for_size": true,
+        "max_coin_tilt_deg": 25.0,
         "title": "The back of your hand",
         "instruction": "Turn your hand over. Rest the coin flat in the middle of the back of your hand, spread your fingers and hold still.",
         "note": "A second angle lets us check the first one.",

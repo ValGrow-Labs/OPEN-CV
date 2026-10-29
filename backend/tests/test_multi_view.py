@@ -10,6 +10,8 @@ which are required through the ``use`` fixture; everywhere else the autouse fixt
 reduces the configuration to the palm.
 """
 
+import math
+
 import pytest
 
 import glovesize.pipeline as pipeline
@@ -248,24 +250,25 @@ def test_all_three_views_are_accepted_and_give_the_palm_and_back_result(use):
 def test_the_side_view_is_summarised_and_never_used(use):
     use(("palm", "back", "side"))
     frames = palm() + back() + side_frames(n=10)
-    frames[-1]["coin"] = None  # one side frame without a coin does not count
+    frames[-1]["coin"] = None  # the coin is optional in a capture-only view: the frame still counts
     resp = process_scan(request(frames))
     assert resp.status == "accepted"
     side = next(v for v in resp.views if v.id == "side")
-    assert (side.frames_received, side.frames_accepted) == (10, 9)
+    assert (side.frames_received, side.frames_accepted) == (10, 10)
     assert side.used is False and side.hand_length_mm is None and side.reason == "not_used_for_size"
 
 
-def test_a_required_side_view_needs_enough_frames_with_a_coin(use):
+def test_a_required_side_view_needs_enough_usable_frames_but_not_a_coin(use):
     use(("palm", "back", "side"))
     few = process_scan(request(palm() + back() + side_frames(n=5)))
     assert few.status == "rejected" and codes(few) == ["required_view_failed"]
+    # A coin seen edge-on (or not at all) must not hold a customer up: the view is only captured.
     no_coin = side_frames(n=10)
-    for f in no_coin[:5]:
-        f["coin"] = None  # only 5 of 10 frames show a coin
-    assert codes(process_scan(request(palm() + back() + no_coin))) == ["required_view_failed"]
+    for f in no_coin:
+        f["coin"] = None
+    assert process_scan(request(palm() + back() + no_coin)).status == "accepted"
     enough = process_scan(request(palm() + back() + side_frames(n=8)))
-    assert enough.status == "accepted"  # 8 = min(frames_min_accepted, 8) frames with a coin
+    assert enough.status == "accepted"  # 8 = min(frames_min_accepted, 8) usable frames
 
 
 def test_the_side_view_has_no_size_gates_even_when_required(use):
@@ -436,3 +439,52 @@ def test_three_views_of_sixteen_mobile_frames_fit_the_request_limits(use, client
     cfg_max = load_measurement_config().capture.max_frames_per_request
     assert 3 * 16 <= cfg_max and cfg_max * 1 <= 240  # three views of 16 frames, well inside both limits
     assert client.post("/api/scan", json=scan_body(make_frames(n=8) * 31)).status_code == 422  # 248 frames > 240
+
+
+# --- a coin resting on the domed back of the hand ------------------------------------------------
+
+
+def domed_back(tilt_deg: float, n=24):
+    """Back-of-hand frames whose COIN is tilted (it rests on the curve of the back of the hand) while
+    the hand itself lies flat to the camera. Seen in a phone recording: the coin's axis ratio was
+    about 0.94 (about 20 degrees) in most frames, with a consistent direction."""
+    major = 24.26 * 3.2  # the synthetic coin's major axis in px
+    minor = major * math.cos(math.radians(tilt_deg))
+    return tag(make_frames(n=n, seed=2, coin_overrides={"minor_axis_px": minor, "angle_deg": 35.0}), "back")
+
+
+def test_a_coin_on_the_domed_back_of_the_hand_is_not_refused_for_its_tilt(use):
+    cfg = use(("palm", "back"))
+    assert [v.max_coin_tilt_deg for v in cfg.capture.views] == [None, 25.0]  # palm keeps the 12 degree limit
+    resp = process_scan(request(palm() + domed_back(20.0)))
+    assert resp.status == "accepted", codes(resp)
+    assert [v.used for v in resp.views] == [True, True]
+    assert "coin_tilted" not in resp.frame_rejection_counts
+    assert resp.view_agreement and resp.view_agreement.agree
+
+
+def test_that_scan_was_refused_when_the_back_view_had_the_palm_limit(use, monkeypatch):
+    """The recording: with the palm's 12 degree limit every back-view frame is refused for 'coin_tilted'
+    and the scan can never complete; the customer cannot flatten a coin on a curved surface."""
+    cfg = use(("palm", "back"))
+    unlimited = [v.model_copy(update={"max_coin_tilt_deg": None}) for v in cfg.capture.views]
+    c = cfg.model_copy(update={"capture": cfg.capture.model_copy(update={"views": unlimited})})
+    monkeypatch.setattr(pipeline, "load_measurement_config", lambda: c)
+    resp = process_scan(request(palm() + domed_back(20.0)))
+    assert resp.status == "rejected"
+    assert codes(resp)[0] == "required_view_failed"
+    assert resp.frame_rejection_counts.get("coin_tilted", 0) > 0
+
+
+def test_the_palm_keeps_its_own_tighter_tilt_limit(use):
+    use(("palm", "back"))
+    tilted_palm = tag(make_frames(n=24, seed=1, coin_overrides={"minor_axis_px": 24.26 * 3.2 * math.cos(math.radians(20)), "angle_deg": 35.0}), "palm")
+    resp = process_scan(request(tilted_palm + back()))
+    assert resp.status == "rejected"  # a coin tilted 20 degrees on the palm is still refused (limit 12)
+
+
+def test_a_coin_tilted_beyond_the_back_views_limit_is_still_refused(use):
+    use(("palm", "back"))
+    resp = process_scan(request(palm() + domed_back(32.0)))
+    assert resp.status == "rejected" and codes(resp)[0] == "required_view_failed"
+    assert resp.frame_rejection_counts.get("coin_tilted", 0) > 0
