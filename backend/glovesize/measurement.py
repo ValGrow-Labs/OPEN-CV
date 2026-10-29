@@ -252,6 +252,30 @@ class AggregateOutput:
     unstable: bool
 
 
+@dataclass
+class RawKey:
+    """One camera measurement of one view, before rounding (what combining several views needs)."""
+
+    value: float  # calibrated, mm
+    comps: dict[str, float]  # uncertainty components before the calibration scale (as reported)
+    cal_scale: float
+    n: int
+    unstable: bool
+
+
+@dataclass
+class CameraAgg:
+    """The camera measurements of one view (no manual entries, no derived ones yet)."""
+
+    out: list[MeasurementOut]
+    issue_codes: list[str]
+    unstable: bool
+    kept_values: dict[str, float]
+    kept_sigma: dict[str, float]
+    raw: dict[str, RawKey]
+    accepted: list[FrameResult]
+
+
 def aggregate_measurements(
     results: list[FrameResult],
     cfg: MeasurementConfig,
@@ -259,6 +283,16 @@ def aggregate_measurements(
     manual: ManualMeasurements | None,
     bent_fingers: Collection[str] = (),
 ) -> AggregateOutput:
+    camera = aggregate_camera(results, cfg, calib, bent_fingers)
+    return finish_aggregate(camera, cfg, calib, manual)
+
+
+def aggregate_camera(
+    results: list[FrameResult],
+    cfg: MeasurementConfig,
+    calib: MeasurementCalibration,
+    bent_fingers: Collection[str] = (),
+) -> CameraAgg:
     accepted = [r for r in results if r.accepted]
     unc = cfg.uncertainty
     min_frames = min(cfg.capture.frames_min_accepted, len(accepted))
@@ -268,6 +302,7 @@ def aggregate_measurements(
     unstable = False
     kept_values: dict[str, float] = {}
     kept_sigma: dict[str, float] = {}
+    raw_keys: dict[str, RawKey] = {}
 
     min_feature_frames = min(min_frames, max(4, len(accepted) // 2))
     for key, d in cfg.measurements.items():
@@ -331,7 +366,8 @@ def aggregate_measurements(
         if not lo <= value <= hi:
             status = "invalid"
             reasons.append("implausible_value")
-        if m > 0 and sd / m > unc.unstable_rel_sd:
+        key_unstable = bool(m > 0 and sd / m > unc.unstable_rel_sd)
+        if key_unstable:
             reasons.append("unstable")
             unstable = True
         if status == "invalid" and not reasons:
@@ -353,6 +389,25 @@ def aggregate_measurements(
         if show:
             kept_values[key] = value
             kept_sigma[key] = sigma
+            raw_keys[key] = RawKey(value=value, comps=dict(comps), cal_scale=cal_scale, n=n, unstable=key_unstable)
+
+    if unstable:
+        issue_codes.append("measurement_unstable")
+    return CameraAgg(out, issue_codes, unstable, kept_values, kept_sigma, raw_keys, accepted)
+
+
+def finish_aggregate(
+    camera: CameraAgg,
+    cfg: MeasurementConfig,
+    calib: MeasurementCalibration,
+    manual: ManualMeasurements | None,
+) -> AggregateOutput:
+    """Add the customer's tape entries and the derived measurements to the camera ones."""
+    out = list(camera.out)
+    kept_values = dict(camera.kept_values)
+    kept_sigma = dict(camera.kept_sigma)
+    issue_codes = list(camera.issue_codes)
+    accepted = camera.accepted
 
     if manual and manual.hand_length_mm is not None:
         v = float(manual.hand_length_mm)
@@ -378,9 +433,81 @@ def aggregate_measurements(
         kept_sigma[HAND_LENGTH] = s
 
     out.extend(_derived_and_manual(calib, kept_values, kept_sigma, manual, cfg))
-    if unstable:
-        issue_codes.append("measurement_unstable")
-    return AggregateOutput(out, _proportions(accepted, kept_values), issue_codes, unstable)
+    return AggregateOutput(out, _proportions(accepted, kept_values), issue_codes, camera.unstable)
+
+
+def combine_views(views: list[CameraAgg], cfg: MeasurementConfig) -> CameraAgg:
+    """One camera measurement per key from several views of the same hand (primary view first).
+
+    * A key that only one view measured is that view's measurement, unchanged.
+    * Otherwise the value is the mean of the views' values (one vote per *view*, not per frame) and
+      each uncertainty component is the average of the views' components: no reduction of any
+      random or systematic term is claimed. A new component, ``view_disagreement`` (the standard
+      error of the views' values), grows when the views differ.
+    """
+    if len(views) == 1:
+        return views[0]
+    primary = views[0]
+    out: list[MeasurementOut] = []
+    kept_values: dict[str, float] = {}
+    kept_sigma: dict[str, float] = {}
+    raw_out: dict[str, RawKey] = {}
+    by_key = [{m.key: m for m in v.out} for v in views]
+    for key, d in cfg.measurements.items():
+        have = [(v, i) for i, v in enumerate(views) if key in v.raw]
+        if not have:
+            out.append(by_key[0][key])
+            continue
+        if len(have) == 1:
+            v, i = have[0]
+            out.append(by_key[i][key])
+            kept_values[key] = v.kept_values[key]
+            kept_sigma[key] = v.kept_sigma[key]
+            raw_out[key] = v.raw[key]
+            continue
+        raws = [v.raw[key] for v, _ in have]
+        k = len(raws)
+        vals = np.array([r.value for r in raws])
+        value = float(np.mean(vals))
+        cal_scale = raws[0].cal_scale
+        names = list(raws[0].comps)
+        comps = {c: float(np.mean([r.comps.get(c, 0.0) for r in raws])) for c in names}
+        comps["view_disagreement"] = float(np.std(vals, ddof=1) / math.sqrt(k)) / cal_scale
+        sigma = cal_scale * math.sqrt(sum(c * c for c in comps.values()))
+        status = classify(value, sigma, cfg, out_of_plane=d.out_of_plane)
+        reasons: list[str] = []
+        if d.out_of_plane and status in ("valid", "low_confidence"):
+            status = "low_confidence"
+            reasons.append("out_of_plane")
+        lo, hi = d.plausible_range_mm
+        if not lo <= value <= hi:
+            status = "invalid"
+            reasons.append("implausible_value")
+        if any(r.unstable for r in raws):
+            reasons.append("unstable")
+        if status == "invalid" and not reasons:
+            reasons.append("uncertainty_too_large")
+        show = status != "invalid"
+        base = by_key[have[0][1]][key]
+        out.append(
+            base.model_copy(
+                update=dict(
+                    value_mm=round(value, 1) if show else None,
+                    uncertainty_mm=round(sigma, 1) if show else None,
+                    interval95_mm=(round(value - Z95 * sigma, 1), round(value + Z95 * sigma, 1)) if show else None,
+                    status=status,
+                    frames_used=sum(r.n for r in raws),
+                    uncertainty_components_mm={c: round(x, 2) for c, x in comps.items()},
+                    reasons=reasons,
+                )
+            )
+        )
+        if show:
+            kept_values[key] = value
+            kept_sigma[key] = sigma
+            raw_out[key] = RawKey(value, comps, cal_scale, sum(r.n for r in raws), any(r.unstable for r in raws))
+    codes = list(dict.fromkeys(c for v in views for c in v.issue_codes))
+    return CameraAgg(out, codes, any(v.unstable for v in views), kept_values, kept_sigma, raw_out, primary.accepted)
 
 
 def _derived_and_manual(

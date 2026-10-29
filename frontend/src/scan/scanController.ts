@@ -1,8 +1,9 @@
 // Drives the camera -> landmarks -> coin detection -> live checks -> frame collection loop.
 // All image processing happens in the browser; only numeric FrameObservations leave it.
-import type { FrameObservation, Point, PublicConfig } from "../api/types";
+import type { CaptureView, FrameObservation, Point, PublicConfig } from "../api/types";
 import { describeCameraError, isMobileDevice, openCamera, stopStream, type CameraErrorInfo, type Facing } from "../camera/camera";
 import { ExposureController } from "../camera/exposure";
+import { ScreenWakeLock } from "../camera/wakeLock";
 import { getCoinEngine, type CoinEngine } from "../vision/coinEngine";
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import type { CoinJobResult } from "../vision/coinJob";
@@ -11,11 +12,12 @@ import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow }
 import { dist, insideFrame, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
 import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
-import { evaluateFrame, LIVE_MESSAGES, type LiveCode, type LiveResult } from "../vision/liveChecks";
+import { evaluateBasicFrame, evaluateFrame, liveMessage, type LiveCode, type LiveResult } from "../vision/liveChecks";
 import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
 import { dominantIssue, GuidanceDebouncer, type IssueSample } from "./guidance";
+import { visibilityAction } from "./visibility";
 
 export type ScanMode = "scan" | "calibration";
 export type Phase = "starting" | "loading" | "running" | "complete" | "error";
@@ -79,6 +81,8 @@ export interface ScanControllerOptions {
   onComplete?: (frames: FrameObservation[], timing: ScanTimingInfo) => void;
   /** Diameter of the confirmed reference coin, for the live camera-distance check. */
   referenceDiameterMm?: number;
+  /** The capture view being scanned (its own guidance wording); the primary (palm) view by default. */
+  view?: CaptureView;
 }
 
 // Loop settings come from config/measurement.json "live_scan":
@@ -151,6 +155,9 @@ export class ScanController {
   private status: ScanStatus;
 
   private mobile: boolean;
+  private view: CaptureView | null;
+  private wakeLock = new ScreenWakeLock();
+  private pausedByHide = false;
   private effectiveTarget: number;
   private effectiveMin: number;
   private scanTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -164,6 +171,7 @@ export class ScanController {
     this.facing = opts.facing;
     this.roiCanvas = document.createElement("canvas");
     this.mobile = isMobileDevice();
+    this.view = opts.view ?? null;
     this.guidance = new GuidanceDebouncer(config.live_scan);
     const ls = config.live_scan;
     this.effectiveTarget = this.mobile ? Math.min(ls.mobile_frames_target, config.capture.frames_target) : config.capture.frames_target;
@@ -259,6 +267,12 @@ export class ScanController {
       return false;
     }
     this.stream = stream;
+    // Keep the screen on while scanning, and look after the scan when the page is hidden and shown.
+    void this.wakeLock.acquire();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.onVisibility);
+      document.addEventListener("visibilitychange", this.onVisibility);
+    }
     const track = this.stream.getVideoTracks()[0];
     this.exposure = new ExposureController(this.config.live_scan, track ?? null);
     const facingMode = track?.getSettings().facingMode;
@@ -316,9 +330,66 @@ export class ScanController {
     this.emit({ collected: 0 }, true);
   }
 
+  /** The page went to the background or came back (see scan/visibility.ts). */
+  private onVisibility = (): void => {
+    const action = visibilityAction({
+      visible: document.visibilityState === "visible",
+      running: this.running,
+      pausedByHide: this.pausedByHide,
+    });
+    if (action === "pause") {
+      this.pausedByHide = true;
+      this.running = false;
+      if (this.scanTimeoutId) {
+        clearTimeout(this.scanTimeoutId);
+        this.scanTimeoutId = null;
+      }
+    } else if (action === "resume") {
+      this.pausedByHide = false;
+      if (this.disposed || !this.stream) return;
+      const track = this.stream.getVideoTracks()[0];
+      if (!track || track.readyState === "ended") {
+        // the phone took the camera while the page was hidden
+        this.stop();
+        this.emit({ phase: "error", error: describeCameraError({ name: "NotReadableError" }) }, true);
+        return;
+      }
+      // Start this view's collection over; the views already captured are kept by the screen.
+      this.resetCollection();
+      this.running = true;
+      this.emit({ phase: "running" }, true);
+      this.schedule();
+      this.scanTimeoutId = setTimeout(() => this.handleTimeout(), this.config.live_scan.timeout_s * 1000);
+    }
+  };
+
+  /** Let the screen sleep again (the scan is over, or only being submitted). */
+  releaseWakeLock(): void {
+    void this.wakeLock.release();
+  }
+
+  /** Scan another view with the camera still open (after the previous view completed): clears what
+   *  the last view collected, switches the guidance wording and starts the loop again. */
+  startView(view: CaptureView): void {
+    if (this.disposed || !this.stream || !this.tracker || !this.engine) return;
+    this.view = view;
+    if (this.scanTimeoutId) {
+      clearTimeout(this.scanTimeoutId);
+      this.scanTimeoutId = null;
+    }
+    this.resetCollection();
+    this.running = true;
+    this.emit({ phase: "running", live: null, coin: null, liveMm: null, topIssue: null }, true);
+    this.schedule();
+    this.scanTimeoutId = setTimeout(() => this.handleTimeout(), this.config.live_scan.timeout_s * 1000);
+  }
+
   stop(): void {
     this.disposed = true;
     this.running = false;
+    this.pausedByHide = false;
+    void this.wakeLock.release();
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", this.onVisibility);
     this.generation++;
     if (this.scanTimeoutId) {
       clearTimeout(this.scanTimeoutId);
@@ -380,7 +451,7 @@ export class ScanController {
 
   private topIssue(): TopIssue | null {
     const top = dominantIssue(this.issueLog, -Infinity);
-    return top ? { ...top, message: LIVE_MESSAGES[top.code] } : null;
+    return top ? { ...top, message: liveMessage(top.code, this.view) } : null;
   }
 
   /** For the timeout message: what the scan screen said most often, and how often. */
@@ -389,7 +460,7 @@ export class ScanController {
     for (const [code, n] of this.issueTotals) if (best === null || n > this.issueTotals.get(best)!) best = code;
     if (!best || this.framesSeen === 0) return " Make sure your whole hand and the coin are visible and hold still.";
     const pct = Math.round((100 * this.issueTotals.get(best)!) / this.framesSeen);
-    return ` Most of the time (${pct}% of camera frames) the problem was: “${LIVE_MESSAGES[best]}”.`;
+    return ` Most of the time (${pct}% of camera frames) the problem was: “${liveMessage(best, this.view)}”.`;
   }
 
   private schedule(): void {
@@ -465,7 +536,8 @@ export class ScanController {
         image,
         params: this.config.coin_detection,
         diameterRange: win.diameterRange,
-        palm: ls.palm_mask_grow === null ? null : PALM_POLYGON.map((i) => local(hand.landmarks[i])),
+        // The palm outline means nothing for a view of the edge of the hand: nothing is masked there.
+        palm: ls.palm_mask_grow === null || this.captureOnly ? null : PALM_POLYGON.map((i) => local(hand.landmarks[i])),
         palmGrow: ls.palm_mask_grow,
         seed: seed ? { ...seed, center_x: seed.center_x - roi.x, center_y: seed.center_y - roi.y } : null,
         trackMinConfidence: ls.track_min_confidence,
@@ -531,7 +603,13 @@ export class ScanController {
     });
   }
 
+  /** A view that is only captured (not used for size) is held to the basic checks, and gets no live lengths. */
+  private get captureOnly(): boolean {
+    return this.view?.used_for_size === false;
+  }
+
   private evaluate(frame: FrameObservation | null, prevLandmarks: Point[] | null, tiltDeg: number | null = null): LiveResult {
+    if (this.captureOnly) return evaluateBasicFrame(frame, this.config.capture, this.view);
     return evaluateFrame(
       frame,
       prevLandmarks,
@@ -550,7 +628,7 @@ export class ScanController {
   private shown(live: LiveResult, now: number): LiveResult {
     const code = this.guidance.update(now, live.codes);
     if (code === null) return { ok: true, codes: [], message: "Hold still while we measure" };
-    return { ok: false, codes: [code, ...live.codes.filter((c) => c !== code)], message: LIVE_MESSAGES[code] };
+    return { ok: false, codes: [code, ...live.codes.filter((c) => c !== code)], message: liveMessage(code, this.view) };
   }
 
   /** Every camera frame: track the hand, start a coin search when none is running, draw the
@@ -591,7 +669,7 @@ export class ScanController {
     this.recordIssue(now, frameLive.ok ? null : frameLive.codes[0]);
     const ref = this.opts.referenceDiameterMm ?? NaN;
     const liveMm =
-      this.config.live_scan.show_live_measurements && smoothed && coin?.found && coin.accepted
+      this.config.live_scan.show_live_measurements && !this.captureOnly && smoothed && coin?.found && coin.accepted
         ? liveLengths(smoothed, coin.major_axis_px, ref)
         : null;
 

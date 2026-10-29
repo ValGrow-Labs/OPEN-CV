@@ -399,6 +399,107 @@ within ±14%, and **invalid** otherwise (the value is hidden).
 The "quality score" shown for the coin and the measurement statuses are heuristics about the
 inputs. **None of them is a probability that the measurement or the glove size is correct.**
 
+### 5.1 Several views
+
+The customer is guided through the views in `capture.views` (config/measurement.json): the
+**palm** (primary), the **back of the hand** and the **side** of the hand. **All three are
+required, by the client's decision**: a scan is accepted only when every required view is present
+and passes. Each frame carries a `view` id. `pipeline.process_scan` treats every size-used view as
+its own scan and then combines them.
+
+**What this costs and what it buys, plainly.** The back view is an independent cross-check (below)
+but does not by itself make the number more precise. The side view is mandatory yet **not used in
+the size at all** (below): until a measurement method exists for it, it adds time for the customer
+and cannot change the result. The client should know that these three requirements make a scan
+roughly three times as long as a palm-only scan, and that two of the three do not yet improve the
+size.
+
+* **Per view:** tilt smoothing (§3.1.1) over that view's own frames (a view boundary is never
+  smoothed across), the frame checks, the hard gates (minimum good frames, curled middle finger,
+  frame-to-frame consistency) and the camera aggregation of §5, exactly as for a single scan.
+* **Primary view:** if it fails a hard gate the scan is rejected, as before. It also supplies the
+  calibration block, the diagram landmarks, the coin, the proportions and the finger-bend report.
+* **Required views.** Frames without the primary view are rejected (`primary_view_missing`); a
+  required view with no frames is rejected (`required_view_missing`); an unknown view id is
+  rejected (`unknown_view`). A *required* size-used view (the back view) that fails any hard gate
+  (too few good frames, curled middle finger, unstable hand length) **rejects the whole scan** with
+  `required_view_failed` followed by the gate's own guidance. A *required* capture-only view (the
+  side view) needs at least `min(frames_min_accepted, 8)` frames that each have finite landmarks
+  and a coin, else `required_view_failed`.
+* **Optional views** (a view with `required: false`; none is configured today) keep the earlier
+  behaviour: a size-used one that fails a gate is **dropped, not rejected** (`used: false`, a
+  `reason`, and the warning `view_dropped`).
+* **Image size per view.** A phone can be turned between views, so frames need the same image
+  size only *within* a view (`ScanRequest` refuses mixed sizes inside one view, HTTP 422);
+  different views may differ. Every frame is measured with its own size, and the response's
+  `image_width`/`image_height` are the primary view's. A request holds at most 240 frames; three
+  views of 16 phone frames are 48.
+* **Single-view callers.** The validation study, the remote pilot, re-measuring a stored record
+  and the offline scripts capture the palm only. They call `process_scan(req,
+  require_extra_views=False)`, which requires the primary view only and treats the others as
+  optional; customer scans (`/api/scan`) always require every required view. Tests run on the
+  palm-only configuration unless they ask for more views (`tests/conftest.py`,
+  `tests/test_multi_view.py`).
+* **Combining a measurement** (`measurement.combine_views`): a key that only one view measured is
+  that view's measurement, unchanged. Otherwise the value is the **mean of the views' values**
+  (one vote per view, not per frame), and every uncertainty component of §5 is the **average of
+  the views' components**. A new component, `view_disagreement`, equals the standard error of the
+  views' values (`|a − b| / 2` for two views) and is added in quadrature. Status, interval and
+  `frames_used` (the sum) follow from the combined value and sigma as in §5.
+* **Agreement check** (`view_agreement`): for two or more used views the hand lengths are compared;
+  they agree when the largest difference is at most `capture.view_max_rel_diff` (6%) of the mean
+  hand length, otherwise the warning `views_disagree` is added. Disagreement never rejects a scan;
+  its effect is the `view_disagreement` term above.
+
+**What a second view does and does not give.** It is an independent re-measurement: its coin is
+detected separately, so it can catch a wrong coin or a bad scale in one view (a mistake that a
+single view cannot see). It does **not**, by itself, make the number more precise. The dominant
+terms of a typical hand length (the 5 mm landmark-definition prior, the depth layer, the coin
+tolerance) are common to both views and are stored prior allowances, not measurements, so no
+average of two views can reduce them; and the combination claims no reduction of any other term
+either. Only reference-measurement data (`docs/VALIDATION_PLAN.md`) can replace those allowances.
+The 6% agreement threshold is provisional and unvalidated.
+
+*SYNTHETIC illustration* (24 frames per view, depth model off, landmark noise 1 px; hand 185 mm;
+`tests/test_multi_view.py` checks the same behaviour, not real-world accuracy):
+
+| scan | hand length | `view_disagreement` | views agree |
+|---|---|---|---|
+| palm only | 185.1 ± 6.5 mm | n/a | n/a |
+| two views, scale differing by 2% | 185.0 ± 6.5 mm | 0.11 mm | yes (0.2 mm apart) |
+| two views, second view's hand 20% longer | 203.5 ± 19.6 mm | 18.4 mm | no (36.8 mm apart) |
+
+**The side view is captured but not used.** The client asked for a side view of the hand (like
+their photo), so `capture.views` has a third entry, `side`, with `used_for_size: false`. For such
+a view the server only *counts* frames: a frame is "accepted" when its landmarks are finite and a
+coin was seen. It runs **no** size gate (no tilt, bend or flatness check, no hand-length check),
+and it never enters a measurement, the calibration, the view agreement or the combine step; it
+cannot reject the scan or drop a view and adds no warning. Its `ViewSummary` reads
+`used: false`, `hand_length_mm: null`, `reason: "not_used_for_size"`. `frames_received`,
+`frames_accepted` and `frame_rejection_counts` of the scan cover the size-used views only, so the
+side frames do not change any number a customer sees. The only way a side view can affect a scan
+is by being absent or having too few coin frames while it is required (above). Side frames alone
+(no palm) are rejected (`primary_view_missing`); an unknown view id is still rejected. The primary view must have
+`used_for_size: true` (the config refuses anything else).
+
+*Why it cannot be used yet (INFORMAL; two sample photos of what looks like the same hand, not a
+validation).* On the client's two sample photos the back-of-hand photo gave a hand length of about
+175 mm and the angled (side) photo about 143 mm, about 19% short. The image-plane length is
+foreshortened by the angle, and the model's depth does not rescue it: the 3D distance using the
+landmarks' own depth gave 144 mm against 177 mm, and the model's world-landmark lengths gave
+156 mm against 189 mm. So an angled view cannot be turned into a hand length by any quantity the
+pipeline has today.
+
+*What would be needed to use it:* (1) a measurement method that is meant for that angle, for
+example **hand thickness at the knuckles** from the hand's silhouette against the coin's scale
+(the one quantity a side view shows that the palm and back views cannot); (2) reference data:
+caliper-measured thickness for the study participants (`docs/VALIDATION_PLAN.md`), taken with the
+same definition; (3) validation of the method against those references before it may change a
+size or enter a chart. Then set `used_for_size: true` for the view and add the method and its gates;
+until then requiring the view costs the customer time and tells us nothing the size depends on.
+The view's `note` ("Not used for your size yet; we are testing how to use this angle") says so
+to the customer.
+
 ## 6. Sizing
 
 `glovesize/sizing.py` applies the manufacturer's chart (`config/sizing_charts/*.json`) as rules:

@@ -27,7 +27,7 @@ camera ─► MediaPipe Hand Landmarker (WASM)            /api/scan   ─► per
 | `backend/validation/` | Offline validation pipeline: extraction from images, calibration fitting (dev split), evaluation (test split) |
 | `backend/scripts/` | Model download, parity fixtures, fake-camera videos |
 | `frontend/src/` | `vision/` (coin detector port, MediaPipe wrapper, live checks, smoothing), `scan/` (frame loop), `screens/`, `api/` |
-| `docs/` | [Methodology](docs/MEASUREMENT_METHODOLOGY.md), [validation plan](docs/VALIDATION_PLAN.md), [pilot protocol](docs/PILOT_PROTOCOL.md), [calibration study](docs/CALIBRATION_STUDY.md), [experimental paper method](docs/PAPER_METHOD_EVALUATION.md), [comparison study protocol](docs/COMPARISON_STUDY_PROTOCOL.md), [consent review](docs/CONSENT_REVIEW.md), [privacy](docs/DATA_COLLECTION_AND_PRIVACY.md), [risks and client inputs](docs/RISKS_AND_CLIENT_INPUTS.md) |
+| `docs/` | [Methodology](docs/MEASUREMENT_METHODOLOGY.md), [validation plan](docs/VALIDATION_PLAN.md), [pilot protocol](docs/PILOT_PROTOCOL.md), [calibration study](docs/CALIBRATION_STUDY.md), [experimental paper method](docs/PAPER_METHOD_EVALUATION.md), [comparison study protocol](docs/COMPARISON_STUDY_PROTOCOL.md), [consent review](docs/CONSENT_REVIEW.md), [privacy](docs/DATA_COLLECTION_AND_PRIVACY.md), [risks and client inputs](docs/RISKS_AND_CLIENT_INPUTS.md), [multi-view scanning plan](docs/MULTI_VIEW_PLAN.md) |
 
 ## Setup
 

@@ -219,6 +219,7 @@ export function App() {
           config={config}
           chartId={chart.chart_id}
           reference={reference}
+          views={config.capture.views}
           onCancel={() => setScreen(result ? "measurements" : "welcome")}
           onReferenceConfirm={(sel) => {
             setReference(sel);

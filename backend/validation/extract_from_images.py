@@ -102,7 +102,7 @@ def process_dataset(dataset: Path, chart_id: str | None, reference_id: str = "us
                         "chart_id": chart.chart_id,
                     }
                 )
-                resp = pipeline.process_scan(req)
+                resp = pipeline.process_scan(req, require_extra_views=False)  # the image study is palm only
                 rows.append(scan_row(pdir.name, sdir.name, resp, chart.chart_id))
                 log.info(
                     "%s/%s: %s (%d/%d frames)", pdir.name, sdir.name, resp.status, resp.frames_accepted, len(files)

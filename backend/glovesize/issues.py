@@ -43,6 +43,18 @@ ISSUES: dict[str, tuple[Severity, str]] = {
         "The measured size is outside the expected human range. Check the selected coin type.",
     ),
     # Scan-level
+    "unknown_view": ("error", "A capture view that is not configured was submitted."),
+    "primary_view_missing": ("error", "The palm view is required. Please scan your palm first."),
+    "required_view_missing": ("error", "A required view is missing. Please scan every view."),
+    "required_view_failed": ("error", "A required view did not have enough good frames. Please rescan."),
+    "view_dropped": (
+        "warning",
+        "One extra view could not be used (too few good frames), so your size is based on the other view(s) only.",
+    ),
+    "views_disagree": (
+        "warning",
+        "The views gave different hand lengths. Check that the same coin is used and lies flat in each view, then rescan.",
+    ),
     "insufficient_frames": ("error", "Not enough good-quality frames were captured. Please scan again."),
     "hand_length_unreliable": ("error", "Hand length could not be measured with enough certainty. Please scan again."),
     "measurement_unstable": ("warning", "Measurements varied between frames. Keep your hand still during the scan."),

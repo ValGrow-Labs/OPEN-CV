@@ -474,7 +474,8 @@ def build_record(req: ValidationScanRequest, resp: ScanResponse, now: datetime |
 def run_validation_scan(
     req: ValidationScanRequest, remote: RemoteInfo | None = None
 ) -> tuple[ValidationRecord, ScanResponse]:
-    resp = pipeline.process_scan(req.scan)
+    # The validation study captures the palm only: its other views are not required.
+    resp = pipeline.process_scan(req.scan, require_extra_views=False)
     record = build_record(req, resp)
     record.remote = remote
     store_frames = load_app_config().validation_store_frame_data
@@ -499,7 +500,7 @@ def remeasure(record_id: str) -> ScanResponse:
     data = load_frames(record_id)
     if data is None:
         raise FileNotFoundError(f"no frame data stored for record {record_id}")
-    return pipeline.process_scan(data.scan)
+    return pipeline.process_scan(data.scan, require_extra_views=False)  # as when it was recorded
 
 
 def read_store() -> tuple[list[ValidationRecord], int]:

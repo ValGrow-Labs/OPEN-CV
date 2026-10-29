@@ -35,6 +35,8 @@ export interface FrameObservation {
   handedness_score: number | null;
   coin: CoinObservation | null;
   brightness: number | null;
+  /** Capture view id (config capture.views); the server treats a missing one as the primary view. */
+  view?: string;
 }
 
 export interface ReferenceSelection {
@@ -156,6 +158,10 @@ export interface ScanResponse {
   limitations: string[];
   /** How bent each finger looked over the scan (median of its frames) against the limits. */
   finger_bends?: Record<string, FingerBend>;
+  /** Per capture view: how many frames, whether it was used, its own hand length. */
+  views?: ViewSummary[];
+  /** Hand length of the views compared (only with two or more views used). */
+  view_agreement?: ViewAgreement | null;
 }
 
 // ----------------------------------------------------------------------------
@@ -216,7 +222,40 @@ export interface CoinDetectionParams {
   accept: CoinAcceptance;
 }
 
+/** One angle the customer is guided through (config capture.views); the first is the primary one. */
+export interface CaptureView {
+  id: string;
+  label: string;
+  required: boolean;
+  /** Whether the view's frames go into the size. A view that is not is captured only (a side view). */
+  used_for_size: boolean;
+  /** The honest one-liner shown when this view is offered next. */
+  note: string;
+  title: string;
+  instruction: string;
+  /** Live-guidance texts that differ from the palm wording, by live-check code. */
+  messages: Record<string, string>;
+}
+
+export interface ViewSummary {
+  id: string;
+  label: string;
+  frames_received: number;
+  frames_accepted: number;
+  used: boolean;
+  hand_length_mm: number | null;
+  reason: string | null;
+}
+
+export interface ViewAgreement {
+  hand_length_diff_mm: number;
+  max_allowed_mm: number;
+  agree: boolean;
+}
+
 export interface CaptureParams {
+  views: CaptureView[];
+  view_max_rel_diff: number;
   frames_target: number;
   frames_min_accepted: number;
   max_frames_per_request: number;

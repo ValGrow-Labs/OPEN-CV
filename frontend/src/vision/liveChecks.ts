@@ -1,6 +1,6 @@
 // Live, per-frame capture guidance. These checks mirror the server's frame gates so the
 // customer gets immediate feedback; the server re-applies all of them authoritatively.
-import type { CalibrationParams, CaptureParams, FrameObservation, Point } from "../api/types";
+import type { CalibrationParams, CaptureParams, CaptureView, FrameObservation, Point } from "../api/types";
 import { coinTiltDeg } from "./coinTilt";
 import {
   LONG_FINGERS,
@@ -65,6 +65,47 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   too_close: "Move your hand a little farther from the camera",
   hold_still: "Hold still…",
 };
+
+/** The codes the basic checks can raise: a capture-only view needs only a hand in frame, usable
+ *  light and a coin in view. */
+export const BASIC_LIVE_CODES: readonly LiveCode[] = [
+  "no_hand",
+  "hand_out_of_frame",
+  "hand_too_small",
+  "too_dark",
+  "too_bright",
+  "coin_missing",
+  "coin_not_found",
+];
+
+/** Live checks for a view that is captured but not used for size (config used_for_size: false, e.g.
+ *  the side view). Its frames are not measured, so it must not be held to the palm's gates: no coin
+ *  flatness or tilt, finger bend, palm flatness, coin-on-palm, distance or steadiness checks. */
+export function evaluateBasicFrame(frame: FrameObservation | null, capture: CaptureParams, view?: Pick<CaptureView, "messages"> | null): LiveResult {
+  const codes: LiveCode[] = [];
+  if (!frame) return basicResult(["no_hand"], view);
+  const lm = frame.landmarks;
+  const w = frame.image_width;
+  const h = frame.image_height;
+  if (!insideFrame(lm, w, h, capture.edge_margin_fraction)) codes.push("hand_out_of_frame");
+  if (dist(lm[WRIST], lm[MIDDLE_TIP]) < capture.min_hand_length_fraction * Math.min(w, h)) codes.push("hand_too_small");
+  if (frame.brightness !== null) {
+    if (frame.brightness < capture.brightness_range[0]) codes.push("too_dark");
+    else if (frame.brightness > capture.brightness_range[1]) codes.push("too_bright");
+  }
+  if (!frame.coin) codes.push("coin_missing"); // a coin that was found is enough, accepted or not
+  return basicResult(codes, view);
+}
+
+function basicResult(codes: LiveCode[], view?: Pick<CaptureView, "messages"> | null): LiveResult {
+  return { ok: codes.length === 0, codes, message: codes.length ? liveMessage(codes[0], view) : "Hold still while we measure" };
+}
+
+/** The guidance text for a live-check code in a capture view: the view's own wording when it has
+ *  one (the back of the hand is not "your palm"), otherwise the default (palm) wording. */
+export function liveMessage(code: LiveCode, view?: Pick<CaptureView, "messages"> | null): string {
+  return view?.messages?.[code] ?? LIVE_MESSAGES[code];
+}
 
 const COIN_CODES = new Set<string>([
   "coin_too_small",

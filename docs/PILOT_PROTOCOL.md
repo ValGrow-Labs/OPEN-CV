@@ -192,3 +192,91 @@ are refused (README, Security). The data stays on this laptop.
 | Show the rejection rate and its reasons on a real device | Validate or fit the calibration |
 | Show scan-to-scan repeatability and gross condition effects | Justify any accuracy claim to customers |
 | Find practical problems (lighting, coin, posture, instructions) | Replace the held-out study in `VALIDATION_PLAN.md` |
+
+## 7. Multi-view additions (draft; cannot be run yet)
+
+**Status: draft, not runnable.** Do not send any invitation that asks for the back or side view
+until all of these are cleared:
+
+1. **The pilot screens must be changed.** The validation screen and the remote pilot link scan the
+   **palm only** today. The guided back and side views are in the customer flow. See
+   `VALIDATION_PLAN.md` §7.6 (TODO list).
+2. **The consent text must be amended and reviewed.** `config/pilot_consent.json` has
+   `"reviewed": false` today, and its draft text describes about nine palm scans only. Nothing
+   here is reviewed or approved (§7.3).
+3. **The record must be able to hold the extra data** (§7.4).
+
+The study design, the reference measurements and the analysis plan are in `VALIDATION_PLAN.md`
+§7. This section covers only what changes for volunteers. Operator-led sessions take the caliper
+thickness reading (HT-1) as described in `VALIDATION_PLAN.md` §7.2.
+
+### 7.1 What a volunteer does in addition
+
+A complete scan is three views, each with the coin on the hand. The app shows the same wording.
+The numbers only leave the phone; no photos or video.
+
+* **Palm:** unchanged (§3, standard condition).
+* **Back of the hand:** turn the hand over and rest it flat on the table, fingers slightly
+  spread. Put the coin flat in the middle of the back of the hand, between the wrist and the
+  knuckles. Hold the phone level above the hand at the usual distance and keep still. The app says
+  "Hold your phone level, parallel to the back of your hand" if it is not.
+* **Side of the hand:** turn the hand on its edge, thumb side up, with the coin resting flat on the
+  side of the hand, facing the camera. Hold still. This view is awkward, so a helper can steady
+  the phone. If the coin cannot rest flat, write a note and do not force it.
+* The side view is **not used for any result today** and the volunteer sees no estimate or size
+  (§5). It is collected so that a method can be developed later. Tell volunteers so.
+* **What is optional and what is not.** Hand length (`HL-1-self`, §5) stays required. Whether the
+  extra views are required in the pilot, and the number of complete scans, are to be fixed when the
+  pilot screens are changed. The thickness reading below is **optional**.
+
+### 7.2 Optional: hand thickness, if the volunteer has a tool
+
+Only for a volunteer who has **spreading or sliding calipers** (record the tool as "calipers"),
+with a helper if possible. The thickness is the distance between the skin over the knuckle at the
+base of the middle finger and the skin directly opposite on the palm side, with the tips just
+touching, not pressing (definition HT-1 in `VALIDATION_PLAN.md` §7.2). Take **three readings**,
+lifting and replacing the hand between them, and enter each with its unit.
+
+A volunteer with only a ruler can measure the height of that knuckle above the table with the hand
+resting palm down, using a flat block laid across the knuckle and a ruler held upright beside it.
+The palm may flatten against the table and read lower than a caliper does, so such readings are
+recorded as the ruler tool, reported separately and never pooled with caliper readings, as for
+`HL-1-self`. If the volunteer has no tool, skip this step: nothing else depends on it.
+
+### 7.3 Consent: what must change before an invitation is sent
+
+The current draft text says the volunteer will scan the hand "about nine times in slightly
+different ways", and describes what is recorded as the positions of 21 hand points, the coin's
+size and position and image brightness. Before multi-view invites, the study owner must amend and
+review it so that it states:
+
+* the three views, where the coin is placed in each, and the new time estimate;
+* that each set of numbers is stored with the view it came from;
+* the optional thickness readings, if the volunteer gives any;
+* that the side view is not used for any result at present;
+* that no photos or video are stored (true only while this pilot stays numbers-only; an image
+  study needs its own research consent, `DATA_COLLECTION_AND_PRIVACY.md`).
+
+Placeholders (retention date, contact) must still be filled. A new `version` is needed, so that
+records made under the old text stay distinguishable (the version and a hash of the text are
+stored with each record). The privacy and legal review must cover the added views; do not assume
+the earlier review does.
+
+### 7.4 Data fields
+
+| Field | Status today |
+|---|---|
+| `view` tag on each frame | Part of the multi-view scan change; stored with the frames when present |
+| Per-view frames and `view_agreement` | Computed by the server per scan; recomputable from the stored frames; not separate record fields |
+| `thickness_readings` (each with its unit), `thickness_reference_mm`, `thickness_tool` | **Not stored yet**: proposed names, a future code change (`VALIDATION_PLAN.md` §7.6) |
+
+Until those fields exist, write thickness readings on the paper sheet with the participant code,
+not in the notes field of the app (§1).
+
+### 7.5 What these additions can and cannot conclude
+
+| Can | Cannot |
+|---|---|
+| Show whether the palm and back views agree on hand length for these volunteers | Validate any thickness or circumference method (numbers only; no silhouette) |
+| Show how often volunteers can place the coin on the back and side, and how often those scans fail | Show that the extra views improve accuracy |
+| Collect side-view landmark and coin numbers for later work | Justify any accuracy claim to customers, or use the side view for sizing |

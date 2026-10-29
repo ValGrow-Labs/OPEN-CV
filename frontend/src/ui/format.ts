@@ -61,6 +61,7 @@ export const COMPONENTS: Record<string, string> = {
   perspective_and_hand_flatness: "Perspective & hand flatness",
   landmark_definition_prior: "Anatomical definition (prior, unvalidated)",
   validated_residual: "Validated residual error",
+  view_disagreement: "Disagreement between views",
 };
 
 export const CONFIDENCE: Record<ConfidenceLevel, { label: string; text: string }> = {

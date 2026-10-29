@@ -110,7 +110,8 @@ def main() -> None:
     resp = process_scan(
         ScanRequest.model_validate(
             {"frames": observations, "reference": {"object_id": "us_quarter", "confirmed": True}}
-        )
+        ),
+        require_extra_views=False,  # one palm video
     )
     hl = next((m for m in resp.measurements if m.key == "hand_length_mm"), None)
     summary = {

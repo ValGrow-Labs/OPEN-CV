@@ -3,6 +3,7 @@ import { Badge } from "../ui/components";
 import { CONFIDENCE, fingerBendDetail } from "../ui/format";
 import { MeasureList, type MeasureItem } from "../ui/measureList";
 import { ButtonIcon, stagger } from "../ui/motion";
+import { hasViews, ViewsNotice, ViewsTable } from "../ui/viewsBlock";
 
 interface Props {
   recommendation: Recommendation;
@@ -65,6 +66,8 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
           <Badge tone="demo">Demo chart</Badge> {rec.disclaimer}
         </div>
       )}
+
+      <ViewsNotice result={result} />
 
       <section className="card stack result-hero" aria-labelledby="size-heading">
         {rec.size ? (
@@ -227,6 +230,7 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
             </span>
           </summary>
           <div className="panel-body">
+            {hasViews(result) && <ViewsTable result={result} />}
             <dl className="kv">
               <dt>Frames used</dt>
               <dd>

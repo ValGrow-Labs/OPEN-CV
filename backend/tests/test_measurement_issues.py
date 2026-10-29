@@ -15,12 +15,12 @@ from glovesize.pipeline import process_scan
 from glovesize.schemas import FrameObservation, ManualMeasurements, ScanRequest
 from glovesize.sizing import MeasuredValue, recommend
 from glovesize.synthetic import CANONICAL_HAND_MM, synthetic_frame
-from tests.conftest import QUARTER, frame_obs, make_frames
+from tests.conftest import QUARTER, frame_obs, make_frames, single_view
 
 
 @pytest.fixture
 def cfg():
-    return load_measurement_config()
+    return single_view(load_measurement_config())  # one palm scan; the production views: test_multi_view.py
 
 
 @pytest.fixture

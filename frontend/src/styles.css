@@ -3109,3 +3109,122 @@ details.panel > summary {
     justify-self: start;
   }
 }
+
+/* =========================================== guided angles: the "next angle" bottom sheet */
+/* A sheet at the bottom of the scan screen, inside thumb reach, over the frozen camera picture.
+   Its height is fixed (so the buttons do not move from one card to the next) and the content is
+   compact enough to need no scrolling at 320 x 568; in landscape it becomes a two-column panel. */
+
+.view-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: min(21rem, 62dvh);
+  padding: 16px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -1px 0 var(--line-strong), 0 -24px 48px -24px var(--stage);
+  overflow: hidden;
+}
+
+.view-sheet-done {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--good);
+}
+
+.view-sheet-body {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 0;
+  flex: 1;
+}
+
+.view-sheet-step {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.view-sheet h2 {
+  font-size: clamp(1.25rem, 5.6vw, 1.5rem);
+  line-height: 1.1;
+}
+
+.view-sheet-text {
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.view-sheet-note {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.view-sheet-turned {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--warn);
+  transition: opacity 300ms var(--ease-lux);
+}
+
+.view-sheet-turned.is-idle {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.view-sheet-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.view-sheet-actions .btn {
+  width: 100%;
+}
+
+.view-sheet-actions .btn-lg {
+  min-height: 56px;
+}
+
+.view-sheet-actions .btn-ghost {
+  min-height: 44px;
+}
+
+@media (max-width: 360px) {
+  .view-sheet {
+    padding-inline: 12px;
+  }
+  .view-sheet-text {
+    font-size: 0.88rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .view-sheet {
+    top: 0;
+    left: auto;
+    width: min(26rem, 52vw);
+    height: auto;
+    border-radius: var(--radius) 0 0 var(--radius);
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    box-shadow: -1px 0 0 var(--line-strong), -24px 0 48px -24px var(--stage);
+    overflow-y: auto;
+  }
+}
+
+.views-table {
+  display: grid;
+  gap: 10px;
+}

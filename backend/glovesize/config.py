@@ -152,6 +152,23 @@ class CalibrationParams(_Strict):
     custom_reference_thickness_mm: float = Field(ge=0)
 
 
+class CaptureView(_Strict):
+    """One angle the customer is guided through (palm, back of hand, ...). The first view is the
+    primary one: it is required and carries the hand-length gates; the others are optional extras."""
+
+    id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,15}$")
+    label: str = Field(min_length=1, max_length=40)
+    required: bool
+    # False: the view is captured (frames counted) but never enters a measurement, the calibration,
+    # the view agreement or any gate; it is a view we are still learning to use.
+    used_for_size: bool = True
+    title: str = Field(min_length=1, max_length=60)
+    instruction: str = Field(min_length=1, max_length=240)
+    note: str = Field(default="", max_length=160)
+    # Live-guidance texts that differ from the palm wording, by live-check code (see liveChecks.ts).
+    messages: dict[str, str] = Field(default_factory=dict)
+
+
 class CaptureParams(_Strict):
     frames_target: int = Field(ge=1)
     frames_min_accepted: int = Field(ge=1)
@@ -169,6 +186,22 @@ class CaptureParams(_Strict):
     max_landmark_jitter_fraction: float = Field(gt=0)
     min_camera_distance_mm: float = Field(ge=0)
     max_frame_rel_sd: float = Field(gt=0)
+    # Views the customer is guided through, primary first. `required` views must all be present
+    # (and, when used for size, pass their gates) for a scan to be accepted. Two views of one hand give
+    # nearly the same hand length; they are flagged when they differ by more than this fraction.
+    views: list[CaptureView] = Field(min_length=1, max_length=4)
+    view_max_rel_diff: float = Field(gt=0, lt=1)
+
+    @model_validator(mode="after")
+    def _views_valid(self) -> CaptureParams:
+        ids = [v.id for v in self.views]
+        if len(ids) != len(set(ids)):
+            raise ValueError("duplicate view ids")
+        if not self.views[0].required:
+            raise ValueError("the first (primary) view must be required")
+        if not self.views[0].used_for_size:
+            raise ValueError("the first (primary) view must be used for size")
+        return self
 
 
 class LiveScanParams(_Strict):

@@ -71,6 +71,7 @@ class FrameObservation(_Model):
     handedness_score: float | None = Field(default=None, ge=0, le=1)
     coin: CoinObservation | None = None
     brightness: float | None = Field(default=None, ge=0, le=255)
+    view: str = Field(default="palm", pattern=r"^[a-z][a-z0-9_]{0,15}$", description="Capture view id (config capture.views).")
 
 
 class ReferenceSelection(_Model):
@@ -116,10 +117,14 @@ class ScanRequest(_Model):
     capture: CaptureContext | None = None
 
     @model_validator(mode="after")
-    def _same_resolution(self) -> ScanRequest:
-        sizes = {(f.image_width, f.image_height) for f in self.frames}
-        if len(sizes) > 1:
-            raise ValueError("all frames in a scan must have the same image size")
+    def _same_resolution_within_each_view(self) -> ScanRequest:
+        """Frames of one view share one image size. Different views may differ: a phone can be
+        rotated between views, and every frame carries its own size (measurement.measure_frame)."""
+        sizes: dict[str, tuple[int, int]] = {}
+        for f in self.frames:
+            size = (f.image_width, f.image_height)
+            if sizes.setdefault(f.view, size) != size:
+                raise ValueError(f"all frames of the {f.view!r} view must have the same image size")
         return self
 
 
@@ -141,6 +146,22 @@ class FingerBendOut(_Model):
     bend_3d_deg: float | None = Field(description="Bend in the hand model's depth estimate (noisy, biased).")
     limit_2d_deg: float
     limit_3d_deg: float
+
+
+class ViewSummary(_Model):
+    id: str
+    label: str
+    frames_received: int
+    frames_accepted: int
+    used: bool = Field(description="Whether this view's frames went into the measurements.")
+    hand_length_mm: float | None = Field(default=None, description="This view's own hand length (calibrated), before combining.")
+    reason: str | None = Field(default=None, description="Why an unused view was left out (an issue code).")
+
+
+class ViewAgreement(_Model):
+    hand_length_diff_mm: float
+    max_allowed_mm: float
+    agree: bool
 
 
 class MeasurementOut(_Model):
@@ -222,6 +243,8 @@ class ScanResponse(_Model):
     uncertainty_basis: Literal["prior_assumptions", "fitted_unvalidated", "validated"]
     limitations: list[str]
     finger_bends: dict[str, FingerBendOut] = Field(default_factory=dict)
+    views: list[ViewSummary] = Field(default_factory=list)
+    view_agreement: ViewAgreement | None = None
 
 
 class MeasurementInput(_Model):

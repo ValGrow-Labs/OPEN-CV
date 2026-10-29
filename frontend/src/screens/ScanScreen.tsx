@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, submitScan, warmupService } from "../api/client";
-import type { FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
+import type { CaptureView, FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
 import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
+import {
+  canSkipRemaining,
+  nextView,
+  orientationChanged,
+  SAME_WAY_UP_HINT,
+  tagFrames,
+  viewsForScan,
+  viewStepLabel,
+  viewStepOf,
+  withViewFrames,
+} from "../scan/views";
 import { Icon } from "../ui/components";
 import { CoachIcon, coachKind, GUIDE_STEPS, liveStage } from "../ui/guide";
 import { coinConfirmed, introSeen, markCoinConfirmed, markIntroSeen, referenceLabel } from "../ui/settings";
@@ -22,6 +33,9 @@ interface Props<R> {
   onReferenceConfirm?: (sel: ReferenceSelection) => void;
   /** Override how the scan is submitted (the developer validation mode uses its own endpoint). */
   submit?: (req: ScanRequest) => Promise<R>;
+  /** Angles to scan, primary first (the customer flow passes config.capture.views). Without it only the
+   *  primary view is scanned and the frames are sent untagged, exactly as before (validation, pilot). */
+  views?: CaptureView[];
 }
 
 export function ScanScreen<R = ScanResponse>({
@@ -34,6 +48,7 @@ export function ScanScreen<R = ScanResponse>({
   requireCoinConfirm,
   onReferenceConfirm,
   submit,
+  views,
 }: Props<R>) {
   const videoRef = useRef<HTMLVideoElement>(null);
   // Load the measuring tools now, while the coin question and the guide are on screen.
@@ -56,6 +71,18 @@ export function ScanScreen<R = ScanResponse>({
   const mirroredRef = useRef(false);
   mirroredRef.current = status?.mirrored ?? false;
   const startClickTimeRef = useRef<number>(0);
+
+  // Guided angles. With more than one, a view that completes is kept (tagged) and the customer chooses
+  // between scanning the next angle and seeing the size; everything goes to the server in one request.
+  const viewList = viewsForScan(config, views);
+  const multiView = viewList.length > 1;
+  const [viewIdx, setViewIdx] = useState(0);
+  const viewIdxRef = useRef(0);
+  const capturedRef = useRef<FrameObservation[]>([]);
+  const timingRef = useRef<ScanTimingInfo | undefined>(undefined);
+  const [between, setBetween] = useState<{ done: CaptureView; next: CaptureView; frames: number; size: { width: number; height: number } | null } | null>(null);
+  const [turned, setTurned] = useState(false);
+  const view = viewList[viewIdx];
 
   const send = useCallback(
     async (frames: FrameObservation[], timingInfo?: ScanTimingInfo) => {
@@ -103,19 +130,64 @@ export function ScanScreen<R = ScanResponse>({
     setSubmitError(null);
     startClickTimeRef.current = performance.now();
     const facing: Facing = isMobileDevice() ? "environment" : "user";
+    setBetween(null);
     const c = new ScanController(video, canvas, config, {
       mode: "scan",
       facing,
       referenceDiameterMm: ref.diameter,
+      view: viewList[viewIdxRef.current],
       onStatus: setStatus,
       onComplete: (frames, timing) => {
-        setPendingFrames(frames);
-        void send(frames, timing);
+        const current = viewList[viewIdxRef.current];
+        const next = nextView(viewList, viewIdxRef.current);
+        timingRef.current = timing;
+        if (!multiView) {
+          setPendingFrames(frames);
+          void send(frames, timing);
+          return;
+        }
+        capturedRef.current = withViewFrames(capturedRef.current, current.id, tagFrames(frames, current.id));
+        if (next) {
+          const f0 = frames[0];
+          setBetween({ done: current, next, frames: frames.length, size: f0 ? { width: f0.image_width, height: f0.image_height } : null });
+        } else {
+          controllerRef.current?.releaseWakeLock();
+          setPendingFrames(capturedRef.current);
+          void send(capturedRef.current, timing);
+        }
       },
     });
     controllerRef.current = c;
     void c.start();
-  }, [config, send, ref.diameter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, send, ref.diameter, multiView, viewList.map((v) => v.id).join(",")]);
+
+  /** Scan the next angle with the camera still open. */
+  const scanNextView = () => {
+    if (!between) return;
+    viewIdxRef.current += 1;
+    setViewIdx(viewIdxRef.current);
+    setBetween(null);
+    controllerRef.current?.startView(between.next);
+  };
+
+  /** Send what has been captured (the views that were skipped are simply absent). Never when a view
+   *  that is still to come is required. */
+  const finishWithCaptured = () => {
+    if (!canSkipRemaining(viewList, viewIdxRef.current + (between ? 1 : 0))) return;
+    controllerRef.current?.releaseWakeLock();
+    setBetween(null);
+    setPendingFrames(capturedRef.current);
+    void send(capturedRef.current, timingRef.current);
+  };
+
+  /** Start over from the primary view (everything captured so far is dropped). */
+  const restartAll = () => {
+    viewIdxRef.current = 0;
+    setViewIdx(0);
+    capturedRef.current = [];
+    start();
+  };
 
   // The camera (and its permission prompt) starts only after the quick guide.
   useEffect(() => {
@@ -170,6 +242,29 @@ export function ScanScreen<R = ScanResponse>({
     const timer = setInterval(() => setSubmittingSec((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [submitting]);
+
+  // Has the phone been turned since the view just captured? (The frames of each view carry their own
+  // size, so nothing is mixed up; this only tells the customer to hold the phone the same way.)
+  useEffect(() => {
+    if (!between) {
+      setTurned(false);
+      return;
+    }
+    const check = () => {
+      const v = videoRef.current;
+      setTurned(orientationChanged(between.size, v ? { width: v.videoWidth, height: v.videoHeight } : null));
+    };
+    check();
+    const v = videoRef.current;
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    v?.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+      v?.removeEventListener("resize", check);
+    };
+  }, [between]);
 
   const showHint =
     runningSec >= config.live_scan.hint_after_s &&
@@ -251,6 +346,11 @@ export function ScanScreen<R = ScanResponse>({
                     Try again
                   </button>
                 )}
+                {multiView && capturedRef.current.length > 0 && canSkipRemaining(viewList, viewIdxRef.current) && (
+                  <button className="btn" onClick={finishWithCaptured}>
+                    Skip, see my size
+                  </button>
+                )}
                 <button className="btn" onClick={onCancel}>
                   Back
                 </button>
@@ -287,7 +387,7 @@ export function ScanScreen<R = ScanResponse>({
                       Retry
                     </button>
                   )}
-                  <button className="btn" onClick={start} disabled={submitting}>
+                  <button className="btn" onClick={multiView ? restartAll : start} disabled={submitting}>
                     Rescan
                   </button>
                 </div>
@@ -299,7 +399,10 @@ export function ScanScreen<R = ScanResponse>({
 
       <div className="scan-panel">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <strong>{phase === "complete" ? "Captured" : "Measuring"}</strong>
+          <strong>
+            {multiView && view ? `${view.label} · ` : ""}
+            {phase === "complete" ? "Captured" : "Measuring"}
+          </strong>
           <span className="num small" style={{ opacity: 0.8 }}>
             {status?.collected ?? 0} / {phase === "complete" ? (status?.collected ?? status?.target ?? config.capture.frames_target) : (status?.target ?? config.capture.frames_target)} frames
           </span>
@@ -323,7 +426,7 @@ export function ScanScreen<R = ScanResponse>({
             return (
               <li key={st.short} className={`scan-step is-${state}`} aria-current={state === "current" ? "step" : undefined}>
                 <span className="scan-step-num">{state === "done" ? "✓" : i + 1}</span>
-                <span className="scan-step-label">{st.short}</span>
+                <span className="scan-step-label">{viewStepLabel(view, viewList[0], i, st.short)}</span>
                 <span className="visually-hidden">{state === "done" ? " done" : state === "current" ? " in progress" : ""}</span>
               </li>
             );
@@ -358,6 +461,33 @@ export function ScanScreen<R = ScanResponse>({
           </>
         )}
       </div>
+
+      {between && !submitting && !submitError && (
+        <div className="view-sheet" role="group" aria-label={`Next angle: ${between.next.title}`}>
+          <p className="view-sheet-done" aria-live="polite">
+            ✓ {between.done.title} captured ({between.frames} frames)
+          </p>
+          <div className="view-sheet-body">
+            {between.next.required && <p className="view-sheet-step">{viewStepOf(viewList, viewIdx + 1)}</p>}
+            <h2>{between.next.title}</h2>
+            <p className="view-sheet-text">{between.next.instruction}</p>
+            {between.next.note && <p className="view-sheet-note">{between.next.note}</p>}
+            <p className={`view-sheet-turned ${turned ? "" : "is-idle"}`} role="status" aria-hidden={!turned}>
+              {SAME_WAY_UP_HINT}
+            </p>
+          </div>
+          <div className="view-sheet-actions">
+            <button className="btn btn-primary btn-lg" onClick={scanNextView}>
+              Scan {between.next.label.toLowerCase()}
+            </button>
+            {canSkipRemaining(viewList, viewIdx + 1) && (
+              <button className="btn btn-ghost" onClick={finishWithCaptured}>
+                Skip, see my size
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {confirming && <CoinConfirm config={config} reference={reference} onConfirm={confirmCoin} onCancel={onCancel} />}
       {!confirming && guide && <ScanGuide mode={guide} referenceLabel={`${ref.label}, ${ref.diameter.toFixed(2)} mm`} onDone={closeGuide} />}

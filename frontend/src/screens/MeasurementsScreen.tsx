@@ -5,6 +5,7 @@ import { Badge, HandDiagram } from "../ui/components";
 import { fingerBendDetail, MM_PER_INCH } from "../ui/format";
 import { MeasureList } from "../ui/measureList";
 import { ButtonIcon, stagger } from "../ui/motion";
+import { hasViews, ViewsNotice, ViewsTable } from "../ui/viewsBlock";
 
 interface Props {
   config: PublicConfig;
@@ -75,6 +76,8 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
         </div>
       )}
 
+      <ViewsNotice result={result} />
+
       <div className="grid-2">
         <section className="card stack" data-reveal aria-labelledby="hand-heading">
           <h2 id="hand-heading">Detected hand</h2>
@@ -125,6 +128,21 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
             </summary>
             <div className="panel-body">
               <MeasureList items={asItems(other)} showHow />
+            </div>
+          </details>
+        )}
+        {hasViews(result) && (
+          <details className="panel">
+            <summary>
+              <span>
+                Scan views
+                <span className="panel-sub">
+                  {(result.views ?? []).filter((v) => v.used).length} of {(result.views ?? []).length} views used
+                </span>
+              </span>
+            </summary>
+            <div className="panel-body">
+              <ViewsTable result={result} />
             </div>
           </details>
         )}

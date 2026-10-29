@@ -56,7 +56,7 @@ export default defineConfig({
     },
     {
       name: "hand-photo",
-      testMatch: /(full-scan|validation|pilot)\.spec\.ts/,
+      testMatch: /(full-scan|three-views|validation|pilot)\.spec\.ts/,
       use: { baseURL: "http://127.0.0.1:8766", launchOptions: fakeCamera(resolve(MEDIA, "hand.y4m")) },
     },
   ],

@@ -19,9 +19,23 @@ def _fresh_config_caches():
     config_mod.clear_caches()
 
 
+def single_view(config):
+    """The configuration reduced to its primary (palm) view. Most tests exercise one palm scan; the
+    production configuration also requires the back and side views (tests/test_multi_view.py)."""
+    return config.model_copy(update={"capture": config.capture.model_copy(update={"views": config.capture.views[:1]})})
+
+
+@pytest.fixture(autouse=True)
+def _palm_only_by_default(monkeypatch):
+    """Scans in tests are palm only unless a test asks for more views (test_multi_view.py)."""
+    import glovesize.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "load_measurement_config", lambda: single_view(load_measurement_config()))
+
+
 @pytest.fixture
 def cfg():
-    return load_measurement_config()
+    return single_view(load_measurement_config())
 
 
 @pytest.fixture

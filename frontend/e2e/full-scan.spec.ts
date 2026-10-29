@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scanRemainingViews, startCustomerScan } from "./views";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const summaryPath = resolve(__dirname, ".media/hand.json");
@@ -38,22 +39,20 @@ async function fullScan(page: Page, tag: string) {
     if (r.url().endsWith("/api/scan")) bodies.push(r.postData() ?? "");
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: "Start Scan" }).click();
-  // The coin must be confirmed before the camera starts.
-  await page.getByRole("button", { name: /Yes, this is my coin/ }).click();
-  // Walk through the quick guide; the camera starts only at the end.
-  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("button", { name: /Start camera/ }).click();
+  await startCustomerScan(page);
+  // The customer flow guides through three angles (palm, back of hand, side view), each required.
+  // The fake camera plays the same hand video for every view.
+  await scanRemainingViews(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your hand measurements", { timeout: 120_000 });
 
-  // Only numeric observations are sent: no image data in the request.
+  // Only numeric observations are sent, in one request: no image data, frames tagged by view.
   expect(bodies).toHaveLength(1);
   const body = JSON.parse(bodies[0]);
-  expect(body.frames.length).toBeGreaterThanOrEqual(MIN_FRAMES);
+  expect(body.frames.length).toBeGreaterThanOrEqual(MIN_FRAMES * 3);
+  expect([...new Set(body.frames.map((f: { view: string }) => f.view))].sort()).toEqual(["back", "palm", "side"]);
   expect(bodies[0]).not.toMatch(/data:image|base64/);
   expect(Object.keys(body.frames[0]).sort()).toEqual(
-    ["brightness", "coin", "handedness", "handedness_score", "image_height", "image_width", "landmarks", "timestamp_ms", "world_landmarks"].sort(),
+    ["brightness", "coin", "handedness", "handedness_score", "image_height", "image_width", "landmarks", "timestamp_ms", "view", "world_landmarks"].sort(),
   );
 
   // The value counts up on screen; data-value holds the final number.
