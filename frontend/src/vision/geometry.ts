@@ -93,6 +93,25 @@ export function insideFrame(points: Point[], w: number, h: number, marginFractio
   return points.every((p) => p.x >= mx && p.x <= w - mx && p.y >= my && p.y <= h - my);
 }
 
+/** Which way up the hand is, signed (mirrors backend landmarks.hand_turn): the sine of the angle from the
+ *  wrist-to-index-knuckle line to the wrist-to-little-knuckle line. Turning the hand over flips its sign
+ *  (its size stays, about 0.6 for an open hand); near 0 the hand is edge-on and nothing can be said. */
+export function handTurn(points: Point[]): number {
+  const a = { x: points[5].x - points[0].x, y: points[5].y - points[0].y };
+  const b = { x: points[17].x - points[0].x, y: points[17].y - points[0].y };
+  const na = Math.hypot(a.x, a.y);
+  const nb = Math.hypot(b.x, b.y);
+  return na === 0 || nb === 0 ? 0 : (a.x * b.y - a.y * b.x) / (na * nb);
+}
+
+/** The side of the hand a set of frames shows, as the median turn (0 for no frames). */
+export function medianHandTurn(frames: { landmarks: Point[] }[]): number {
+  const t = frames.map((f) => handTurn(f.landmarks)).filter(Number.isFinite).sort((x, y) => x - y);
+  if (t.length === 0) return 0;
+  const mid = t.length >> 1;
+  return t.length % 2 ? t[mid] : (t[mid - 1] + t[mid]) / 2;
+}
+
 export function bboxSize(points: Point[]): number {
   let minX = Infinity;
   let minY = Infinity;

@@ -223,6 +223,11 @@ The numbers only leave the phone; no photos or video.
 * **Side of the hand:** turn the hand on its edge, thumb side up, with the coin resting flat on the
   side of the hand, facing the camera. Hold still. This view is awkward, so a helper can steady
   the phone. If the coin cannot rest flat, write a note and do not force it.
+* **The app checks which side you show.** After the palm, the back view only goes on when the hand
+  has really been turned over (the app says "That is your palm. Turn your hand over…" otherwise), and the
+  side view only when the hand is on its edge. These checks are provisional; if a volunteer who is
+  doing the pose correctly is refused, write down the device and the pose and tell the team rather
+  than forcing it (`docs/MULTI_VIEW_PLAN.md` §3a).
 * The side view is **not used for any result today** and the volunteer sees no estimate or size
   (§5). It is collected so that a method can be developed later. Tell volunteers so.
 * **What is optional and what is not.** Hand length (`HL-1-self`, §5) stays required. Whether the

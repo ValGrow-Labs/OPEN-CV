@@ -71,6 +71,30 @@ def make_frames(n: int = 24, noise_px: float = 1.0, seed: int = 1, **kwargs) -> 
     return frames
 
 
+def turn_over(frames: list[dict]) -> list[dict]:
+    """The same hand seen from the other side: landmarks (and the depth landmarks and the coin) mirrored
+    left-to-right about the image. This flips the sign of ``landmarks.hand_turn`` and changes nothing else."""
+    out = []
+    for f in frames:
+        g = {**f, "landmarks": [{**p, "x": f["image_width"] - p["x"]} for p in f["landmarks"]]}
+        if f.get("world_landmarks"):
+            g["world_landmarks"] = [{**p, "x": -p["x"]} for p in f["world_landmarks"]]
+        if f.get("coin"):
+            g["coin"] = {**f["coin"], "center_x": f["image_width"] - f["coin"]["center_x"]}
+        out.append(g)
+    return out
+
+
+def side_on(frames: list[dict], squash: float = 0.3) -> list[dict]:
+    """The same hand turned towards its edge: landmarks squeezed left-to-right about the wrist, so the
+    wrist-to-index and wrist-to-little-knuckle lines nearly coincide (|hand_turn| about 0.2 at 0.3)."""
+    out = []
+    for f in frames:
+        x0 = f["landmarks"][0]["x"]
+        out.append({**f, "landmarks": [{**p, "x": x0 + (p["x"] - x0) * squash} for p in f["landmarks"]]})
+    return out
+
+
 def frame_obs(**kwargs) -> FrameObservation:
     return FrameObservation.model_validate(synthetic_frame(**kwargs))
 

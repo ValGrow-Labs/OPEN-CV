@@ -76,6 +76,7 @@
     "max_finger_bend_deg_3d": 60.0,
     "finger_bend_3d_frame_factor": 1.5,
     "view_max_rel_diff": 0.06,
+    "hand_turn_min_abs": 0.2,
     "views": [
       {
         "id": "palm",
@@ -94,11 +95,13 @@
         "used_for_size": true,
         "max_coin_tilt_deg": 25.0,
         "mobile_frames_target": 10,
+        "opposite_of": "palm",
         "title": "The back of your hand",
         "instruction": "Turn your hand over. Rest the coin flat in the middle of the back of your hand, spread your fingers and hold still.",
         "note": "A second angle lets us check the first one.",
         "messages": {
           "no_hand": "Show the back of your hand to the camera",
+          "wrong_side": "That is your palm. Turn your hand over to show the back of your hand",
           "palm_not_flat": "Keep the back of your hand flat, facing the camera",
           "coin_not_on_palm": "Place the coin flat in the middle of the back of your hand",
           "coin_tilted": "Hold your phone level, parallel to the back of your hand"
@@ -110,11 +113,13 @@
         "required": true,
         "used_for_size": false,
         "mobile_frames_target": 8,
+        "max_hand_turn_abs": 0.45,
         "title": "The side of your hand",
         "instruction": "Turn your hand on its edge, thumb side up, with the coin resting flat on the side of your hand facing the camera. Hold still.",
         "note": "Not used for your size yet; we are testing how to use this angle.",
         "messages": {
           "no_hand": "Show the side of your hand to the camera",
+          "wrong_side": "Turn your hand on its edge, like a handshake, to show the side of your hand",
           "coin_missing": "Rest the coin flat on the side of your hand",
           "coin_not_found": "Rest the coin flat on the side of your hand, facing the camera"
         }

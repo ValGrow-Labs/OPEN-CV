@@ -173,6 +173,12 @@ class CaptureView(_Strict):
     # Frames collected in this view on a phone (None: live_scan.mobile_frames_target). The extra views
     # need fewer: the back view only cross-checks the palm, and the side view is not measured at all.
     mobile_frames_target: int | None = Field(default=None, ge=1, le=60)
+    # Id of an earlier view whose hand this view must show the OTHER side of (the back of the hand is the
+    # opposite side to the palm). Checked on the phone and again on the server (landmarks.hand_turn).
+    opposite_of: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,15}$")
+    # Largest |hand_turn| accepted in this view: the side view shows the hand on its edge (turn near 0),
+    # not face-on like the palm and back (about 0.6). Provisional: not yet checked on real side scans.
+    max_hand_turn_abs: float | None = Field(default=None, gt=0, lt=1)
 
 
 class CaptureParams(_Strict):
@@ -197,12 +203,18 @@ class CaptureParams(_Strict):
     # nearly the same hand length; they are flagged when they differ by more than this fraction.
     views: list[CaptureView] = Field(min_length=1, max_length=4)
     view_max_rel_diff: float = Field(gt=0, lt=1)
+    # The smallest |hand_turn| at which a view's side of the hand is judged (an open hand reads about
+    # 0.6; a hand seen edge-on reads near 0, where nothing can be said).
+    hand_turn_min_abs: float = Field(gt=0, lt=1)
 
     @model_validator(mode="after")
     def _views_valid(self) -> CaptureParams:
         ids = [v.id for v in self.views]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate view ids")
+        for i, v in enumerate(self.views):
+            if v.opposite_of is not None and v.opposite_of not in ids[:i]:
+                raise ValueError(f"view {v.id}: opposite_of must name an earlier view")
         if not self.views[0].required:
             raise ValueError("the first (primary) view must be required")
         if not self.views[0].used_for_size:

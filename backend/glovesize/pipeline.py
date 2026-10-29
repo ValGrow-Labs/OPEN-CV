@@ -18,6 +18,7 @@ from .config import (
     load_sizing_charts,
 )
 from .issues import describe
+from .landmarks import as_array, hand_turn
 from .measurement import (
     HAND_LENGTH,
     CameraAgg,
@@ -176,6 +177,23 @@ def _implausible_scale_issue(results: list[FrameResult], ref, cfg, n: int) -> Is
     )
 
 
+def _median_turn(frames: list[FrameObservation]) -> float:
+    turns = [
+        hand_turn(as_array([[p.x, p.y] for p in f.landmarks]))
+        for f in frames
+        if all(math.isfinite(p.x) and math.isfinite(p.y) for p in f.landmarks)
+    ]
+    return float(np.median(turns)) if turns else 0.0
+
+
+def _same_side(first: list[FrameObservation], second: list[FrameObservation], min_abs: float) -> bool:
+    """True when both views show the same side of the hand: the same sign of ``hand_turn`` (median of
+    each view's frames), each clearly judged (|turn| at least ``min_abs``). When either cannot be judged
+    (a hand seen edge-on) nothing is claimed here: the view's own gates decide."""
+    a, b = _median_turn(first), _median_turn(second)
+    return abs(a) >= min_abs and abs(b) >= min_abs and (a > 0) == (b > 0)
+
+
 def _usable_for_count(f: FrameObservation) -> bool:
     """A frame of a capture-only view counts as accepted when its landmarks are finite. The coin is
     optional: the view is not measured, and a coin seen edge-on must not hold a customer up."""
@@ -281,6 +299,17 @@ def process_scan(req: ScanRequest, *, require_extra_views: bool = True) -> ScanR
             return rejected([_issue("required_view_missing")])
     order = [v.id for v in cfg.capture.views if v.id in by_view and v.id not in capture_only]  # primary first
     tag = len(order) > 1
+
+    # A view that must show the other side of the hand (the back, after the palm) cannot be the same
+    # side again: showing the palm twice would make the "back" view a copy of the first.
+    for vid, vdef in view_defs.items():
+        if vid in by_view and vdef.opposite_of in by_view and vid in required_ids and _same_side(
+            by_view[vdef.opposite_of], by_view[vid], cfg.capture.hand_turn_min_abs
+        ):
+            return rejected([_issue("view_shows_same_side")])
+        if vid in by_view and vdef.max_hand_turn_abs is not None and vid in required_ids:
+            if abs(_median_turn(by_view[vid])) > vdef.max_hand_turn_abs:
+                return rejected([_issue("view_not_side_on")])
 
     outcomes = [_process_view(vid, by_view[vid], ref, cfg, calib, req, tag) for vid in order]
     primary = outcomes[0]

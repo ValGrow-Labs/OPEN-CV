@@ -46,6 +46,19 @@ def as_array(points: object, dims: int = 2) -> np.ndarray:
     return arr[:, :dims]
 
 
+def hand_turn(points: np.ndarray) -> float:
+    """Which way up the hand is, as a signed number: the sine of the angle from the wrist-to-index-knuckle
+    line to the wrist-to-little-knuckle line (image coordinates). Turning a hand over flips its sign
+    (and keeps its size, about 0.6 for an open hand), so two views of one hand show opposite sides
+    exactly when their signs differ. A single view cannot say which side it is, only whether it matches another."""
+    a = points[INDEX_MCP] - points[WRIST]
+    b = points[PINKY_MCP] - points[WRIST]
+    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return float(a[0] * b[1] - a[1] * b[0]) / (na * nb)
+
+
 def path_length(points: np.ndarray, chain: list[int] | tuple[int, ...]) -> float:
     seg = np.diff(points[list(chain)], axis=0)
     return float(np.linalg.norm(seg, axis=1).sum())

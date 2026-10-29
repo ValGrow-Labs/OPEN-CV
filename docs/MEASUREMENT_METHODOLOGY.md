@@ -414,6 +414,13 @@ and cannot change the result. The client should know that these three requiremen
 roughly three times as long as a palm-only scan, and that two of the three do not yet improve the
 size.
 
+* **Side of the hand (is each view the view it says?).** `hand_turn` (sine of the angle between the
+  wrist-to-index-knuckle and wrist-to-little-knuckle lines) flips sign when a hand is turned over. The
+  back view must have the opposite sign to the palm view (median over each view's frames, each at least
+  `capture.hand_turn_min_abs` = 0.2 from 0); the side view must have `|hand_turn|` ≤ 0.45
+  (`max_hand_turn_abs`). Otherwise the scan is rejected (`view_shows_same_side`, `view_not_side_on`).
+  Both thresholds are provisional; the check cannot tell which side the *palm* view shows. See
+  `docs/MULTI_VIEW_PLAN.md` §3a.
 * **Per view:** tilt smoothing (§3.1.1) over that view's own frames (a view boundary is never
   smoothed across), the frame checks, the hard gates (minimum good frames, curled middle finger,
   frame-to-frame consistency) and the camera aggregation of §5, exactly as for a single scan.

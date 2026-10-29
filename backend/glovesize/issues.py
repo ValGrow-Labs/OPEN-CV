@@ -46,6 +46,16 @@ ISSUES: dict[str, tuple[Severity, str]] = {
     "unknown_view": ("error", "A capture view that is not configured was submitted."),
     "primary_view_missing": ("error", "The palm view is required. Please scan your palm first."),
     "required_view_missing": ("error", "A required view is missing. Please scan every view."),
+    "view_shows_same_side": (
+        "error",
+        "The back-of-hand view showed the same side of your hand as the palm view. Turn your hand over so the "
+        "back of your hand faces the camera, then scan again.",
+    ),
+    "view_not_side_on": (
+        "error",
+        "The side view showed the front or back of your hand. Turn your hand on its edge, like a handshake, "
+        "so the camera sees the side of it, then scan again.",
+    ),
     "required_view_failed": ("error", "A required view did not have enough good frames. Please rescan."),
     "view_dropped": (
         "warning",

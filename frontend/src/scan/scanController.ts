@@ -9,10 +9,10 @@ import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDe
 import type { CoinJobResult } from "../vision/coinJob";
 import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton, drawTag } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow } from "../vision/frameAnalysis";
-import { dist, insideFrame, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
+import { dist, insideFrame, medianHandTurn, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
 import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
-import { evaluateBasicFrame, evaluateFrame, liveMessage, type LiveCode, type LiveResult } from "../vision/liveChecks";
+import { evaluateBasicFrame, evaluateFrame, liveMessage, notSideOn, showsSameSide, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
 import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
@@ -137,6 +137,9 @@ export class ScanController {
   private disposed = false;
   private frames: FrameObservation[] = [];
   private lastLandmarks: Point[] | null = null;
+  // The side of the hand each finished view showed (vision/geometry.ts handTurn), by view id: the back
+  // view is refused while it still shows the same side as the palm did.
+  private sideTurns = new Map<string, number>();
   private lastAcceptMs = 0;
   private lastCoinMs = 0;
   private lastStatusMs = 0;
@@ -428,6 +431,7 @@ export class ScanController {
         avgCoinMs: this.timing.coinMs,
         totalScanMs: tDone - this.startScanMs,
       };
+      this.rememberSide();
       this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request), timingInfo);
     } else {
       // Not enough frames — show an error.
@@ -617,6 +621,14 @@ export class ScanController {
   }
 
   private evaluate(frame: FrameObservation | null, prevLandmarks: Point[] | null, tiltDeg: number | null = null): LiveResult {
+    const live = this.evaluateView(frame, prevLandmarks, tiltDeg);
+    const of = this.view?.opposite_of;
+    if (of && showsSameSide(frame, this.sideTurns.get(of), this.config.capture.hand_turn_min_abs)) return withWrongSide(live, this.view);
+    if (notSideOn(frame, this.view?.max_hand_turn_abs)) return withWrongSide(live, this.view);
+    return live;
+  }
+
+  private evaluateView(frame: FrameObservation | null, prevLandmarks: Point[] | null, tiltDeg: number | null): LiveResult {
     if (this.captureOnly) return evaluateBasicFrame(frame, this.config.capture, this.view);
     // The view's own coin-tilt limit (the domed back of the hand tilts a coin whatever the phone does).
     const limit = this.view?.max_coin_tilt_deg;
@@ -754,7 +766,13 @@ export class ScanController {
       avgCoinMs: this.timing.coinMs,
       totalScanMs: tDone - this.startScanMs,
     };
+    this.rememberSide();
     this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request), timingInfo);
+  }
+
+  /** Note which side of the hand the view that just finished showed. */
+  private rememberSide(): void {
+    if (this.view) this.sideTurns.set(this.view.id, medianHandTurn(this.frames));
   }
 
   /** Relative spread of the hand length over the collected frames. The coin's real size cancels

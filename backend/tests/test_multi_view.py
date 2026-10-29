@@ -20,7 +20,7 @@ from glovesize.config import load_measurement_config
 from glovesize.pipeline import process_scan
 from glovesize.schemas import ScanRequest
 
-from .conftest import make_frames
+from .conftest import make_frames, side_on, turn_over
 from .test_api import client, scan_body  # noqa: F401  (the client fixture)
 
 HL = "hand_length_mm"
@@ -58,12 +58,13 @@ def palm(n=24, **kw):
 
 
 def back(n=24, **kw):
-    return tag(make_frames(n=n, seed=2, **kw), "back")
+    """The back of the same hand: turned over, so its side differs from the palm's (landmarks.hand_turn)."""
+    return tag(turn_over(make_frames(n=n, seed=2, **kw)), "back")
 
 
 def side_frames(n=10, **kw):
     """Frames of an angled hand: nothing like a flat palm (tilted, a finger bent, a coin foreshortened)."""
-    frames = tag(make_frames(n=n, seed=3, tilt_deg=40, hand_length_mm=150.0, **kw), "side")
+    frames = tag(side_on(make_frames(n=n, seed=3, tilt_deg=40, hand_length_mm=150.0, **kw)), "side")
     for f in frames:
         f["landmarks"][12]["x"] += 80  # middle fingertip far off: this would fail every size gate
     return frames
@@ -450,7 +451,7 @@ def domed_back(tilt_deg: float, n=24):
     about 0.94 (about 20 degrees) in most frames, with a consistent direction."""
     major = 24.26 * 3.2  # the synthetic coin's major axis in px
     minor = major * math.cos(math.radians(tilt_deg))
-    return tag(make_frames(n=n, seed=2, coin_overrides={"minor_axis_px": minor, "angle_deg": 35.0}), "back")
+    return tag(turn_over(make_frames(n=n, seed=2, coin_overrides={"minor_axis_px": minor, "angle_deg": 35.0})), "back")
 
 
 def test_a_coin_on_the_domed_back_of_the_hand_is_not_refused_for_its_tilt(use):
@@ -500,7 +501,7 @@ def test_hands_from_a_young_child_to_a_very_large_adult_are_measured(use, hand_m
     with the coin as the ruler: they show the gates let these sizes through, not real-world accuracy."""
     use(("palm", "back"))
     palm_f = tag(make_frames(n=24, seed=1, hand_length_mm=float(hand_mm), px_per_mm=px_per_mm), "palm")
-    back_f = tag(make_frames(n=24, seed=2, hand_length_mm=float(hand_mm), px_per_mm=px_per_mm), "back")
+    back_f = tag(turn_over(make_frames(n=24, seed=2, hand_length_mm=float(hand_mm), px_per_mm=px_per_mm)), "back")
     resp = process_scan(request(palm_f + back_f))
     assert resp.status == "accepted", codes(resp)
     assert "implausible_scale" not in resp.frame_rejection_counts

@@ -237,6 +237,10 @@ export interface CaptureView {
   messages: Record<string, string>;
   /** Largest coin tilt accepted in this view; null/absent uses calibration.max_tilt_deg. */
   max_coin_tilt_deg?: number | null;
+  /** Id of an earlier view whose hand this one must show the OTHER side of (the back, after the palm). */
+  opposite_of?: string | null;
+  /** Largest |hand turn| accepted in this view (the side view shows the hand on its edge). */
+  max_hand_turn_abs?: number | null;
   /** Frames to collect in this view on a phone (null/absent: live_scan.mobile_frames_target). */
   mobile_frames_target?: number | null;
 }
@@ -260,6 +264,8 @@ export interface ViewAgreement {
 export interface CaptureParams {
   views: CaptureView[];
   view_max_rel_diff: number;
+  /** Smallest |hand turn| at which a view's side of the hand is judged. */
+  hand_turn_min_abs: number;
   frames_target: number;
   frames_min_accepted: number;
   max_frames_per_request: number;

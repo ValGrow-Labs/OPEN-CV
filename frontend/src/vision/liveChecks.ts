@@ -7,6 +7,7 @@ import {
   MIDDLE_TIP,
   PALM_POLYGON,
   WRIST,
+  handTurn,
   chainBendDeg,
   dist,
   insideFrame,
@@ -39,6 +40,7 @@ export type LiveCode =
   | "too_close"
   | "coin_not_found"
   | "implausible_scale"
+  | "wrong_side"
   | "hold_still";
 
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
@@ -65,6 +67,7 @@ export const LIVE_MESSAGES: Record<LiveCode, string> = {
   coin_ambiguous: "Use one coin only and keep other round objects out of view",
   too_close: "Move your hand a little farther from the camera",
   implausible_scale: "This hand looks the wrong size for the coin you selected. Check you are using that coin",
+  wrong_side: "Turn your hand over to show the other side",
   hold_still: "Hold still…",
 };
 
@@ -158,6 +161,26 @@ export function implausibleScale(frame: FrameObservation, scale: ScaleContext | 
   if (mm === null) return false;
   const [lo, hi] = scale.plausibleHandMm;
   return mm < lo * (1 - SCALE_SLACK) || mm > hi * (1 + SCALE_SLACK);
+}
+
+/** True when this frame shows the same side of the hand as the reference view (a turn of the same sign,
+ *  both clearly judged): the "back of the hand" view must not be the palm again. When either side cannot
+ *  be judged (a hand seen edge-on) nothing is claimed and the view's other checks decide. */
+export function showsSameSide(frame: FrameObservation | null, referenceTurn: number | null | undefined, minAbs: number): boolean {
+  if (!frame || referenceTurn == null || Math.abs(referenceTurn) < minAbs) return false;
+  const turn = handTurn(frame.landmarks);
+  return Math.abs(turn) >= minAbs && turn > 0 === referenceTurn > 0;
+}
+
+/** True when the view needs the hand on its edge (config max_hand_turn_abs) and this frame shows it
+ *  face-on. */
+export function notSideOn(frame: FrameObservation | null, maxAbs: number | null | undefined): boolean {
+  return !!frame && maxAbs != null && Math.abs(handTurn(frame.landmarks)) > maxAbs;
+}
+
+/** Put the wrong-side code first: a hand showing the wrong side is the root cause of every other message. */
+export function withWrongSide(r: LiveResult, view?: Pick<CaptureView, "messages"> | null): LiveResult {
+  return { ok: false, codes: ["wrong_side", ...r.codes.filter((c) => c !== "wrong_side")], message: liveMessage("wrong_side", view) };
 }
 
 export interface LiveResult {

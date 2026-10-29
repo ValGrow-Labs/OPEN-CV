@@ -271,6 +271,13 @@ That needs the image study of §1 (frame sequences saved under signed research c
 `docs/DATA_COLLECTION_AND_PRIVACY.md`) with the side view added, after its own privacy and legal
 review. Do not assume the existing review covers the added views.
 
+**Side-of-hand check (provisional).** The app refuses a back view that shows the same side of the hand
+as the palm view, and a side view that is still face-on (`hand_turn`, `docs/MULTI_VIEW_PLAN.md` §3a). Its
+thresholds (0.2 and 0.45) come from a few informal observations, not from this study. When the study
+data exist, record each view's median `hand_turn` per scan (it can be recomputed from the stored
+landmarks) and report, per view, the spread of real values and how many genuine scans the check would
+have refused; set the thresholds from that and from nothing else. Report the refusals as a cost to customers.
+
 ### 7.4 Analyses
 
 Participants, not scans, are the unit; repeated scans of a hand are not independent people.

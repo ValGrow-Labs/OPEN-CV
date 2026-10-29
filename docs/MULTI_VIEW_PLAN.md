@@ -41,6 +41,50 @@ the coin and the joints (about 3 mm), and the coin's own size tolerance. These a
 measurements. Only **tape-measured participants** can replace them with measured values. So the
 honest benefit of the second view today is a **cross-check**, not a more precise number.
 
+## 3a. Each view must show the side of the hand it asks for
+
+**Why.** A phone screenshot showed the palm during the "back of the hand" view, and the app measured it
+as the back. Without a check, a customer (or a tired hand) could show the same side three times and
+the extra angles would add nothing.
+
+**What is checked.** `hand_turn` is one number per frame, computed from three hand-model landmarks
+(wrist, index knuckle, little-finger knuckle): the sine of the angle between the wrist-to-index and
+the wrist-to-little line, in image coordinates (`backend/glovesize/landmarks.py`,
+`frontend/src/vision/geometry.ts`; same formula in both). An open hand reads about **0.65**. Turning the
+hand over flips its **sign**; a hand seen edge-on reads near 0.
+
+* **Back view:** must show the *other* side of the hand than the palm view (config `opposite_of`:
+  `palm`). The signs of the two views' median `hand_turn` must differ, each at least
+  `capture.hand_turn_min_abs` (0.2) away from 0. If they match, the phone says "That is your palm.
+  Turn your hand over to show the back of your hand" and does not collect frames; the server
+  rejects the scan with `view_shows_same_side`.
+* **Side view:** must show the hand on its edge: `|hand_turn|` at most `max_hand_turn_abs` (0.45).
+  A face-on hand gets the live code `wrong_side`; the server rejects with `view_not_side_on`.
+
+**Why two views are compared.** A single view cannot say which side it shows: a palm of one hand looks
+like the back of the other hand in silhouette, and the hand model's left/right label is weak on it
+(0.5–0.6 confidence on the client's back-of-hand photo). What does change reliably is the
+*relationship* between two views of one hand, so that is what is tested.
+
+**Evidence (small, informal).**
+* The client's back-of-hand photo reads −0.63; the same photo mirrored (the other side of a hand)
+  reads +0.65: the sign flips.
+* On the customer's own phone recordings (same hand, different sessions): the palm scan read
+  **+0.65 steadily** (about 13 s, every sampled frame), and the back-of-hand scan read **−0.66** (the
+  one frame in which the hand model found the hand; the recording is a screen capture with overlays on it).
+* The client's side-of-hand photo (angled) reads −0.36.
+
+**Limits, plainly.**
+* The thresholds **0.2 and 0.45 are provisional and not validated**. The side threshold rests on a
+  single client photo; it may refuse real side poses or let a slightly turned face-on hand through.
+  Both are in `config/measurement.json` and should be set from the pilot's `hand_turn` values per view.
+* The check compares views; it **cannot tell a palm shown as the "palm" view from a back shown as
+  "palm"**. If the customer starts with the back of the hand and then shows the palm, the pair still
+  passes (the views are opposite) and is mislabelled. Nothing on the hand-model landmarks alone fixes
+  this; it would need a skin/crease appearance cue, which is not built.
+* An edge-on hand is where the hand model is least reliable; a real side view may be refused or not found.
+* Nothing here measures anything: it does not change a size, an uncertainty or any validation status.
+
 ## 4. Why the side view is not used for the size yet
 
 An angled or side view **foreshortens** the hand (the hand turns away from the camera, so it looks
