@@ -117,11 +117,13 @@ def measure_frame(
     cfg: MeasurementConfig,
     tilt_deg: float | None = None,
     max_tilt_deg: float | None = None,
+    max_palm_tilt_deg: float | None = None,
 ) -> FrameResult:
     """Check one frame and measure it. ``tilt_deg`` is the coin tilt estimated from the frames around
     it (calibration.smoothed_coin_tilts); without it the frame's own, noisier, tilt is used.
     ``max_tilt_deg`` is the view's own coin-tilt limit (config capture.views[].max_coin_tilt_deg);
-    without it calibration.max_tilt_deg applies."""
+    without it calibration.max_tilt_deg applies. ``max_palm_tilt_deg`` likewise overrides
+    capture.max_palm_tilt_deg_model for the view."""
     cap, unc = cfg.capture, cfg.uncertainty
     w, h = frame.image_width, frame.image_height
     lm = np.array([[p.x, p.y] for p in frame.landmarks], dtype=np.float64)
@@ -157,7 +159,7 @@ def measure_frame(
             bent.add(name)
     if "middle" in bent:
         codes.append("fingers_bent")
-    if world is not None and palm_tilt_deg(world) > cap.max_palm_tilt_deg_model:
+    if world is not None and palm_tilt_deg(world) > (cap.max_palm_tilt_deg_model if max_palm_tilt_deg is None else max_palm_tilt_deg):
         codes.append("palm_not_flat")
 
     if frame.brightness is not None:

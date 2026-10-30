@@ -9,10 +9,10 @@ import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDe
 import type { CoinJobResult } from "../vision/coinJob";
 import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton, drawTag } from "../vision/draw";
 import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow } from "../vision/frameAnalysis";
-import { dist, insideFrame, medianHandTurn, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
+import { dist, handTurn, insideFrame, medianHandTurn, medianOf, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
 import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
-import { evaluateBasicFrame, evaluateFrame, liveMessage, notSideOn, showsSameSide, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
+import { evaluateBasicFrame, evaluateFrame, liveMessage, notSideOnTurn, sameSideTurn, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
 import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
@@ -140,6 +140,7 @@ export class ScanController {
   // The side of the hand each finished view showed (vision/geometry.ts handTurn), by view id: the back
   // view is refused while it still shows the same side as the palm did.
   private sideTurns = new Map<string, number>();
+  private recentTurns: number[] = []; // the turn of the last few frames: one landmark frame is too noisy
   private lastAcceptMs = 0;
   private lastCoinMs = 0;
   private lastStatusMs = 0;
@@ -317,6 +318,7 @@ export class ScanController {
   resetCollection(): void {
     this.generation++;
     this.frames = [];
+    this.recentTurns = [];
     this.trackedCoin = null;
     this.framesSinceFullSearch = 0;
     this.lastCoin = null;
@@ -622,9 +624,16 @@ export class ScanController {
 
   private evaluate(frame: FrameObservation | null, prevLandmarks: Point[] | null, tiltDeg: number | null = null): LiveResult {
     const live = this.evaluateView(frame, prevLandmarks, tiltDeg);
+    if (!frame) {
+      this.recentTurns = [];
+      return live;
+    }
+    this.recentTurns.push(handTurn(frame.landmarks));
+    while (this.recentTurns.length > this.config.capture.hand_turn_window_frames) this.recentTurns.shift();
+    const turn = medianOf(this.recentTurns);
     const of = this.view?.opposite_of;
-    if (of && showsSameSide(frame, this.sideTurns.get(of), this.config.capture.hand_turn_min_abs)) return withWrongSide(live, this.view);
-    if (notSideOn(frame, this.view?.max_hand_turn_abs)) return withWrongSide(live, this.view);
+    if (of && sameSideTurn(turn, this.sideTurns.get(of), this.config.capture.hand_turn_min_abs)) return withWrongSide(live, this.view);
+    if (notSideOnTurn(turn, this.view?.max_hand_turn_abs)) return withWrongSide(live, this.view);
     return live;
   }
 
@@ -633,10 +642,13 @@ export class ScanController {
     // The view's own coin-tilt limit (the domed back of the hand tilts a coin whatever the phone does).
     const limit = this.view?.max_coin_tilt_deg;
     const calibration = limit == null ? this.config.calibration : { ...this.config.calibration, max_tilt_deg: limit };
+    // ... and its own flatness limit (the depth estimate of a flat back of hand reads 28-43 degrees).
+    const flat = this.view?.max_palm_tilt_deg_model;
+    const capture = flat == null ? this.config.capture : { ...this.config.capture, max_palm_tilt_deg_model: flat };
     return evaluateFrame(
       frame,
       prevLandmarks,
-      this.config.capture,
+      capture,
       calibration,
       {
         referenceDiameterMm: this.opts.referenceDiameterMm ?? NaN,

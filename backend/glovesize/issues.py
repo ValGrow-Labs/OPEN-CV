@@ -69,6 +69,10 @@ ISSUES: dict[str, tuple[Severity, str]] = {
     "hand_length_unreliable": ("error", "Hand length could not be measured with enough certainty. Please scan again."),
     "measurement_unstable": ("warning", "Measurements varied between frames. Keep your hand still during the scan."),
     "tilt_corrected": ("info", "A small palm tilt was detected; lengths were adjusted assuming a flat hand."),
+    "frame_outlier": (
+        "error",
+        "Some frames measured a very different hand size (the phone moved or the coin slipped). Hold the phone steady.",
+    ),
     "scan_unstable": (
         "error",
         "Your measurements changed too much between frames. Hold your hand and the coin still and scan again.",

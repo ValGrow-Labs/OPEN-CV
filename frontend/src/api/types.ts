@@ -241,6 +241,8 @@ export interface CaptureView {
   opposite_of?: string | null;
   /** Largest |hand turn| accepted in this view (the side view shows the hand on its edge). */
   max_hand_turn_abs?: number | null;
+  /** Largest palm tilt (the model's depth estimate) accepted in this view; null/absent: the capture limit. */
+  max_palm_tilt_deg_model?: number | null;
   /** Frames to collect in this view on a phone (null/absent: live_scan.mobile_frames_target). */
   mobile_frames_target?: number | null;
 }
@@ -266,6 +268,10 @@ export interface CaptureParams {
   view_max_rel_diff: number;
   /** Smallest |hand turn| at which a view's side of the hand is judged. */
   hand_turn_min_abs: number;
+  /** Frames over which the side-of-hand checks are smoothed. */
+  hand_turn_window_frames: number;
+  /** Frames whose hand length is this far from the view's median are dropped by the server. */
+  frame_outlier_rel: number;
   frames_target: number;
   frames_min_accepted: number;
   max_frames_per_request: number;

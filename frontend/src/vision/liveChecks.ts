@@ -167,15 +167,24 @@ export function implausibleScale(frame: FrameObservation, scale: ScaleContext | 
  *  both clearly judged): the "back of the hand" view must not be the palm again. When either side cannot
  *  be judged (a hand seen edge-on) nothing is claimed and the view's other checks decide. */
 export function showsSameSide(frame: FrameObservation | null, referenceTurn: number | null | undefined, minAbs: number): boolean {
-  if (!frame || referenceTurn == null || Math.abs(referenceTurn) < minAbs) return false;
-  const turn = handTurn(frame.landmarks);
+  return !!frame && sameSideTurn(handTurn(frame.landmarks), referenceTurn, minAbs);
+}
+
+/** The same check on a turn value (the phone passes the median of the last few frames). */
+export function sameSideTurn(turn: number | null, referenceTurn: number | null | undefined, minAbs: number): boolean {
+  if (turn == null || referenceTurn == null || Math.abs(referenceTurn) < minAbs) return false;
   return Math.abs(turn) >= minAbs && turn > 0 === referenceTurn > 0;
 }
 
 /** True when the view needs the hand on its edge (config max_hand_turn_abs) and this frame shows it
  *  face-on. */
 export function notSideOn(frame: FrameObservation | null, maxAbs: number | null | undefined): boolean {
-  return !!frame && maxAbs != null && Math.abs(handTurn(frame.landmarks)) > maxAbs;
+  return !!frame && notSideOnTurn(handTurn(frame.landmarks), maxAbs);
+}
+
+/** The same check on a turn value (the phone passes the median of the last few frames). */
+export function notSideOnTurn(turn: number | null, maxAbs: number | null | undefined): boolean {
+  return turn != null && maxAbs != null && Math.abs(turn) > maxAbs;
 }
 
 /** Put the wrong-side code first: a hand showing the wrong side is the root cause of every other message. */

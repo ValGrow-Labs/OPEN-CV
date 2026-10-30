@@ -179,6 +179,10 @@ class CaptureView(_Strict):
     # Largest |hand_turn| accepted in this view: the side view shows the hand on its edge (turn near 0),
     # not face-on like the palm and back (about 0.6). Provisional: not yet checked on real side scans.
     max_hand_turn_abs: float | None = Field(default=None, gt=0, lt=1)
+    # Largest palm tilt (degrees, the model's depth estimate) accepted in this view; None uses
+    # capture.max_palm_tilt_deg_model. That estimate reads 28-43 degrees for a flat back of hand
+    # (phone recording), so the palm limit would refuse most of its frames.
+    max_palm_tilt_deg_model: float | None = Field(default=None, gt=0, lt=90)
 
 
 class CaptureParams(_Strict):
@@ -198,6 +202,11 @@ class CaptureParams(_Strict):
     max_landmark_jitter_fraction: float = Field(gt=0)
     min_camera_distance_mm: float = Field(ge=0)
     max_frame_rel_sd: float = Field(gt=0)
+    # A frame whose hand length differs from the view's median by more than this fraction is dropped
+    # (the phone drifted, the coin slipped) instead of failing the whole scan as unstable.
+    frame_outlier_rel: float = Field(gt=0, lt=1)
+    # Frames over which the phone smooths the side-of-hand checks (a single landmark frame is noisy).
+    hand_turn_window_frames: int = Field(ge=1, le=15)
     # Views the customer is guided through, primary first. `required` views must all be present
     # (and, when used for size, pass their gates) for a scan to be accepted. Two views of one hand give
     # nearly the same hand length; they are flagged when they differ by more than this fraction.

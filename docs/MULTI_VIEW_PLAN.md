@@ -58,7 +58,7 @@ hand over flips its **sign**; a hand seen edge-on reads near 0.
   `capture.hand_turn_min_abs` (0.2) away from 0. If they match, the phone says "That is your palm.
   Turn your hand over to show the back of your hand" and does not collect frames; the server
   rejects the scan with `view_shows_same_side`.
-* **Side view:** must show the hand on its edge: `|hand_turn|` at most `max_hand_turn_abs` (0.45).
+* **Side view:** must show the hand on its edge: `|hand_turn|` at most `max_hand_turn_abs` (0.55), judged on the median of the last 5 frames on the phone.
   A face-on hand gets the live code `wrong_side`; the server rejects with `view_not_side_on`.
 
 **Why two views are compared.** A single view cannot say which side it shows: a palm of one hand looks
@@ -75,7 +75,7 @@ like the back of the other hand in silhouette, and the hand model's left/right l
 * The client's side-of-hand photo (angled) reads −0.36.
 
 **Limits, plainly.**
-* The thresholds **0.2 and 0.45 are provisional and not validated**. The side threshold rests on a
+* The thresholds **0.2 and 0.55 are provisional and not validated**. The side threshold rests on a
   single client photo; it may refuse real side poses or let a slightly turned face-on hand through.
   Both are in `config/measurement.json` and should be set from the pilot's `hand_turn` values per view.
 * The check compares views; it **cannot tell a palm shown as the "palm" view from a back shown as
@@ -139,3 +139,20 @@ to recruit and measure participants. The length study and the thickness study ca
 > your hand, and the side. Keep a coin flat on your hand each time. The palm and back views are used
 > to check each other. The side view is not part of your size yet, as we are still testing it. Your
 > result is an estimate and cannot guarantee fit."
+
+## 3b. Findings from the phone recording of 2026-10-30 (back view, then side view)
+
+One recording of a full back-then-side scan, analysed frame by frame with the same hand model. Observations, not validation:
+
+* **Back view was slow** (about 26 s for 10 frames). The model's depth estimate of palm tilt read 28–43° for a flat back of hand,
+  against the palm limit of 45°, so noise kept tipping frames over ("Keep the back of your hand flat"). The back view now has its
+  own limit (`views[].max_palm_tilt_deg_model` = 62), on the phone and on the server. The limit is provisional.
+* **One stray frame failed the whole scan.** When the phone drifted, a frame measured 169 mm against about 213 mm for the rest and
+  broke the frame-to-frame stability gate. Frames whose hand length differs from the view median by more than
+  `capture.frame_outlier_rel` (0.08) are now dropped, provided no more than a third of the frames disagree; otherwise the view is
+  still refused as unstable.
+* **Side check flickered.** Per-frame `|hand_turn|` on a hand held about three-quarters on edge crossed the old 0.45 limit back and
+  forth. The two frames in which the hand model found an edge-on hand read +0.05 and −0.12; face-on hands read 0.64–0.78. The
+  phone now judges the median of the last `capture.hand_turn_window_frames` (5) frames against 0.55. Still provisional.
+* The back view's live hand length read 211–223 mm, while earlier palm scans of the same setting read lower; the view-agreement
+  warning exists for this and no explanation is claimed here.

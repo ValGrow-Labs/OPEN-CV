@@ -104,12 +104,17 @@ export function handTurn(points: Point[]): number {
   return na === 0 || nb === 0 ? 0 : (a.x * b.y - a.y * b.x) / (na * nb);
 }
 
-/** The side of the hand a set of frames shows, as the median turn (0 for no frames). */
-export function medianHandTurn(frames: { landmarks: Point[] }[]): number {
-  const t = frames.map((f) => handTurn(f.landmarks)).filter(Number.isFinite).sort((x, y) => x - y);
+/** Median of some numbers (0 for none); non-finite values are ignored. */
+export function medianOf(values: number[]): number {
+  const t = values.filter(Number.isFinite).sort((x, y) => x - y);
   if (t.length === 0) return 0;
   const mid = t.length >> 1;
   return t.length % 2 ? t[mid] : (t[mid - 1] + t[mid]) / 2;
+}
+
+/** The side of the hand a set of frames shows, as the median turn (0 for no frames). */
+export function medianHandTurn(frames: { landmarks: Point[] }[]): number {
+  return medianOf(frames.map((f) => handTurn(f.landmarks)));
 }
 
 export function bboxSize(points: Point[]): number {

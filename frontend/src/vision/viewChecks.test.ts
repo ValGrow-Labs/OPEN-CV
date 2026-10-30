@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calibrationParams as cal, captureParams as cap, goodFrame, publicConfig } from "../test/fixtures";
-import { handTurn } from "./geometry";
-import { BASIC_LIVE_CODES, evaluateBasicFrame, evaluateFrame, implausibleScale, liveHandLengthMm, LIVE_MESSAGES, liveMessage, notSideOn, showsSameSide, withWrongSide, type LiveCode, type LiveResult, type ScaleContext } from "./liveChecks";
+import { handTurn, medianOf } from "./geometry";
+import { BASIC_LIVE_CODES, evaluateBasicFrame, evaluateFrame, implausibleScale, liveHandLengthMm, LIVE_MESSAGES, liveMessage, notSideOn, notSideOnTurn, sameSideTurn, showsSameSide, withWrongSide, type LiveCode, type LiveResult, type ScaleContext } from "./liveChecks";
 
 const [palm, back, side] = cap.views;
 
@@ -126,6 +126,27 @@ describe("coin tilt limit per view (the domed back of the hand tilts a coin what
   });
 });
 
+describe("the back of the hand has its own flatness limit (the model reads a flat back at 28-43 degrees)", () => {
+  /** The canonical hand's depth ("world") landmarks tilted by `deg` about the x axis, as in geometry.test.ts. */
+  const tiltedBy = (deg: number) => {
+    const f = goodFrame();
+    const t = (deg * Math.PI) / 180;
+    f.world_landmarks = f.landmarks.map((p) => ({ x: p.x / 1000, y: (p.y / 1000) * Math.cos(t), z: (p.y / 1000) * Math.sin(t) }));
+    return f;
+  };
+  const withFlatLimit = (limit: number | null | undefined) => (limit == null ? cap : { ...cap, max_palm_tilt_deg_model: limit });
+
+  it("a palm tilted about 55 degrees is refused with the palm's limit and accepted with the back view's", () => {
+    expect(evaluateFrame(tiltedBy(55), null, withFlatLimit(palm.max_palm_tilt_deg_model), cal).codes).toContain("palm_not_flat");
+    expect(evaluateFrame(tiltedBy(55), null, withFlatLimit(back.max_palm_tilt_deg_model), cal).codes).not.toContain("palm_not_flat");
+  });
+
+  it("a reading of 40 degrees passes either way, and one past the back view's limit is still refused", () => {
+    expect(evaluateFrame(tiltedBy(40), null, withFlatLimit(palm.max_palm_tilt_deg_model), cal).codes).not.toContain("palm_not_flat");
+    expect(evaluateFrame(tiltedBy(70), null, withFlatLimit(back.max_palm_tilt_deg_model), cal).codes).toContain("palm_not_flat");
+  });
+});
+
 describe("a hand the wrong size for the selected coin is caught at once (before three views are wasted)", () => {
   // The phone recordings: a hand read about 134 mm instead of 173-182 mm, and a scan was refused at the
   // end with "outside the expected human range"; now the customer is told on the first frame.
@@ -227,9 +248,16 @@ describe("each view must show its own side of the hand", () => {
     expect(palm.opposite_of ?? null).toBeNull();
     expect(back.opposite_of).toBe("palm");
     expect(side.opposite_of ?? null).toBeNull();
-    expect(side.max_hand_turn_abs).toBe(0.45);
+    expect(side.max_hand_turn_abs).toBe(0.55);
     expect(back.max_hand_turn_abs ?? null).toBeNull();
     expect(cap.hand_turn_min_abs).toBe(0.2);
+    expect(cap.hand_turn_window_frames).toBe(5);
+    expect(cap.frame_outlier_rel).toBe(0.08);
+    expect(back.max_palm_tilt_deg_model).toBe(62);
+    expect(palm.max_palm_tilt_deg_model ?? null).toBeNull();
+    expect(side.max_palm_tilt_deg_model ?? null).toBeNull();
+    expect(back.max_palm_tilt_deg_model!).toBeGreaterThan(cap.max_palm_tilt_deg_model);
+    expect(side.max_hand_turn_abs!).toBeGreaterThan(cap.hand_turn_min_abs);
     expect(back.messages.wrong_side).toMatch(/palm.*back of your hand/i);
     expect(side.messages.wrong_side).toBeTruthy();
   });
@@ -266,6 +294,33 @@ describe("each view must show its own side of the hand", () => {
     expect(notSideOn(palmFrame, null)).toBe(false);
     expect(notSideOn(palmFrame, undefined)).toBe(false);
     expect(notSideOn(null, side.max_hand_turn_abs)).toBe(false);
+  });
+
+  it("the turn-value forms agree with the frame forms and take null", () => {
+    const max = side.max_hand_turn_abs;
+    expect(sameSideTurn(palmTurn, palmTurn, minAbs)).toBe(true);
+    expect(sameSideTurn(-palmTurn, palmTurn, minAbs)).toBe(false);
+    expect(sameSideTurn(null, palmTurn, minAbs)).toBe(false);
+    expect(sameSideTurn(palmTurn, null, minAbs)).toBe(false);
+    expect(sameSideTurn(palmTurn, undefined, minAbs)).toBe(false);
+    expect(sameSideTurn(palmTurn, 0.05, minAbs)).toBe(false); // reference too small to judge
+    expect(sameSideTurn(0.05, palmTurn, minAbs)).toBe(false); // turn too small to judge
+    expect(notSideOnTurn(palmTurn, max)).toBe(true);
+    expect(notSideOnTurn(-palmTurn, max)).toBe(true);
+    expect(notSideOnTurn(0.1, max)).toBe(false);
+    expect(notSideOnTurn(null, max)).toBe(false);
+    expect(notSideOnTurn(palmTurn, null)).toBe(false);
+    expect(notSideOnTurn(palmTurn, undefined)).toBe(false);
+  });
+
+  it("a median of five turns is not thrown by one stray face-on frame among edge-on ones", () => {
+    const max = side.max_hand_turn_abs;
+    const edge = handTurn(edgeOn().landmarks);
+    expect(notSideOnTurn(palmTurn, max)).toBe(true); // that stray frame alone would hold the customer up
+    const window = [edge, edge, palmTurn, edge, edge].slice(-cap.hand_turn_window_frames);
+    expect(notSideOnTurn(medianOf(window), max)).toBe(false);
+    // ... while a hand that really is face-on (most of the window) is still refused
+    expect(notSideOnTurn(medianOf([palmTurn, palmTurn, edge, palmTurn, edge]), max)).toBe(true);
   });
 
   it("puts the wrong-side code first, keeps the others and uses the view's own wording", () => {

@@ -128,7 +128,7 @@ def test_production_configuration_has_the_side_checks():
     assert cap.hand_turn_min_abs == 0.2
     assert views["palm"].opposite_of is None and views["palm"].max_hand_turn_abs is None
     assert views["back"].opposite_of == "palm"
-    assert views["side"].max_hand_turn_abs == 0.45
+    assert views["side"].max_hand_turn_abs == 0.55
     assert "wrong_side" in views["back"].messages
 
 
@@ -159,7 +159,7 @@ def test_the_api_gives_the_phone_the_side_settings(client):  # noqa: F811
     cap = client.get("/api/config").json()["capture"]
     assert cap["hand_turn_min_abs"] == 0.2
     views = {v["id"]: v for v in cap["views"]}
-    assert views["back"]["opposite_of"] == "palm" and views["side"]["max_hand_turn_abs"] == 0.45
+    assert views["back"]["opposite_of"] == "palm" and views["side"]["max_hand_turn_abs"] == 0.55
     assert "wrong_side" in views["back"]["messages"]
 
 

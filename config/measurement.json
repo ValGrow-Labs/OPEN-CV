@@ -94,6 +94,7 @@
         "required": true,
         "used_for_size": true,
         "max_coin_tilt_deg": 25.0,
+        "max_palm_tilt_deg_model": 62.0,
         "mobile_frames_target": 10,
         "opposite_of": "palm",
         "title": "The back of your hand",
@@ -113,7 +114,7 @@
         "required": true,
         "used_for_size": false,
         "mobile_frames_target": 8,
-        "max_hand_turn_abs": 0.45,
+        "max_hand_turn_abs": 0.55,
         "title": "The side of your hand",
         "instruction": "Turn your hand on its edge, thumb side up, with the coin resting flat on the side of your hand facing the camera. Hold still.",
         "note": "Not used for your size yet; we are testing how to use this angle.",
@@ -132,7 +133,9 @@
     ],
     "max_landmark_jitter_fraction": 0.025,
     "min_camera_distance_mm": 250.0,
-    "max_frame_rel_sd": 0.025
+    "max_frame_rel_sd": 0.025,
+    "frame_outlier_rel": 0.08,
+    "hand_turn_window_frames": 5
   },
   "live_scan": {
     "min_frame_interval_ms": 50,

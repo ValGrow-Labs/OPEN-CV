@@ -110,10 +110,23 @@ def _process_view(view_id: str, frames: list[FrameObservation], ref, cfg, calib,
     # The coin's tilt is judged on the average ellipse of neighbouring frames, not on one noisy frame
     # (of this view's own frames: a view boundary is never smoothed across).
     tilts = smoothed_coin_tilts([f.coin for f in frames], cfg.calibration.tilt_window_frames)
-    view_tilt_limit = next((v.max_coin_tilt_deg for v in cfg.capture.views if v.id == view_id), None)
-    results = [measure_frame(f, ref, cfg, tilt_deg=t, max_tilt_deg=view_tilt_limit) for f, t in zip(frames, tilts)]
+    vdef = next((v for v in cfg.capture.views if v.id == view_id), None)
+    tilt_limit = vdef.max_coin_tilt_deg if vdef else None
+    flat_limit = vdef.max_palm_tilt_deg_model if vdef else None
+    results = [
+        measure_frame(f, ref, cfg, tilt_deg=t, max_tilt_deg=tilt_limit, max_palm_tilt_deg=flat_limit)
+        for f, t in zip(frames, tilts)
+    ]
     accepted_idx = [i for i, r in enumerate(results) if r.accepted]
     counts = Counter(c for r in results for c in set(r.codes))
+    # Drop frames whose hand length is far from the view's median (the phone drifted, the coin slipped):
+    # they would otherwise fail the stability gate for everyone. Enough good frames must remain.
+    outliers = _hand_length_outliers(results, accepted_idx, cfg.capture.frame_outlier_rel)
+    if outliers:
+        for i in outliers:
+            results[i].accepted = False
+        accepted_idx = [i for i in accepted_idx if i not in outliers]
+        counts["frame_outlier"] = len(outliers)
     log.info(
         "scan%s: frames=%d accepted=%d top_issues=%s",
         f" [{view_id}]" if tag else "",
@@ -154,6 +167,18 @@ def _process_view(view_id: str, frames: list[FrameObservation], ref, cfg, calib,
 
     out.camera = aggregate_camera(results, cfg, calib, out.bent)
     return out
+
+
+def _hand_length_outliers(results: list[FrameResult], accepted_idx: list[int], rel: float) -> set[int]:
+    """Accepted frames whose hand length is more than ``rel`` away from the median of the accepted ones."""
+    have = [(i, results[i].values[HAND_LENGTH]) for i in accepted_idx if HAND_LENGTH in results[i].values]
+    if len(have) < 3:
+        return set()
+    med = float(np.median([v for _, v in have]))
+    out = {i for i, v in have if abs(v - med) > rel * med}
+    # A few strays are dropped; when a third or more of the frames disagree the scan is unstable as a
+    # whole (no hand length to trust) and the stability gate says so.
+    return out if len(out) * 3 <= len(have) else set()
 
 
 def _implausible_scale_issue(results: list[FrameResult], ref, cfg, n: int) -> Issue:

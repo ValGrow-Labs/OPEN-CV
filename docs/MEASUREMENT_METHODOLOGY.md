@@ -417,7 +417,7 @@ size.
 * **Side of the hand (is each view the view it says?).** `hand_turn` (sine of the angle between the
   wrist-to-index-knuckle and wrist-to-little-knuckle lines) flips sign when a hand is turned over. The
   back view must have the opposite sign to the palm view (median over each view's frames, each at least
-  `capture.hand_turn_min_abs` = 0.2 from 0); the side view must have `|hand_turn|` ≤ 0.45
+  `capture.hand_turn_min_abs` = 0.2 from 0); the side view must have `|hand_turn|` ≤ 0.55
   (`max_hand_turn_abs`). Otherwise the scan is rejected (`view_shows_same_side`, `view_not_side_on`).
   Both thresholds are provisional; the check cannot tell which side the *palm* view shows. See
   `docs/MULTI_VIEW_PLAN.md` §3a.

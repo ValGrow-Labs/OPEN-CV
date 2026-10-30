@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { goodFrame } from "../test/fixtures";
-import { chainBendDeg, handTurn, jitterFraction, LONG_FINGERS, PALM_POLYGON, palmCentre, medianHandTurn, palmTiltDeg, pointInPolygon } from "./geometry";
+import { captureParams, goodFrame } from "../test/fixtures";
+import { chainBendDeg, handTurn, jitterFraction, LONG_FINGERS, PALM_POLYGON, palmCentre, medianHandTurn, medianOf, palmTiltDeg, pointInPolygon } from "./geometry";
 
 describe("geometry", () => {
   it("measures finger bend", () => {
@@ -73,9 +73,18 @@ describe("hand turn (which way up the hand is)", () => {
     const f = goodFrame();
     const flat = f.landmarks.map((p) => ({ ...p, y: f.landmarks[0].y + (p.y - f.landmarks[0].y) * 0.01, x: f.landmarks[0].x + (p.x - f.landmarks[0].x) * 0.01 }));
     const edge = f.landmarks.map((p) => ({ ...p, x: f.landmarks[0].x + (p.x - f.landmarks[0].x) * 0.05 }));
-    expect(Math.abs(handTurn(edge))).toBeLessThan(0.45);
+    expect(Math.abs(handTurn(edge))).toBeLessThan(captureParams.views[2].max_hand_turn_abs!);
     expect(Math.abs(handTurn(flat))).toBeGreaterThan(0); // tiny but finite
     expect(handTurn(f.landmarks.map((p) => ({ ...p, x: 5, y: 5 })))).toBe(0);
+  });
+
+  it("medianOf: 0 for none, the middle of an odd count, the mean of the middle two, NaN ignored", () => {
+    expect(medianOf([])).toBe(0);
+    expect(medianOf([5])).toBe(5);
+    expect(medianOf([3, 1, 2])).toBe(2);
+    expect(medianOf([4, 1, 3, 2])).toBe(2.5);
+    expect(medianOf([1, Number.NaN, 3, 5, Number.NaN])).toBe(3);
+    expect(medianOf([Number.NaN])).toBe(0);
   });
 
   it("takes the median over frames, ignoring a stray frame, and is 0 for no frames", () => {
