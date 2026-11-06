@@ -8,9 +8,11 @@ import type { Landmark } from "../hand3d/handModel";
 import { getCoinEngine, type CoinEngine } from "../vision/coinEngine";
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import type { CoinJobResult } from "../vision/coinJob";
-import { clear, COLORS, drawCoin, drawHandOutline, drawRoi, drawSkeleton, drawTag } from "../vision/draw";
+import { clear, COLORS, drawCoin, drawCoinPulse, drawHandOutline, drawRoi, drawSkeleton, drawTag } from "../vision/draw";
+import { drawFocusMask, maskCanvasSize, nextFocusAlpha, type FocusMaskParams, type FocusShape } from "../vision/focusMask";
 import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow } from "../vision/frameAnalysis";
 import { dist, handTurn, insideFrame, medianHandTurn, medianOf, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
+import { computeHandOutline } from "../vision/handOutline";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
 import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
 import { evaluateBasicFrame, evaluateFrame, liveMessage, notSideOnTurn, sameSideTurn, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
@@ -92,6 +94,10 @@ export interface ScanControllerOptions {
   /** A 3D layer draws the hand and its finger lengths: skip the 2D outline, skeleton and finger tags
    *  (the coin ring and search window stay). Can be switched off mid-scan with setOverlay3d. */
   overlay3d?: boolean;
+  /** The canvas the focus mask (everything but the hand and the coin black) is drawn on: stacked over the video
+   *  and under the 2D drawing canvas, with the video's own CSS so `object-fit: contain` keeps it aligned. Its
+   *  pixel size is set here (longest side live_scan.overlay_3d.focus_mask_max_px). Without it there is no mask. */
+  maskCanvas?: HTMLCanvasElement | null;
 }
 
 // Loop settings come from config/measurement.json "live_scan":
@@ -169,6 +175,15 @@ export class ScanController {
 
   private mobile: boolean;
   private overlay3dOn: boolean;
+  // The focus mask (vision/focusMask.ts): everything but the hand and the coin black, display only, drawn on
+  // its own small canvas so the cost does not depend on the camera resolution. Its opacity eases in and out;
+  // the last shape is kept while it fades out after the hand is lost.
+  private focusParams: FocusMaskParams;
+  private focusAlpha = 0;
+  private focusShape: FocusShape | null = null;
+  private focusLastMs = 0;
+  private maskDirty = false; // the mask canvas has something drawn on it that must be cleared
+  private reducedMotion: boolean;
   private view: CaptureView | null;
   private wakeLock = new ScreenWakeLock();
   private pausedByHide = false;
@@ -186,6 +201,9 @@ export class ScanController {
     this.roiCanvas = document.createElement("canvas");
     this.mobile = isMobileDevice();
     this.overlay3dOn = !!opts.overlay3d;
+    const o3 = config.live_scan.overlay_3d;
+    this.focusParams = { margin: o3.focus_margin, feather: o3.focus_feather, fadeInMs: o3.focus_fade_in_ms, fadeOutMs: o3.focus_fade_out_ms, maxAlpha: o3.focus_alpha };
+    this.reducedMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
     this.view = opts.view ?? null;
     this.guidance = new GuidanceDebouncer(config.live_scan);
     const ls = config.live_scan;
@@ -388,6 +406,63 @@ export class ScanController {
    *  layer is dropped when it runs too slowly or fails. Nothing about the scan itself changes. */
   setOverlay3d(on: boolean): void {
     this.overlay3dOn = on;
+    if (!on) this.resetFocus(); // the full picture is back from the next frame
+  }
+
+  /** The focus mask is on while the 3D layer draws the measuring and config asks for it. */
+  private get focusOn(): boolean {
+    return this.overlay3dOn && this.config.live_scan.overlay_3d.focus_mask;
+  }
+
+  private resetFocus(): void {
+    this.focusAlpha = 0;
+    this.focusShape = null;
+    this.focusLastMs = 0;
+    this.clearMask();
+  }
+
+  /** Wipe the mask canvas: the full camera picture shows through. */
+  private clearMask(): void {
+    const c = this.opts.maskCanvas;
+    if (!c || !this.maskDirty) return;
+    this.maskDirty = false;
+    c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
+  }
+
+  /** Draw the black with clear windows for the hand and the coin on the mask canvas (video-pixel shapes, scaled
+   *  down onto a canvas of at most focus_mask_max_px). */
+  private drawFocus(w: number, h: number, smoothed: Point[] | null, coin: CoinDetection | null, now: number): void {
+    const dt = this.focusLastMs ? now - this.focusLastMs : 0;
+    this.focusLastMs = now;
+    this.focusAlpha = nextFocusAlpha(this.focusAlpha, smoothed !== null, dt, this.focusParams);
+    if (smoothed) {
+      const { contour } = computeHandOutline(smoothed);
+      this.focusShape =
+        contour.length >= 3
+          ? {
+              contour,
+              handLength: dist(smoothed[WRIST], smoothed[MIDDLE_TIP]),
+              coin: coin?.found
+                ? { x: coin.center_x, y: coin.center_y, rx: coin.major_axis_px / 2, ry: coin.minor_axis_px / 2, angleRad: (coin.angle_deg * Math.PI) / 180 }
+                : (this.focusShape?.coin ?? null),
+            }
+          : this.focusShape;
+    }
+    if (this.focusAlpha <= 0) this.focusShape = null; // faded out: the full picture
+    const c = this.opts.maskCanvas;
+    if (!c) return;
+    const size = maskCanvasSize(w, h, this.config.live_scan.overlay_3d.focus_mask_max_px);
+    if (c.width !== size.width || c.height !== size.height) {
+      c.width = size.width; // (a resize clears the canvas)
+      c.height = size.height;
+    }
+    const mctx = c.getContext("2d");
+    if (!mctx) return;
+    if (this.focusShape) {
+      mctx.clearRect(0, 0, c.width, c.height);
+      drawFocusMask(mctx, this.focusShape, this.focusAlpha, this.focusParams, { width: w, height: h, scale: size.scale });
+      this.maskDirty = true;
+    } else this.clearMask();
   }
 
   /** Frames to collect in a view: on a phone the view's own target (never below the minimum the
@@ -731,15 +806,21 @@ export class ScanController {
         : null;
 
     clear(ctx);
+    const focus = this.focusOn;
+    if (focus) this.drawFocus(w, h, smoothed, coin, now);
+    else if (this.focusAlpha > 0 || this.maskDirty) this.resetFocus();
     if (hand && smoothed) {
-      if (roi) drawRoi(ctx, roi, scale);
+      if (roi && !focus) drawRoi(ctx, roi, scale); // the search window would show as a box on the black
       if (!this.overlay3dOn) {
         const color = live.ok ? COLORS.good : COLORS.neutral;
         drawHandOutline(ctx, smoothed, color, scale, live.ok ? 1.0 : 0.6);
         drawSkeleton(ctx, smoothed, color, scale);
       }
     }
-    if (coin?.found) drawCoin(ctx, coin, scale);
+    if (coin?.found) {
+      drawCoin(ctx, coin, scale);
+      if (this.overlay3dOn && coin.accepted && !this.reducedMotion) drawCoinPulse(ctx, coin, now, scale);
+    }
     if (liveMm && smoothed && !this.overlay3dOn) {
       for (const f of Object.keys(FINGER_TIPS) as FingerName[]) {
         drawTag(ctx, labelAnchor(smoothed, f, 22 * scale), `${Math.round(liveMm.fingersMm[f])} mm`, scale, this.status.mirrored);

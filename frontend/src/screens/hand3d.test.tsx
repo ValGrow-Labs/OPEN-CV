@@ -23,6 +23,7 @@ type Opts = {
   onStatus: (s: unknown) => void;
   onPose?: (l: unknown, frame: { width: number; height: number }) => void;
   overlay3d?: boolean;
+  maskCanvas?: HTMLCanvasElement | null;
 };
 const controllers: { opts: Opts; setOverlay3d: ReturnType<typeof vi.fn> }[] = [];
 
@@ -134,6 +135,91 @@ describe("the live 3D measuring over the camera picture", () => {
     const { container } = mountScan();
     expect(container.querySelector(".scan-overlay3d")).toBeNull();
     expect(controllers.at(-1)!.opts.overlay3d).toBe(false);
+  });
+});
+
+describe("the 3D hand's black background and colour", () => {
+  const withOverlay = (patch: object) => {
+    const cfg = publicConfig();
+    return { ...cfg, live_scan: { ...cfg.live_scan, overlay_3d: { ...cfg.live_scan.overlay_3d, ...patch } } };
+  };
+  const live = (ok: boolean, codes: string[] = []) =>
+    act(() =>
+      controllers.at(-1)!.opts.onStatus({ phase: "running", live: { ok, codes, message: "m" }, collected: 0, target: 10, coin: null, mirrored: false, fps: 30, timing: { handMs: 0, coinMs: 0 }, error: null, topIssue: null, tilt: { rawDeg: null, smoothedDeg: null }, exposureEv: null, liveMm: null, handedness: null }),
+    );
+  const overlay = () => stages.filter((p) => p.mode === "overlay").at(-1)!;
+
+  it("gives the black a small canvas of its own between the video and the 2D drawing, with the video's CSS", () => {
+    const { container } = mountScan();
+    const mask = container.querySelector<HTMLCanvasElement>(".stage canvas.focus-mask-canvas")!;
+    expect(mask).not.toBeNull();
+    expect(mask.getAttribute("aria-hidden")).toBe("true");
+    expect(controllers.at(-1)!.opts.maskCanvas).toBe(mask); // the controller draws the black there
+    const video = container.querySelector(".stage video")!;
+    const draw2d = container.querySelector(".stage canvas:not(.focus-mask-canvas)")!;
+    // video, then the black, then the 2D drawing (coin ring, pulse) over it
+    expect(video.compareDocumentPosition(mask) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mask.compareDocumentPosition(draw2d) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    act(() => controllers.at(-1)!.opts.onStatus({ phase: "running", live: null, collected: 0, target: 10, coin: null, mirrored: true, fps: 0, timing: { handMs: 0, coinMs: 0 }, error: null, topIssue: null, tilt: { rawDeg: null, smoothedDeg: null }, exposureEv: null, liveMm: null, handedness: null }));
+    expect(mask.className).toContain("mirrored"); // flipped with the video for a front camera
+    expect(draw2d.className).toContain("mirrored");
+  });
+
+  it("has no mask canvas when config turns the black off, the 3D layer off, or WebGL is missing", () => {
+    for (const [cfg, gl] of [
+      [withOverlay({ focus_mask: false }), true],
+      [withOverlay({ enabled: false }), true],
+      [publicConfig(), false],
+    ] as const) {
+      webgl.on = gl;
+      const { container } = mountScan(cfg as never);
+      expect(container.querySelector(".focus-mask-canvas")).toBeNull();
+      expect(controllers.at(-1)!.opts.maskCanvas ?? null).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("tells the scene the picture is blacked out, as config says", () => {
+    mountScan();
+    expect(overlay().onBlack).toBe(true);
+    cleanup();
+    stages.length = 0;
+    mountScan(withOverlay({ focus_mask: false }) as never);
+    expect(overlay().onBlack).toBe(false); // the 3D hand over the normal picture
+  });
+
+  it("is calm until a hand is tracked, amber while the pose needs fixing and green once it is fine", () => {
+    mountScan(withOverlay({ tone_hold_ms: 0 }) as never);
+    expect(overlay().tone).toBe("idle");
+    live(false, ["no_hand"]); // nothing tracked
+    expect(overlay().tone).toBe("idle");
+    live(false, ["coin_tilted"]); // a hand, but the checks fail
+    expect(overlay().tone).toBe("warn");
+    live(true);
+    expect(overlay().tone).toBe("ok");
+    live(false, ["no_hand"]); // the hand is lost
+    expect(overlay().tone).toBe("idle");
+  });
+
+  it("holds a colour for tone_hold_ms, so it does not flicker with the live checks", () => {
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      mountScan(withOverlay({ tone_hold_ms: 300 }) as never);
+      live(true);
+      expect(overlay().tone).toBe("ok");
+      now += 100;
+      live(false, ["coin_tilted"]); // too soon to change
+      expect(overlay().tone).toBe("ok");
+      now += 150;
+      live(false, ["coin_tilted"]);
+      expect(overlay().tone).toBe("ok");
+      now += 100; // 350 ms since the colour began
+      live(false, ["coin_tilted"]);
+      expect(overlay().tone).toBe("warn");
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 

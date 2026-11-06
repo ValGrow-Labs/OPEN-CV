@@ -294,6 +294,19 @@ export interface Overlay3DParams {
   max_frame_ms: number;
   min_fps: number;
   fallback_after_slow_s: number;
+  /** Show everything but the hand and the coin black (display only). */
+  focus_mask: boolean;
+  /** Longest side, in pixels, of the canvas the black is drawn on (its cost does not depend on the camera resolution). */
+  focus_mask_max_px: number;
+  /** The clear window's reach beyond the hand outline, and its soft edge: fractions of the hand length. */
+  focus_margin: number;
+  focus_feather: number;
+  focus_fade_in_ms: number;
+  focus_fade_out_ms: number;
+  /** How black the rest of the picture gets, 0..1. */
+  focus_alpha: number;
+  /** The 3D hand's colour (pose fine / needs fixing) holds at least this long before it changes. */
+  tone_hold_ms: number;
 }
 
 export interface LiveScanParams {

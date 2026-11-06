@@ -23,6 +23,12 @@ export interface HandStageProps {
    *  (``poseRef`` holds landmarks in video pixels, ``frameRef`` the video's pixel size); no grid floor, no
    *  rotation: a glowing 3D mesh, measuring rails along the fingers and a scanning sweep. */
   mode: "scan" | "static" | "live" | "overlay";
+  /** Overlay mode: whether the pose is right ("ok": cool cyan-green), needs fixing ("warn": amber) or there is
+   *  nothing to judge yet ("idle": neutral cyan). Colours ease between tones; default "idle". */
+  tone?: "ok" | "warn" | "idle";
+  /** Overlay mode: the camera picture behind is blacked out around the hand, so the layer may glow additively
+   *  (a hologram on black) instead of using the dark-rimmed look that keeps it legible on a bright picture. */
+  onBlack?: boolean;
   /** The camera frame size in pixels (overlay mode), to map landmarks onto a ``object-fit: contain`` picture. */
   frameRef?: MutableRefObject<{ width: number; height: number } | null>;
   landmarks?: readonly Landmark[] | null;

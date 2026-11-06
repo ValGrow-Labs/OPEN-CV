@@ -2,15 +2,25 @@
 // 3D hand exactly where the real hand is, with measuring rails along the fingers, a hand-length rail beside
 // the hand and a scanning sweep. Loaded lazily with the rest of the scene (HandStage.tsx).
 //
+// Two looks, eased between (``onBlack``): over the live picture the points keep a dark rim and normal blending so
+// they read on a bright table; over a picture blacked out round the hand they glow additively, like a hologram,
+// with a bright rim, a halo of dust, glowing joints, soft rails and a luminous sweep. Three tones (``tone``) recolour
+// it: idle (cyan and blue), ok (cool green-cyan) and amber when the pose needs fixing (palette.ts).
+//
 // It runs on top of live hand tracking on phones, so the budget is tight: pixel ratio at most 1.25, 30 frames a
 // second, a few thousand points, and nothing allocated per frame in the pose loop.
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   Color,
+  DoubleSide,
   Group,
+  LinearSRGBColorSpace,
   LineBasicMaterial,
   LineSegments,
+  Mesh,
+  NormalBlending,
   OrthographicCamera,
   Points,
   Scene,
@@ -26,27 +36,32 @@ import {
   HAND_RAIL_VERTS,
   beadGlow,
   containRect,
+  fillNodes,
   fillRails,
+  haloOf,
   hasDepth,
   mapToElement,
+  nodeGlow,
   normalizeInto,
   poseBounds,
   railSide,
+  rimWeights,
   triangle,
   type Bounds,
   type HandFrame,
   type RailInfo,
 } from "./overlayMath";
+import { approach, assemble, roleAt, stepPalette, toneAccentRgb, toneMotion, toneTarget } from "./palette";
 import { DEFAULT_BUDGET, PerfGuard, type Budget, type Plan } from "./perfGuard";
 
-const BLUE = new Color("#2b8cff");
-const CYAN = new Color("#19e6e6");
-const RAIL = new Color("#19e6e6");
-const PALE = new Color("#d4fbff");
-const WIRE = new Color("#1fb4ff");
 const NAVY = new Color("#031a33"); // the dark edge that keeps the layer readable on a bright picture
 const FPS = 30;
 const SWEEP_S = 1.6;
+const FADE_IN_S = 0.3;
+const ASSEMBLE_MS = 300;
+const TONE_SETTLE_MS = 250;
+const BLACK_SETTLE_MS = 300;
+const HALO_SHARE = 0.22; // dust round the hand, as a share of the points on it
 const Z_GAIN = 1.35; // the relief is exaggerated a little so a tilted hand reads as 3D
 const COUNT_PHONE = 3000;
 const COUNT_LARGE = 5000;
@@ -54,50 +69,119 @@ const COUNT_LARGE = 5000;
 const VERT = /* glsl */ `
   attribute float aGlow;
   attribute float aSeed;
+  attribute float aRim;
   uniform float uTime;
   uniform float uPx;
   uniform float uBeam;
   uniform float uTwinkle;
+  uniform float uAssemble;
+  uniform float uBlack;
   varying float vGlow;
   varying float vBeam;
   varying float vTw;
   varying float vNear;
+  varying float vRim;
   void main() {
     float s = aSeed * 6.2831;
-    float d = position.y - uBeam;
+    vec3 p = position;
+    // a hand that has just appeared: the points start a little way out and converge on it
+    if (uAssemble > 0.001) {
+      vec3 dir = p - vec3(0.0, 0.45, 0.0) + 0.4 * vec3(cos(s * 3.1), sin(s * 2.3), cos(s * 1.7));
+      p += normalize(dir) * uAssemble * 0.2;
+    }
+    float d = p.y - uBeam;
     vBeam = exp(-d * d * 260.0);
     vTw = mix(1.0, 0.7 + 0.3 * sin(uTime * 2.4 + s * 5.0), uTwinkle);
     vGlow = aGlow;
+    vRim = aRim;
     vNear = clamp(position.z / 0.3, -1.0, 1.0);
-    gl_PointSize = uPx * (0.7 + aGlow * 1.1 + vBeam * 1.0) * (1.0 + 0.35 * vNear);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    float size = 0.75 + 0.5 * fract(aSeed * 17.31); // every point a little different
+    gl_PointSize = uPx * size * (0.7 + aGlow * 1.1 + vBeam * mix(1.0, 0.45, uBlack) + aRim * 0.5 * uBlack) * (1.0 + 0.35 * vNear);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
 
 const FRAG = /* glsl */ `
-  uniform vec3 uBlue;
-  uniform vec3 uCyan;
+  uniform vec3 uDeep;
+  uniform vec3 uMid;
+  uniform vec3 uGlow;
+  uniform vec3 uSpark;
   uniform float uAlpha;
   uniform float uFade;
+  uniform float uBlack;
   varying float vGlow;
   varying float vBeam;
   varying float vTw;
   varying float vNear;
+  varying float vRim;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float r = length(c) * 2.0;
     if (r > 1.0) discard;
-    float g = clamp(vGlow * vTw + vBeam * 0.7, 0.0, 1.3);
-    vec3 col = mix(uBlue, uCyan, smoothstep(0.05, 0.6, g));
-    col = mix(col, vec3(0.86, 1.0, 1.0), smoothstep(0.7, 1.2, g) * 0.85);
-    // a dark rim round each point: blue and cyan alone vanish on a white table or a bright window
-    col = mix(col, vec3(0.012, 0.1, 0.2), smoothstep(0.45, 0.95, r) * 0.8);
-    float soft = 1.0 - smoothstep(0.7, 1.0, r);
+    // the edge of the hand and the fingertips, knuckles and creases glow most
+    float g = clamp(vGlow * vTw + vBeam * mix(0.7, 0.4, uBlack) + vRim * 0.45 * uBlack, 0.0, 1.4);
+    vec3 col = mix(uDeep, uMid, smoothstep(0.0, 0.3, g));
+    col = mix(col, uGlow, smoothstep(0.25, 0.7, g));
+    col = mix(col, uSpark, smoothstep(0.7, 1.2, g) * 0.85);
+    // a dark rim round each point: blue and cyan alone vanish on a white table or a bright window (not needed on black)
+    col = mix(col, vec3(0.012, 0.1, 0.2), smoothstep(0.45, 0.95, r) * 0.8 * (1.0 - uBlack));
+    float soft = mix(1.0 - smoothstep(0.7, 1.0, r), exp(-r * r * 3.2), uBlack);
     float alpha = soft * clamp(0.4 + 0.6 * g, 0.0, 1.0) * (0.8 + 0.25 * vNear) * uAlpha * uFade;
-    // normal (premultiplied) blending, not additive: additive glow disappears on a bright background
-    gl_FragColor = vec4(col * alpha, alpha);
+    // on the live picture: normal (premultiplied) blending. On black: less coverage and more light, so that
+    // overlapping points add up like a hologram.
+    gl_FragColor = vec4(col * alpha * mix(1.0, 1.55, uBlack), alpha * mix(1.0, 0.55, uBlack));
   }
 `;
+
+// The soft band of the scanning sweep: a quad across the hand, brightest along its middle line.
+const BAND_VERT = /* glsl */ `
+  attribute float aV;
+  varying float vV;
+  varying float vX;
+  void main() {
+    vV = aV;
+    vX = position.x;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const BAND_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOp;
+  uniform vec2 uXRange;
+  varying float vV;
+  varying float vX;
+  void main() {
+    float across = exp(-vV * vV * 3.2);
+    float u = (vX - uXRange.x) / max(1e-4, uXRange.y - uXRange.x);
+    float ends = smoothstep(0.0, 0.12, u) * (1.0 - smoothstep(0.88, 1.0, u));
+    float a = across * ends * uOp;
+    gl_FragColor = vec4(uColor * a, a * 0.5);
+  }
+`;
+
+// The palette is shared by every material: one set of colours, eased on tone changes (palette.ts).
+const PAL = {
+  uDeep: { value: new Color() },
+  uMid: { value: new Color() },
+  uGlow: { value: new Color() },
+  uSpark: { value: new Color() },
+};
+const LINE = { wire: new Color(), rail: new Color(), pale: new Color() };
+
+/** Put a palette array (linear components, ROLES order) into the shared colours. */
+function applyPalette(pal: Float32Array): void {
+  const at = (role: "deep" | "mid" | "glow" | "spark" | "wire" | "rail" | "pale", c: Color) => {
+    const i = roleAt(role);
+    c.setRGB(pal[i], pal[i + 1], pal[i + 2], LinearSRGBColorSpace);
+  };
+  at("deep", PAL.uDeep.value);
+  at("mid", PAL.uMid.value);
+  at("glow", PAL.uGlow.value);
+  at("spark", PAL.uSpark.value);
+  at("wire", LINE.wire);
+  at("rail", LINE.rail);
+  at("pale", LINE.pale);
+}
 
 function pointMaterial(alpha: number): ShaderMaterial {
   return new ShaderMaterial({
@@ -112,8 +196,12 @@ function pointMaterial(alpha: number): ShaderMaterial {
       uPx: { value: 2.4 },
       uBeam: { value: -9 },
       uTwinkle: { value: 1 },
-      uBlue: { value: BLUE },
-      uCyan: { value: CYAN },
+      uAssemble: { value: 0 },
+      uBlack: { value: 0 },
+      uDeep: PAL.uDeep,
+      uMid: PAL.uMid,
+      uGlow: PAL.uGlow,
+      uSpark: PAL.uSpark,
       uAlpha: { value: alpha },
       uFade: { value: 0 },
     },
@@ -193,6 +281,9 @@ export default function HandOverlayGL(props: HandStageProps) {
 
     const generic = genericHand();
     const sampled = sampleHand(generic, count, 7);
+    // The halo: a second, thinner sample pushed out from the skin (dust round the hand).
+    const haloCount = Math.round(count * HALO_SHARE);
+    const haloSampled = haloOf(sampleHand(generic, haloCount, 23), rng(29));
     // The points come out of the sampler in random order, so a prefix is a fair thinner sample of the hand.
     let active: SampledHand = sampled;
     const positions = new Float32Array(count * 3);
@@ -205,15 +296,45 @@ export default function HandOverlayGL(props: HandStageProps) {
     handGeo.setAttribute("position", posAttr);
     handGeo.setAttribute("aGlow", new BufferAttribute(sampled.glow, 1));
     handGeo.setAttribute("aSeed", new BufferAttribute(seed, 1));
+    handGeo.setAttribute("aRim", new BufferAttribute(rimWeights(sampled), 1));
     const handMat = pointMaterial(0.8);
     const handPoints = new Points(handGeo, handMat);
+
+    const haloPositions = new Float32Array(haloCount * 3);
+    const haloPosAttr = new BufferAttribute(haloPositions, 3);
+    haloPosAttr.setUsage(35048);
+    const haloSeed = new Float32Array(haloCount);
+    for (let i = 0; i < haloCount; i++) haloSeed[i] = rand();
+    const haloGeo = new BufferGeometry();
+    haloGeo.setAttribute("position", haloPosAttr);
+    haloGeo.setAttribute("aGlow", new BufferAttribute(haloSampled.glow, 1));
+    haloGeo.setAttribute("aSeed", new BufferAttribute(haloSeed, 1));
+    haloGeo.setAttribute("aRim", new BufferAttribute(new Float32Array(haloCount), 1));
+    const haloMat = pointMaterial(0.55);
+    const haloPoints = new Points(haloGeo, haloMat);
+
+    // glowing nodes at the 21 joints: a bright core and a big soft glow round it (on black only)
+    const nodeArr = new Float32Array(63);
+    const nodeAttr = new BufferAttribute(nodeArr, 3);
+    nodeAttr.setUsage(35048);
+    const nodeSeed = new Float32Array(21);
+    for (let i = 0; i < 21; i++) nodeSeed[i] = rand();
+    const nodeGeo = new BufferGeometry();
+    nodeGeo.setAttribute("position", nodeAttr);
+    nodeGeo.setAttribute("aGlow", new BufferAttribute(nodeGlow(), 1));
+    nodeGeo.setAttribute("aSeed", new BufferAttribute(nodeSeed, 1));
+    nodeGeo.setAttribute("aRim", new BufferAttribute(new Float32Array(21), 1));
+    const nodeMat = pointMaterial(0.9);
+    const nodeGlowMat = pointMaterial(0.22);
+    const nodes = new Points(nodeGeo, nodeMat);
+    const nodeHalos = new Points(nodeGeo, nodeGlowMat);
 
     const wireArr = new Float32Array(handWire(generic));
     const wireAttr = new BufferAttribute(wireArr, 3);
     wireAttr.setUsage(35048);
     const wireGeo = new BufferGeometry();
     wireGeo.setAttribute("position", wireAttr);
-    const wireMat = lineMaterial(WIRE, 0.62);
+    const wireMat = lineMaterial(LINE.wire, 0.62);
     const wire = new LineSegments(wireGeo, wireMat);
 
     const fingerArr = new Float32Array(FINGER_RAIL_VERTS * 3);
@@ -221,7 +342,7 @@ export default function HandOverlayGL(props: HandStageProps) {
     fingerAttr.setUsage(35048);
     const fingerGeo = new BufferGeometry();
     fingerGeo.setAttribute("position", fingerAttr);
-    const fingerMat = lineMaterial(RAIL, 0.95);
+    const fingerMat = lineMaterial(LINE.rail, 0.95);
     const fingerRails = new LineSegments(fingerGeo, fingerMat);
 
     const handRailArr = new Float32Array(HAND_RAIL_VERTS * 3);
@@ -229,7 +350,7 @@ export default function HandOverlayGL(props: HandStageProps) {
     handRailAttr.setUsage(35048);
     const handRailGeo = new BufferGeometry();
     handRailGeo.setAttribute("position", handRailAttr);
-    const handRailMat = lineMaterial(PALE, 1);
+    const handRailMat = lineMaterial(LINE.pale, 1);
     const handRail = new LineSegments(handRailGeo, handRailMat);
 
     const beadArr = new Float32Array(BEAD_COUNT * 3);
@@ -241,16 +362,39 @@ export default function HandOverlayGL(props: HandStageProps) {
     beadGeo.setAttribute("position", beadAttr);
     beadGeo.setAttribute("aGlow", new BufferAttribute(beadGlow(), 1));
     beadGeo.setAttribute("aSeed", new BufferAttribute(beadSeed, 1));
+    beadGeo.setAttribute("aRim", new BufferAttribute(new Float32Array(BEAD_COUNT), 1));
     const beadMat = pointMaterial(1.05);
     const beads = new Points(beadGeo, beadMat);
+    const beadGlowMat = pointMaterial(0.2); // the soft glow of the rails (on black only)
+    const beadHalos = new Points(beadGeo, beadGlowMat);
 
     const beamArr = new Float32Array(12);
     const beamAttr = new BufferAttribute(beamArr, 3);
     beamAttr.setUsage(35048);
     const beamGeo = new BufferGeometry();
     beamGeo.setAttribute("position", beamAttr);
-    const beamMat = lineMaterial(PALE, 0.9);
+    const beamMat = lineMaterial(LINE.pale, 0.9);
     const beam = new LineSegments(beamGeo, beamMat);
+
+    // the soft luminous band of the sweep (on black): a quad across the hand
+    const bandArr = new Float32Array(12);
+    const bandAttr = new BufferAttribute(bandArr, 3);
+    bandAttr.setUsage(35048);
+    const bandGeo = new BufferGeometry();
+    bandGeo.setAttribute("position", bandAttr);
+    bandGeo.setAttribute("aV", new BufferAttribute(new Float32Array([-1, -1, 1, 1]), 1));
+    bandGeo.setIndex([0, 1, 2, 0, 2, 3]);
+    const bandMat = new ShaderMaterial({
+      vertexShader: BAND_VERT,
+      fragmentShader: BAND_FRAG,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      premultipliedAlpha: true,
+      side: DoubleSide,
+      uniforms: { uColor: { value: LINE.pale }, uOp: { value: 0 }, uXRange: { value: [0, 1] } },
+    });
+    const band = new Mesh(bandGeo, bandMat);
 
     // The hand space (wrist at the origin, y up, wrist to middle fingertip = 1) is placed on the screen by this
     // one transform; y is flipped because the screen's y runs down.
@@ -263,7 +407,7 @@ export default function HandOverlayGL(props: HandStageProps) {
       return l;
     });
     const hand = new Group();
-    for (const o of [...shadows, handPoints, wire, fingerRails, handRail, beads, beam]) {
+    for (const o of [...shadows, haloPoints, handPoints, band, wire, fingerRails, handRail, beadHalos, beads, nodeHalos, nodes, beam]) {
       o.frustumCulled = false;
       hand.add(o);
     }
@@ -277,6 +421,14 @@ export default function HandOverlayGL(props: HandStageProps) {
     const hf: HandFrame = { x0: 0, y0: 0, len: 0 };
     const info: RailInfo = { mx: 0, my: 0, side: 1 };
     const bounds: Bounds = { minX: -0.5, maxX: 0.5, minY: 0, maxY: 1 };
+    // the colours (eased between tones), the black-picture mix and the sweep's phase
+    const palCur = new Float32Array(toneTarget(propsRef.current.tone));
+    applyPalette(palCur);
+    let paletteDirty = true;
+    let blackMix = propsRef.current.onBlack ? 1 : 0;
+    let blendBlack = false; // whether the line materials are in their additive state
+    let sweepPhase = 0;
+    let appearedAt = -1e9;
     let havePose = false;
     let lastSeen = -1e9;
     let fade = 0;
@@ -291,13 +443,16 @@ export default function HandOverlayGL(props: HandStageProps) {
     const budget: Budget = b && b.maxFrameMs > 0 && b.minFps > 0 ? b : DEFAULT_BUDGET;
     const guard = new PerfGuard(budget);
     let plan: Plan = guard.plan;
-    // A step down of the guard: fewer points, no wireframe or twinkle, a lower frame rate, or off.
+    // A step down of the guard: no halo or sweep, no wireframe or nodes, half the points, a lower frame rate, or off.
     const applyPlan = (next: Plan) => {
       plan = next;
       active = next.pointFraction >= 1 ? sampled : { ...sampled, count: Math.floor(count * next.pointFraction) };
       handGeo.setDrawRange(0, active.count);
+      haloPoints.visible = next.halo;
       wire.visible = next.wire;
       shadows[0].visible = next.wire;
+      nodes.visible = next.nodes;
+      nodeHalos.visible = next.nodes;
     };
 
     const resize = () => {
@@ -342,9 +497,31 @@ export default function HandOverlayGL(props: HandStageProps) {
         valid = true;
       }
 
-      // in quickly when a hand is found, out over a quarter of a second when it is lost
+      // in over 0.3 s when a hand is found (its points converge on it), out over a quarter of a second when lost
       const want = valid || now - lastSeen < 80;
-      fade = want ? Math.min(1, fade + dt / 0.1) : Math.max(0, fade - dt / 0.25);
+      if (want && fade === 0) appearedAt = now;
+      fade = want ? Math.min(1, fade + dt / FADE_IN_S) : Math.max(0, fade - dt / 0.25);
+
+      // the tone's colours ease in over a quarter of a second; the black-picture look over 0.3 s
+      if (stepPalette(palCur, toneTarget(p.tone), dt * 1000, TONE_SETTLE_MS) || paletteDirty) {
+        applyPalette(palCur);
+        wireMat.color.copy(LINE.wire);
+        fingerMat.color.copy(LINE.rail);
+        handRailMat.color.copy(LINE.pale);
+        beamMat.color.copy(LINE.pale);
+        paletteDirty = false;
+      }
+      blackMix = approach(blackMix, p.onBlack ? 1 : 0, dt * 1000, BLACK_SETTLE_MS);
+      const additive = blackMix > 0.5;
+      if (additive !== blendBlack) {
+        blendBlack = additive;
+        const mode = additive ? AdditiveBlending : NormalBlending;
+        for (const m of [wireMat, fingerMat, handRailMat, beamMat]) {
+          m.blending = mode;
+          m.needsUpdate = true;
+        }
+      }
+      const motion = toneMotion(p.tone);
 
       let show = false;
       if (havePose && fade > 0.002) {
@@ -353,6 +530,18 @@ export default function HandOverlayGL(props: HandStageProps) {
         if (show) {
           poseSamples(active, pose, positions);
           posAttr.needsUpdate = true;
+          // the black look's extras cost nothing on the live picture; the dust is posed every other frame
+          // (a soft shell a frame behind is not seen), the nodes every frame
+          if (blackMix > 0.02) {
+            if (plan.halo && frameNo % 2 === 1) {
+              poseSamples(haloSampled, pose, haloPositions);
+              haloPosAttr.needsUpdate = true;
+            }
+            if (plan.nodes) {
+              fillNodes(pose, nodeArr);
+              nodeAttr.needsUpdate = true;
+            }
+          }
           if (plan.wire && frameNo % 2 === 0) {
             const w = handWire(pose);
             if (w.length === wireArr.length) {
@@ -366,8 +555,9 @@ export default function HandOverlayGL(props: HandStageProps) {
           beadAttr.needsUpdate = true;
 
           poseBounds(pose, bounds);
-          const sweeping = !reduce && plan.twinkle;
-          const by = sweeping ? bounds.minY + (bounds.maxY - bounds.minY) * triangle(t, SWEEP_S) : -99;
+          const sweeping = !reduce && plan.sweep;
+          if (sweeping) sweepPhase += (dt * motion.sweepSpeed) / SWEEP_S;
+          const by = sweeping ? bounds.minY + (bounds.maxY - bounds.minY) * triangle(sweepPhase, 1) : -99;
           const x0 = bounds.minX - 0.1;
           const x1 = bounds.maxX + 0.1;
           beamArr[0] = x0; beamArr[1] = by; beamArr[2] = 0.08;
@@ -375,24 +565,54 @@ export default function HandOverlayGL(props: HandStageProps) {
           beamArr[6] = x0; beamArr[7] = by + 0.014; beamArr[8] = 0.08;
           beamArr[9] = x1; beamArr[10] = by + 0.014; beamArr[11] = 0.08;
           beamAttr.needsUpdate = true;
-          beam.visible = sweeping;
+          beam.visible = sweeping && blackMix < 0.5;
+          // the soft band (on black): about a tenth of a hand tall, across the hand
+          const bh = 0.07;
+          bandArr[0] = x0; bandArr[1] = by - bh; bandArr[2] = 0.07;
+          bandArr[3] = x1; bandArr[4] = by - bh; bandArr[5] = 0.07;
+          bandArr[6] = x1; bandArr[7] = by + bh; bandArr[8] = 0.07;
+          bandArr[9] = x0; bandArr[10] = by + bh; bandArr[11] = 0.07;
+          bandAttr.needsUpdate = true;
+          bandMat.uniforms.uXRange.value[0] = x0;
+          bandMat.uniforms.uXRange.value[1] = x1;
+          bandMat.uniforms.uOp.value = sweeping ? 0.5 * motion.sweepGain * blackMix * fade : 0;
+          band.visible = sweeping && blackMix > 0.02;
+          const swept = reduce ? 0 : assemble(now - appearedAt, ASSEMBLE_MS);
 
           hand.position.set(hf.x0, hf.y0, 0);
           hand.scale.set(hf.len, -hf.len, hf.len);
           const px = Math.min(3.4, Math.max(1.6, hf.len * 0.0078)) * dpr;
           handMat.uniforms.uPx.value = px;
+          haloMat.uniforms.uPx.value = px * 1.7;
           beadMat.uniforms.uPx.value = px * 1.8;
-          for (const m of [handMat, beadMat]) {
+          beadGlowMat.uniforms.uPx.value = px * 5;
+          nodeMat.uniforms.uPx.value = px * 2.2;
+          nodeGlowMat.uniforms.uPx.value = px * 6.5;
+          for (const m of [handMat, haloMat, beadMat, beadGlowMat, nodeMat, nodeGlowMat]) {
             m.uniforms.uTime.value = t;
             m.uniforms.uBeam.value = by;
-            m.uniforms.uTwinkle.value = reduce || !plan.twinkle ? 0 : 1;
+            m.uniforms.uTwinkle.value = reduce || !plan.sweep ? 0 : 1;
             m.uniforms.uFade.value = fade;
+            m.uniforms.uBlack.value = blackMix;
+            m.uniforms.uAssemble.value = m === handMat || m === haloMat ? swept : 0;
           }
-          wireMat.opacity = 0.62 * fade;
-          fingerMat.opacity = 0.95 * fade;
+          // the soft glow layers and the wireframe's lower alpha belong to the black look
+          const glowOn = plan.nodes && blackMix > 0.02;
+          beadHalos.visible = glowOn;
+          nodeHalos.visible = glowOn;
+          nodes.visible = glowOn;
+          haloMat.uniforms.uFade.value = fade * blackMix; // the dust belongs to the black look
+          haloPoints.visible = plan.halo && blackMix > 0.02;
+          beadGlowMat.uniforms.uFade.value = fade * blackMix;
+          nodeGlowMat.uniforms.uFade.value = fade * blackMix;
+          nodeMat.uniforms.uFade.value = fade * blackMix;
+          wireMat.opacity = (0.62 - 0.22 * blackMix) * fade;
+          fingerMat.opacity = (0.95 - 0.15 * blackMix) * fade;
           handRailMat.opacity = fade;
-          beamMat.opacity = 0.9 * fade;
-          shadowMat.opacity = 0.5 * fade;
+          beamMat.opacity = 0.9 * fade * (blackMix > 0.02 ? 0.55 * motion.sweepGain : 1);
+          shadowMat.opacity = 0.5 * fade * (1 - blackMix);
+          const shade = blackMix < 0.97;
+          for (let k = 0; k < shadows.length; k++) shadows[k].visible = shade && (k !== 0 || plan.wire);
         }
         if (stats) stats.poseMs += performance.now() - p0;
       }
@@ -521,8 +741,8 @@ export default function HandOverlayGL(props: HandStageProps) {
       io.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       canvas.removeEventListener("webglcontextlost", onLost);
-      for (const g of [handGeo, wireGeo, fingerGeo, handRailGeo, beadGeo, beamGeo]) g.dispose();
-      for (const m of [handMat, beadMat, wireMat, fingerMat, handRailMat, beamMat, shadowMat]) m.dispose();
+      for (const g of [handGeo, haloGeo, nodeGeo, wireGeo, fingerGeo, handRailGeo, beadGeo, beamGeo, bandGeo]) g.dispose();
+      for (const m of [handMat, haloMat, nodeMat, nodeGlowMat, beadMat, beadGlowMat, wireMat, fingerMat, handRailMat, beamMat, bandMat, shadowMat]) m.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();
@@ -550,7 +770,7 @@ export default function HandOverlayGL(props: HandStageProps) {
     <>
       <div ref={mountRef} className="hand-stage-gl" />
       {props.tags && props.tags.length > 0 && (
-        <div className="hand-stage-tags" aria-hidden="true">
+        <div className="hand-stage-tags" aria-hidden="true" style={{ ["--tag-rgb" as string]: toneAccentRgb(props.tone) }}>
           {props.tags.map((tag, i) => (
             <span
               key={`${tag.joint}-${tag.between ? tag.between.join("_") : ""}`}

@@ -54,10 +54,10 @@
   white-space: nowrap;
   color: #e9fbff;
   background: rgb(4 20 36 / 0.78);
-  border: 1px solid rgb(25 230 230 / 0.45);
-  box-shadow: 0 0 14px rgb(25 230 230 / 0.28);
+  border: 1px solid rgb(var(--tag-rgb, 25 230 230) / 0.45);
+  box-shadow: 0 0 14px rgb(var(--tag-rgb, 25 230 230) / 0.28);
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transition: opacity 0.18s ease, border-color 0.25s ease, box-shadow 0.25s ease;
   will-change: transform, opacity;
 }
 
@@ -69,7 +69,7 @@
   top: 100%;
   width: 1px;
   height: var(--lead, 14px);
-  background: linear-gradient(rgb(25 230 230 / 0.8), rgb(25 230 230 / 0));
+  background: linear-gradient(rgb(var(--tag-rgb, 25 230 230) / 0.8), rgb(var(--tag-rgb, 25 230 230) / 0));
 }
 
 .hand-stage-tag::before {
@@ -82,7 +82,7 @@
   margin-left: -2.5px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 8px 2px rgb(25 230 230 / 0.9);
+  box-shadow: 0 0 8px 2px rgb(var(--tag-rgb, 25 230 230) / 0.9);
 }
 
 /* The camera view as a 3D measuring display: a transparent layer over the live video that takes no input. */
@@ -111,8 +111,8 @@
   padding: 2px 7px;
   font-size: 11px;
   background: rgb(3 14 26 / 0.7);
-  border-color: rgb(25 230 230 / 0.55);
-  transition: opacity 0.12s ease;
+  border-color: rgb(var(--tag-rgb, 25 230 230) / 0.55);
+  transition: opacity 0.12s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 /* The hand length: larger and brighter, beside its rail (no leader line, the rail is the guide). */
@@ -121,7 +121,7 @@
   font-size: 13px;
   color: #fff;
   border-color: rgb(255 255 255 / 0.7);
-  box-shadow: 0 0 18px rgb(25 230 230 / 0.5);
+  box-shadow: 0 0 18px rgb(var(--tag-rgb, 25 230 230) / 0.5);
 }
 
 .hand-stage-tag--side::before,

@@ -5,6 +5,7 @@ import { isMobileDevice, type Facing } from "../camera/camera";
 import type { Landmark } from "../hand3d/handModel";
 import { HandStage, webglAvailable } from "../hand3d/HandStage";
 import { overlayTags } from "../scan/overlayTags";
+import { holdTone, INITIAL_TONE, rawTone, type ToneState } from "../scan/overlayTone";
 import { OverlayBoundary } from "./OverlayBoundary";
 import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
 import {
@@ -62,6 +63,8 @@ export function ScanScreen<R = ScanResponse>({
     warmupService();
   }, []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The black around the hand and the coin has a canvas of its own (small, stretched over the video by CSS).
+  const maskRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<ScanController | null>(null);
   const [status, setStatus] = useState<ScanStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -159,6 +162,7 @@ export function ScanScreen<R = ScanResponse>({
       view: viewList[viewIdxRef.current],
       onStatus: setStatus,
       overlay3d: canUse3d && !degradedRef.current,
+      maskCanvas: canUse3d && overlayCfg.focus_mask ? maskRef.current : null,
       onPose: (landmarks, frame) => {
         poseRef.current = landmarks;
         frameRef.current = frame;
@@ -311,6 +315,9 @@ export function ScanScreen<R = ScanResponse>({
   const liveCodes = status?.live?.codes ?? [];
   const handSeen = status?.live ? !liveCodes.includes("no_hand") : false;
   const stage = phase === "complete" ? 3 : liveStage(liveCodes);
+  // The 3D hand's colour: green when the pose is fine, amber when it needs fixing, held so it does not flicker.
+  const toneRef = useRef<ToneState>(INITIAL_TONE);
+  toneRef.current = holdTone(toneRef.current, rawTone(handSeen, status?.live?.ok), performance.now(), overlayCfg.tone_hold_ms);
 
   return (
     <div className="scan" role="dialog" aria-modal="true" aria-label="Hand scan">
@@ -351,6 +358,9 @@ export function ScanScreen<R = ScanResponse>({
           </pre>
         )}
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
+        {canUse3d && overlayCfg.focus_mask && (
+          <canvas ref={maskRef} className={`focus-mask-canvas ${status?.mirrored ? "mirrored" : ""}`} aria-hidden="true" />
+        )}
         <canvas ref={canvasRef} className={status?.mirrored ? "mirrored" : ""} aria-hidden="true" />
         {phase === "running" && !handSeen && <Guide />}
         {overlay3d && phase === "running" && !between && !submitting && !submitError && (
@@ -363,6 +373,8 @@ export function ScanScreen<R = ScanResponse>({
                 mirror={status?.mirrored ?? false}
                 tags={overlayTags(status?.liveMm ?? null)}
                 budget={{ maxFrameMs: overlayCfg.max_frame_ms, minFps: overlayCfg.min_fps }}
+                tone={toneRef.current.tone}
+                onBlack={overlayCfg.focus_mask}
                 onDegrade={(reason) => reason === "disabled" && degrade(reason)}
                 className="hand-stage-overlay"
                 label="Your hand, measured live in 3D"

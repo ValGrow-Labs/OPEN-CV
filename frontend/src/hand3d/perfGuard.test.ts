@@ -16,7 +16,7 @@ function run(guard: PerfGuard, startMs: number, seconds: number, intervalMs: num
 describe("PerfGuard", () => {
   it("starts at full quality", () => {
     const p = new PerfGuard().plan;
-    expect(p).toMatchObject({ level: 0, pointFraction: 1, wire: true, twinkle: true, fps: 30, disabled: false });
+    expect(p).toMatchObject({ level: 0, pointFraction: 1, halo: true, sweep: true, wire: true, nodes: true, fps: 30, disabled: false });
   });
 
   it("stays at full quality for a long, healthy run (thousands of frames)", () => {
@@ -49,7 +49,7 @@ describe("PerfGuard", () => {
     const seen: Plan[] = [];
     let now = 0;
     let last = -1;
-    for (let i = 0; i < 4000 && g.plan.level < 4; i++) {
+    for (let i = 0; i < 6000 && g.plan.level < 5; i++) {
       now += 16.7;
       const p = g.tick(now);
       g.frame(25); // far over 9 ms
@@ -58,11 +58,13 @@ describe("PerfGuard", () => {
         last = p.level;
       }
     }
-    expect(seen.map((p) => p.level)).toEqual([0, 1, 2, 3, 4]);
-    expect(seen[1]).toMatchObject({ pointFraction: 0.5, wire: true, twinkle: true, fps: 30 }); // half the points
-    expect(seen[2]).toMatchObject({ pointFraction: 0.5, wire: false, twinkle: false, fps: 30 }); // no wireframe, no twinkle
-    expect(seen[3]).toMatchObject({ pointFraction: 0.5, wire: false, twinkle: false, fps: 20 }); // 20 fps
-    expect(seen[4].disabled).toBe(true);
+    expect(seen.map((p) => p.level)).toEqual([0, 1, 2, 3, 4, 5]);
+    // the look goes first: halo and sweep, then wireframe and nodes; the points and the frame rate last
+    expect(seen[1]).toMatchObject({ pointFraction: 1, halo: false, sweep: false, wire: true, nodes: true, fps: 30 });
+    expect(seen[2]).toMatchObject({ pointFraction: 1, halo: false, sweep: false, wire: false, nodes: false, fps: 30 });
+    expect(seen[3]).toMatchObject({ pointFraction: 0.5, wire: false, nodes: false, fps: 30 }); // half the points
+    expect(seen[4]).toMatchObject({ pointFraction: 0.5, fps: 20 }); // 20 fps
+    expect(seen[5].disabled).toBe(true);
   });
 
   it("does not step down for a brief spike", () => {
@@ -118,7 +120,7 @@ describe("PerfGuard", () => {
     expect(g.plan.level).toBe(0);
   });
 
-  it("is switched off for good: nothing changes after level 4", () => {
+  it("is switched off for good: nothing changes after the last level", () => {
     const g = new PerfGuard();
     run(g, 0, 60, 16.7, 40);
     expect(g.plan.disabled).toBe(true);

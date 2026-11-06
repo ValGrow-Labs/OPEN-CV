@@ -7,12 +7,16 @@ import {
   HAND_RAIL_VERTS,
   beadGlow,
   containRect,
+  fillNodes,
   fillRails,
+  haloOf,
   hasDepth,
   mapToElement,
+  nodeGlow,
   normalizeInto,
   poseBounds,
   railSide,
+  rimWeights,
   triangle,
   type Bounds,
   type HandFrame,
@@ -261,4 +265,98 @@ describe("a long run (thousands of frames) stays finite, bounded and allocation-
     expect(Number.isFinite(info.mx) && Number.isFinite(info.my)).toBe(true);
     expect(bounds.maxY).toBeGreaterThan(bounds.minY);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------------------------------------
+describe("rimWeights (which points are on the silhouette of the hand)", () => {
+  const sampled = sampleHand(genericHand(), 4000, 7);
+  const rim = rimWeights(sampled);
+
+  it("gives every point a weight in 0..1, one per point", () => {
+    expect(rim.length).toBe(sampled.count);
+    for (const v of rim) {
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("is high on the sides of a finger tube and low on its face (towards the viewer)", () => {
+    // a capsule point: local = (u, v, w) with u along the palm normal (towards the viewer), v sideways
+    const ids = [...Array(sampled.count).keys()].filter((i) => [5, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19].includes(sampled.bone[i]));
+    const side = ids.filter((i) => Math.abs(sampled.local[3 * i + 1]) > 3 * Math.abs(sampled.local[3 * i]));
+    const face = ids.filter((i) => Math.abs(sampled.local[3 * i]) > 3 * Math.abs(sampled.local[3 * i + 1]));
+    expect(side.length).toBeGreaterThan(20);
+    expect(face.length).toBeGreaterThan(20);
+    const mean = (xs: number[]) => xs.reduce((a, i) => a + rim[i], 0) / xs.length;
+    expect(mean(side)).toBeGreaterThan(0.7);
+    expect(mean(face)).toBeLessThan(0.3);
+  });
+
+  it("the edge of the palm slab is brighter than its faces", () => {
+    const palm = [...Array(sampled.count).keys()].filter((i) => [4, 8, 12].includes(sampled.bone[i]));
+    const edge = palm.filter((i) => Math.abs(sampled.local[3 * i + 2]) < 0.01 && Math.abs(sampled.local[3 * i + 1]) > 0.02);
+    const faces = palm.filter((i) => Math.abs(sampled.local[3 * i + 2]) > 0.04 && Math.abs(sampled.local[3 * i + 1]) < 0.005);
+    if (edge.length && faces.length) {
+      const mean = (xs: number[]) => xs.reduce((a, i) => a + rim[i], 0) / xs.length;
+      expect(mean(edge)).toBeGreaterThan(mean(faces));
+    }
+    expect(palm.length).toBeGreaterThan(100);
+  });
+});
+
+describe("haloOf (dust round the hand)", () => {
+  const base = sampleHand(genericHand(), 1500, 23);
+  const seeded = () => {
+    let a = 5;
+    return () => ((a = (a * 1664525 + 1013904223) >>> 0) / 4294967296);
+  };
+  const halo = haloOf(base, seeded());
+
+  it("keeps the points' places on their bones and pushes the offsets away from the skin", () => {
+    expect(halo.count).toBe(base.count);
+    expect(Array.from(halo.bone)).toEqual(Array.from(base.bone));
+    expect(Array.from(halo.t)).toEqual(Array.from(base.t));
+    let moved = 0;
+    for (let i = 0; i < base.count; i++) {
+      const b = base.bone[i];
+      const a0 = Math.hypot(base.local[3 * i + 1], base.local[3 * i + 2], base.local[3 * i]);
+      const a1 = Math.hypot(halo.local[3 * i + 1], halo.local[3 * i + 2], halo.local[3 * i]);
+      if (a1 > a0 * 1.2) moved++;
+      if ([4, 8, 12].includes(b)) expect(halo.local[3 * i]).toBe(base.local[3 * i]); // the palm's place across the slab is kept
+      else if (b !== 16) expect(halo.local[3 * i + 2]).toBe(base.local[3 * i + 2]); // a finger's place along the bone is kept
+    }
+    expect(moved).toBeGreaterThan(base.count * 0.6);
+  });
+
+  it("is dim, does not touch the original, and follows a pose", () => {
+    for (const g of halo.glow) {
+      expect(g).toBeGreaterThan(0);
+      expect(g).toBeLessThan(0.3);
+    }
+    expect(base.local).not.toBe(halo.local);
+    const out = new Float32Array(halo.count * 3);
+    poseSamples(halo, genericHand(), out);
+    for (const v of out) expect(Number.isFinite(v)).toBe(true);
+  });
+});
+
+describe("glowing nodes at the joints", () => {
+  it("places the 21 joints a little above the skin", () => {
+    const pose = genericHand();
+    const out = new Float32Array(63);
+    fillNodes(pose, out, 0.05);
+    for (let i = 0; i < 21; i++) {
+      expect(out[i * 3]).toBeCloseTo(pose[i].x, 5);
+      expect(out[i * 3 + 1]).toBeCloseTo(pose[i].y, 5);
+      expect(out[i * 3 + 2]).toBeCloseTo(pose[i].z + 0.05, 5);
+    }
+  });
+
+  it("the wrist and the fingertips shine most", () => {
+    const g = nodeGlow();
+    expect(g.length).toBe(21);
+    for (const tip of [0, 4, 8, 12, 16, 20]) expect(g[tip]).toBeGreaterThan(1);
+    for (const mid of [2, 3, 6, 7, 10, 11]) expect(g[mid]).toBeLessThan(g[8]);
+  });
 });

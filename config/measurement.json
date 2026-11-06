@@ -167,7 +167,15 @@
       "enabled": true,
       "max_frame_ms": 40,
       "min_fps": 12,
-      "fallback_after_slow_s": 3
+      "fallback_after_slow_s": 3,
+      "focus_mask": true,
+      "focus_mask_max_px": 480,
+      "focus_margin": 0.02,
+      "focus_feather": 0.04,
+      "focus_fade_in_ms": 350,
+      "focus_fade_out_ms": 200,
+      "focus_alpha": 0.97,
+      "tone_hold_ms": 300
     }
   },
   "uncertainty": {

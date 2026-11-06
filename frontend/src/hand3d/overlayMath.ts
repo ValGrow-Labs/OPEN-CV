@@ -2,7 +2,7 @@
 // onto the screen exactly where the real hand is drawn, putting it into hand space (wrist at the origin, y up,
 // wrist-to-middle-fingertip = 1) and building the measuring rails along the fingers. Everything writes into
 // buffers the caller owns, so a frame allocates nothing.
-import type { Landmark, Vec3 } from "./handModel";
+import type { Landmark, SampledHand, Vec3 } from "./handModel";
 
 export interface ContainRect {
   /** Screen pixels per video pixel. */
@@ -259,4 +259,72 @@ export function poseBounds(pose: readonly Vec3[], out: Bounds): void {
 export function triangle(t: number, period: number): number {
   const u = (((t % period) + period) % period) / period;
   return u < 0.5 ? u * 2 : 2 - u * 2;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// The skin of the hologram: which points are on the edge, and the halo of dust round the hand
+
+/** The bone indices the sampler uses for the palm (a slab) and the forearm stub (see handModel.ts). */
+const PALM_BONES = new Set([4, 8, 12]);
+const FOREARM_BONE = 16;
+
+/** How near each point is to the silhouette of the hand, 0 (the middle of a face) to 1 (the very edge), seen from
+ *  the palm side or the back (the hand is drawn flat to the camera). A finger is a tube round its axis: the edge
+ *  is where the offset runs sideways rather than towards the viewer; the palm is a slab: its rim; the forearm
+ *  likewise. This is a one-off table (the brightness of an edge in the shader), not a per-frame cost. */
+export function rimWeights(sampled: SampledHand): Float32Array {
+  const out = new Float32Array(sampled.count);
+  const l = sampled.local;
+  for (let i = 0; i < sampled.count; i++) {
+    const a = l[3 * i];
+    const b = l[3 * i + 1];
+    const c = l[3 * i + 2];
+    const bone = sampled.bone[i];
+    let rim: number;
+    if (PALM_BONES.has(bone)) rim = Math.abs(b) / (Math.abs(b) + Math.abs(c) + 1e-6); // in-plane rim vs the two faces
+    else if (bone === FOREARM_BONE) rim = Math.abs(a) / (Math.abs(a) + Math.abs(b) + 1e-6); // lateral vs normal
+    else rim = Math.abs(b) / (Math.abs(a) + Math.abs(b) + 1e-6); // v is the sideways offset round the axis
+    out[i] = Math.min(1, Math.max(0, rim));
+  }
+  return out;
+}
+
+/** The same points pushed out from the skin: a soft shell of dust round the hand. Only the offsets away from the
+ *  bone are scaled (a capsule's u, v; a palm point's in-plane and normal offsets; the forearm's), never the position
+ *  along it, so the halo still follows every pose. ``rand`` gives each point its own distance. */
+export function haloOf(sampled: SampledHand, rand: () => number, lo = 1.7, hi = 2.7): SampledHand {
+  const local = new Float32Array(sampled.local);
+  const glow = new Float32Array(sampled.count);
+  for (let i = 0; i < sampled.count; i++) {
+    const k = lo + (hi - lo) * rand();
+    const bone = sampled.bone[i];
+    if (PALM_BONES.has(bone)) {
+      local[3 * i + 1] *= k;
+      local[3 * i + 2] *= k;
+    } else if (bone === FOREARM_BONE) {
+      local[3 * i] *= k;
+      local[3 * i + 1] *= k;
+    } else {
+      local[3 * i] *= k;
+      local[3 * i + 1] *= k;
+    }
+    glow[i] = 0.08 + 0.14 * rand();
+  }
+  return { count: sampled.count, bone: sampled.bone, t: sampled.t, local, glow };
+}
+
+/** The 21 joints, lifted a little above the skin, as the positions of the glowing nodes (63 numbers). */
+export function fillNodes(pose: readonly Vec3[], out: Float32Array, lift = 0.05): void {
+  for (let i = 0; i < 21; i++) {
+    out[i * 3] = pose[i].x;
+    out[i * 3 + 1] = pose[i].y;
+    out[i * 3 + 2] = pose[i].z + lift;
+  }
+}
+
+/** The brightness of each node: the fingertips and the wrist shine most, the middle joints are quieter. */
+export function nodeGlow(): Float32Array {
+  const g = new Float32Array(21);
+  for (let i = 0; i < 21; i++) g[i] = i === 0 || i % 4 === 0 ? 1.15 : i % 4 === 1 ? 0.7 : 0.5;
+  return g;
 }

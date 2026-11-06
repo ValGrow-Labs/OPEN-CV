@@ -61,6 +61,20 @@ export function drawCoin(ctx: CanvasRenderingContext2D, coin: CoinObservation, s
   ctx.restore();
 }
 
+/** A gentle ring that swells and fades around an accepted coin, once every ``periodMs``: "this is the ruler". */
+export function drawCoinPulse(ctx: CanvasRenderingContext2D, coin: CoinObservation, nowMs: number, scale: number, periodMs = 1600): void {
+  const phase = (nowMs % periodMs) / periodMs;
+  ctx.save();
+  ctx.globalAlpha = 0.55 * (1 - phase);
+  ctx.lineWidth = 2 * scale;
+  ctx.strokeStyle = COLORS.good;
+  const grow = 1 + 0.4 * phase;
+  ctx.beginPath();
+  ctx.ellipse(coin.center_x, coin.center_y, (coin.major_axis_px / 2) * grow, (coin.minor_axis_px / 2) * grow, (coin.angle_deg * Math.PI) / 180, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawRoi(ctx: CanvasRenderingContext2D, roi: { x: number; y: number; w: number; h: number }, scale: number): void {
   ctx.save();
   ctx.strokeStyle = COLORS.roi;

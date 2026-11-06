@@ -26,10 +26,27 @@ all.
   (front camera) picture is mirrored the same way.
 * The hand is a cloud of points attached to the bones (`handModel.ts`), re-posed from the landmarks every frame,
   with a wireframe outline. The depth (`z`) of the landmarks gives a little relief, so a tilted hand reads as 3D.
-* It reads on bright and dark pictures: normal (not additive) blending with a dark rim on every point and a dark
-  drop shadow under every line. (Additive glow disappears on a white table.)
+* Two looks, eased between over 0.3 s (the `onBlack` prop):
+  * **On the live picture** it reads on bright and dark pictures: normal (not additive) blending with a dark rim on
+    every point and a dark drop shadow under every line. (Additive glow disappears on a white table.)
+  * **On a picture blacked out round the hand** (the scan screen's focus mask) it is a hologram: additive glow, soft
+    round points of different sizes, a brighter silhouette edge (computed once per point from its offset from the
+    bone), brighter fingertips, knuckles and creases, a halo of dust round the hand (a second, thinner sample pushed
+    out from the skin), glowing nodes at the 21 joints, soft glow along the measuring rails, a thin low-alpha
+    wireframe and a luminous band for the scanning sweep.
 * It uses only the landmarks. No video pixels are read. It takes no input (`pointer-events: none`), is
   `aria-hidden`, and the 2D drawing and labels carry the same information for assistive use.
+
+## Tones and entry
+
+The `tone` prop recolours the layer: `idle` (cyan and blue, nothing to judge yet), `ok` (a cool green-cyan: the pose is
+right) and `warn` (amber: the pose needs fixing). Every colour comes from one table (`palette.ts`), shared by all the
+materials and by the labels' accent; a change of tone eases over about a quarter of a second, never jumps. A `warn`
+sweep is slower and dimmer, so it reads as waiting.
+
+When a hand is found the layer fades in over 0.3 s while its points converge on it from a little way out (a one-off
+vertex-shader offset, no per-frame cost); when the hand is lost it fades out over a quarter of a second. With
+`prefers-reduced-motion` there is no sweep, twinkle or converging.
 
 ## Protecting scan speed
 
@@ -37,10 +54,14 @@ Scan speed matters more than the picture. `perfGuard.ts` watches a rolling avera
 and of the page's frame interval, against a budget (`budget` prop: `maxFrameMs`, `minFps`; defaults 9 ms and 18 fps).
 When either is over budget for about 1.5 s it steps down, in this order, and never back up:
 
-1. half the points,
-2. no wireframe, no twinkle, no sweep,
-3. 20 frames a second,
-4. switched off: it renders nothing and calls `onDegrade("disabled")` so the screen goes back to its 2D drawing.
+1. no halo of dust, no scanning sweep or twinkle (the look goes first),
+2. no wireframe, no joint nodes,
+3. half the points,
+4. 20 frames a second,
+5. switched off: it renders nothing and calls `onDegrade("disabled")` so the screen goes back to its 2D drawing.
+
+The extras of the black look cost nothing on the live picture (they are not posed or drawn there), and the halo is
+posed every other frame.
 
 The first frames (shader compile) and a hidden tab are not held against it. The layer also switches itself off if
 WebGL is missing, the scene cannot start, or the WebGL context is lost (never a blank, frozen canvas). The chunk is
@@ -48,8 +69,10 @@ loaded behind an error boundary: if it cannot be fetched the page carries on wit
 ratio 1.25, 30 frames a second, 3,000 points on phones (5,000 otherwise), and it draws only while it is on screen
 and the page is in front.
 
-Measured in headless Chrome with software WebGL on a desktop CPU: about 2 ms of JavaScript per frame, 0.9 ms of it
-re-posing the cloud. That is not a phone GPU (see below).
+Measured in headless Chrome with software WebGL on a desktop CPU, alternating old and new builds on the same page
+(5,000 points, three runs each, on a machine that was busy with other work, so only roughly): the live-picture look
+costs about the same as before (about 1.7 ms of JavaScript per frame); the black look about 2.4 ms. That is not a
+phone GPU (see below).
 
 ## Honest limits
 

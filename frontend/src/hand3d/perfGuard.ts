@@ -4,7 +4,8 @@
 // picture. The guard watches a rolling average of the layer's own cost per frame and of the page's frame
 // interval; when either is over budget for about a second and a half it takes the layer one step down, in this
 // order, and never back up (a flickering quality is worse than a steady lower one):
-//   1. half the points   2. no wireframe, no twinkle   3. 20 frames a second   4. switched off (the 2D drawing)
+//   1. no halo of dust, no scanning sweep or twinkle   2. no wireframe, no joint nodes   3. half the points
+//   4. 20 frames a second   5. switched off (the 2D drawing)
 
 export interface Budget {
   /** The most the layer may cost per frame (JS time to re-pose and draw), in ms. */
@@ -15,25 +16,32 @@ export interface Budget {
 
 export const DEFAULT_BUDGET: Budget = { maxFrameMs: 9, minFps: 18 };
 
-export type Level = 0 | 1 | 2 | 3 | 4;
+export type Level = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface Plan {
   level: Level;
   /** Share of the points that are posed and drawn. */
   pointFraction: number;
+  /** The soft halo of dust round the hand. */
+  halo: boolean;
+  /** The scanning sweep and the twinkle of the points. */
+  sweep: boolean;
+  /** The thin wireframe outline. */
   wire: boolean;
-  twinkle: boolean;
+  /** The glowing nodes at the 21 joints. */
+  nodes: boolean;
   /** Frames a second the layer draws. */
   fps: number;
   disabled: boolean;
 }
 
 const PLANS: readonly Plan[] = [
-  { level: 0, pointFraction: 1, wire: true, twinkle: true, fps: 30, disabled: false },
-  { level: 1, pointFraction: 0.5, wire: true, twinkle: true, fps: 30, disabled: false },
-  { level: 2, pointFraction: 0.5, wire: false, twinkle: false, fps: 30, disabled: false },
-  { level: 3, pointFraction: 0.5, wire: false, twinkle: false, fps: 20, disabled: false },
-  { level: 4, pointFraction: 0, wire: false, twinkle: false, fps: 20, disabled: true },
+  { level: 0, pointFraction: 1, halo: true, sweep: true, wire: true, nodes: true, fps: 30, disabled: false },
+  { level: 1, pointFraction: 1, halo: false, sweep: false, wire: true, nodes: true, fps: 30, disabled: false },
+  { level: 2, pointFraction: 1, halo: false, sweep: false, wire: false, nodes: false, fps: 30, disabled: false },
+  { level: 3, pointFraction: 0.5, halo: false, sweep: false, wire: false, nodes: false, fps: 30, disabled: false },
+  { level: 4, pointFraction: 0.5, halo: false, sweep: false, wire: false, nodes: false, fps: 20, disabled: false },
+  { level: 5, pointFraction: 0, halo: false, sweep: false, wire: false, nodes: false, fps: 20, disabled: true },
 ];
 
 const EMA = 0.1; // weight of the newest frame in the rolling averages
@@ -72,7 +80,7 @@ export class PerfGuard {
     }
     this.lastTick = now;
     this.ticks++;
-    if (this.level === 4) return this.plan;
+    if (this.level === 5) return this.plan;
     if (this.ignore > 0) {
       this.ignore--;
       return this.plan;
@@ -95,7 +103,7 @@ export class PerfGuard {
   }
 
   private stepDown(): void {
-    this.level = Math.min(4, this.level + 1) as Level;
+    this.level = Math.min(5, this.level + 1) as Level;
     this.cost = -1;
     this.interval = -1;
     this.overSince = -1;

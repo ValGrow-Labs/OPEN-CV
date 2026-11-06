@@ -231,15 +231,22 @@ export function drawSmoothContour(
   if (points.length < 3) return;
 
   ctx.save();
-  ctx.beginPath();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.lineWidth = lineWidth;
   ctx.strokeStyle = color;
   ctx.fillStyle = fillColor;
+  traceSmoothContour(ctx, points);
+  if (fillColor) ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
 
-  // Catmull-Rom to Cubic Bezier spline closed loop
+/** Begins a new path along the closed contour as a smooth Catmull-Rom spline (cubic Beziers); the caller
+ *  fills and/or strokes it. */
+export function traceSmoothContour(ctx: CanvasRenderingContext2D, points: Point[]): void {
   const n = points.length;
+  ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
 
   for (let i = 0; i < n; i++) {
@@ -258,9 +265,6 @@ export function drawSmoothContour(
   }
 
   ctx.closePath();
-  if (fillColor) ctx.fill();
-  ctx.stroke();
-  ctx.restore();
 }
 
 /**

@@ -242,6 +242,23 @@ class Overlay3DParams(_Strict):
     max_frame_ms: float = Field(gt=0)
     min_fps: float = Field(gt=0)
     fallback_after_slow_s: float = Field(gt=0)
+    # The "focus mask": while the 3D layer is on, everything but the hand and the coin is shown black. Display
+    # only (hand and coin are still found in the full camera frame). Off: the 3D hand over the normal picture.
+    focus_mask: bool = True
+    # The black is drawn on its own canvas whose longest side is at most this many pixels (same aspect as the
+    # video, stretched over it by CSS), so its cost does not grow with the camera resolution.
+    focus_mask_max_px: int = Field(default=480, ge=64, le=2048)
+    # How far the clear window reaches beyond the hand outline and how soft its edge is, as fractions of the
+    # hand length (wrist to middle fingertip); the black fades in/out over these times so the customer can
+    # always find their hand; focus_alpha is how black it gets (1 = fully black).
+    focus_margin: float = Field(ge=0, le=0.5)
+    focus_feather: float = Field(ge=0, le=0.5)
+    focus_fade_in_ms: float = Field(ge=0)
+    focus_fade_out_ms: float = Field(ge=0)
+    focus_alpha: float = Field(gt=0, le=1)
+    # The colour of the 3D hand (green: pose fine, amber: needs fixing) holds for at least this long, so it
+    # does not flicker.
+    tone_hold_ms: float = Field(ge=0)
 
 
 class LiveScanParams(_Strict):
