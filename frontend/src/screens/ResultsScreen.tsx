@@ -1,6 +1,7 @@
 import type { Measurement, Recommendation, ScanResponse } from "../api/types";
+import { HandStage, type HandStageTag } from "../hand3d/HandStage";
 import { Badge } from "../ui/components";
-import { CONFIDENCE, fingerBendDetail } from "../ui/format";
+import { CONFIDENCE, fingerBendDetail, fmtMm } from "../ui/format";
 import { MeasureList, type MeasureItem } from "../ui/measureList";
 import { ButtonIcon, stagger } from "../ui/motion";
 import { hasViews, ViewsNotice, ViewsTable } from "../ui/viewsBlock";
@@ -30,6 +31,14 @@ const FINGER_KEYS: Omit<MeasureItem, "m">[] = [
   { key: "little_length_mm", label: "Little finger" },
 ];
 
+// The fingertip of each finger length, to label the 3D hand (MediaPipe landmark indices).
+const FINGER_TAGS: { key: string; name: string; joint: number }[] = [
+  { key: "index_length_mm", name: "Index", joint: 8 },
+  { key: "middle_length_mm", name: "Middle", joint: 12 },
+  { key: "ring_length_mm", name: "Ring", joint: 16 },
+  { key: "little_length_mm", name: "Little", joint: 20 },
+];
+
 const SPLNTD_CIRCUMFERENCES = [
   { finger: "Thumb", base: "75 mm", tip: "65 mm" },
   { finger: "Index", base: "70 mm", tip: "55 mm" },
@@ -47,6 +56,12 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
   const product = [rec.manufacturer, rec.product_model].filter(Boolean).join(", ");
   const byKey = new Map<string, Measurement>();
   for (const m of [...result.measurements, ...extraMeasurements]) byKey.set(m.key, m);
+  // A finger is labelled only when it was measured (a tape-only result has no camera finger lengths).
+  const tags: HandStageTag[] = FINGER_TAGS.flatMap((f) => {
+    const m = byKey.get(f.key);
+    const ok = m && m.value_mm !== null && m.status !== "invalid" && m.status !== "not_measured";
+    return ok ? [{ joint: f.joint, label: `${f.name} ${fmtMm(m.value_mm as number)}` }] : [];
+  });
   const items = (defs: Omit<MeasureItem, "m">[]) =>
     defs.map((d) => {
       const m = byKey.get(d.key);
@@ -165,6 +180,18 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
           </p>
         )}
       </section>
+
+      {result.landmarks_px_median && (
+        <section className="card result-hand3d" aria-labelledby="hand3d-heading" data-reveal>
+          <div className="section-head">
+            <h2 id="hand3d-heading">Your hand</h2>
+          </div>
+          <div className="result-hand3d-stage">
+            <HandStage mode="static" landmarks={result.landmarks_px_median} tags={tags} label="A glowing 3D model of your hand with finger lengths" />
+          </div>
+          <p className="small muted result-hand3d-caption">An illustration drawn from the 21 hand points we measured, not a 3D scan.</p>
+        </section>
+      )}
 
       <section className="card" aria-labelledby="measures-heading" data-reveal>
         <div className="section-head">

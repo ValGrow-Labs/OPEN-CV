@@ -3228,3 +3228,91 @@ details.panel > summary {
   display: grid;
   gap: 10px;
 }
+
+/* ------------------------------------------------- the 3D hand: where it sits (the scene is in hand3d/) */
+
+.scan-hand3d,
+.calc-hand3d,
+.result-hand3d-stage {
+  position: relative;
+}
+
+.scan-hand3d > .hand-stage,
+.calc-hand3d > .hand-stage,
+.result-hand3d-stage > .hand-stage {
+  width: 100%;
+  height: 100%;
+}
+
+/* A small tile in the bottom corner of the camera picture: clear of the fingertip tags at the top of
+   the hand, the guidance bar above and the scan panel below. It never takes a tap. */
+.scan-hand3d {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  /* Never more than 40% of the camera picture's height, so a short picture is not buried. */
+  height: min(132px, 40%);
+  aspect-ratio: 104 / 132;
+  z-index: 2;
+  border-radius: 18px;
+  overflow: hidden;
+  pointer-events: none;
+  animation: hand3d-tile-in 500ms var(--ease-out) both;
+}
+
+@keyframes hand3d-tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .scan-hand3d {
+    right: 18px;
+    bottom: 18px;
+    height: min(220px, 40%);
+  }
+}
+
+/* A phone on its side leaves the camera picture only a sliver; there is no room for the tile. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .scan-hand3d {
+    display: none;
+  }
+}
+
+/* While the measurements are calculated: the hand takes the middle of the screen. */
+.calc-hand3d {
+  width: min(78vw, 340px);
+  height: min(40vh, 300px);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* The result page: below the size, the customer's own hand. */
+.result-hand3d-stage {
+  height: min(46vh, 380px);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.result-hand3d-caption {
+  margin-top: 10px;
+}
+
+@media (min-width: 900px) {
+  .result-hand3d-stage {
+    height: 420px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-hand3d {
+    animation: none;
+  }
+}

@@ -1,0 +1,590 @@
+// The three.js scene of the glowing hand: a luminous particle hand with a wireframe outline over a
+// sonar-wave grid. Loaded lazily (HandStage.tsx), so three.js is not part of the main bundle.
+import {
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  Group,
+  LineBasicMaterial,
+  LineSegments,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Points,
+  RingGeometry,
+  Scene,
+  ShaderMaterial,
+  Vector3,
+  WebGLRenderer,
+} from "three";
+import { useEffect, useRef, useState } from "react";
+import type { HandStageProps } from "./HandStage";
+import { genericHand, handWire, normalizePose, poseSamples, sampleHand, type Landmark, type SampledHand, type Vec3 } from "./handModel";
+
+const FOV = 36;
+const FLOOR_Y = -0.62; // the floor, in the spinning frame (the wrist sits at -0.5)
+const RIG_Y = -0.5; // the hand's own origin (its wrist) in the spinning frame
+const SWING_RAD = (35 * Math.PI) / 180;
+const SCAN_SWING_RAD = (58 * Math.PI) / 180; // the hero hand sways rather than spins: it is never seen edge-on
+const TURN_S = 14;
+const COUNT_SMALL = 4500;
+const COUNT_LARGE = 9000;
+// The live tile runs next to hand tracking (which also uses the GPU): it must never slow the scan down.
+const COUNT_LIVE = 2200;
+const LIVE_FPS = 24;
+
+const BLUE = new Color("#2b8cff");
+const CYAN = new Color("#19e6e6");
+
+const POINT_VERT = /* glsl */ `
+  attribute float aGlow;
+  attribute float aSeed;
+  attribute vec3 aDir;
+  uniform float uTime;
+  uniform float uScale;
+  uniform float uSize;
+  uniform float uBeam;
+  uniform float uDrift;
+  uniform float uTwinkle;
+  varying float vGlow;
+  varying float vBeam;
+  varying float vTw;
+  void main() {
+    vec3 p = position;
+    float s = aSeed * 6.2831;
+    p += aDir * uDrift * (0.6 + 0.4 * sin(uTime * 0.7 + s * 3.0));
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    float d = abs(position.y - uBeam);
+    vBeam = exp(-d * d * 420.0);
+    vTw = mix(1.0, 0.72 + 0.28 * sin(uTime * 2.4 + s * 5.0), uTwinkle);
+    vGlow = aGlow;
+    gl_PointSize = uSize * uScale * (0.6 + aGlow * 1.3 + vBeam * 0.8) / max(0.2, -mv.z);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const POINT_FRAG = /* glsl */ `
+  uniform vec3 uBlue;
+  uniform vec3 uCyan;
+  uniform float uAlpha;
+  uniform float uDim;
+  varying float vGlow;
+  varying float vBeam;
+  varying float vTw;
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float r = length(c) * 2.0;
+    if (r > 1.0) discard;
+    float a = pow(1.0 - r, 1.7);
+    float g = clamp(vGlow * vTw + vBeam * 0.55, 0.0, 1.25);
+    vec3 col = mix(uBlue, uCyan, smoothstep(0.05, 0.6, g));
+    col = mix(col, vec3(1.0), smoothstep(0.62, 1.1, g));
+    float k = (0.5 + g) * uAlpha * uDim;
+    gl_FragColor = vec4(col * k * a, a * k);
+  }
+`;
+
+const GRID_VERT = /* glsl */ `
+  uniform float uTime;
+  uniform float uAmp;
+  varying float vA;
+  varying float vW;
+  void main() {
+    vec3 p = position;
+    float r = length(p.xz);
+    float w = sin(r * 9.0 - uTime * 2.2) * exp(-r * 0.95) * uAmp
+            + 0.45 * sin(r * 3.2 - uTime * 0.9) * exp(-r * 0.5) * uAmp;
+    p.y += w;
+    vW = w / max(uAmp, 0.0001);
+    vA = (1.0 - smoothstep(1.2, 3.1, r)) * (0.3 + 0.7 * exp(-r * 0.55));
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }
+`;
+
+const GRID_FRAG = /* glsl */ `
+  uniform vec3 uBlue;
+  uniform vec3 uCyan;
+  uniform float uAlpha;
+  varying float vA;
+  varying float vW;
+  void main() {
+    float crest = smoothstep(0.25, 1.0, abs(vW));
+    vec3 col = mix(uBlue, uCyan, 0.35 + 0.65 * crest);
+    col = mix(col, vec3(1.0), crest * 0.35);
+    gl_FragColor = vec4(col, vA * uAlpha * (0.55 + 0.7 * crest));
+  }
+`;
+
+/** A tiny seeded generator, so the dust and twinkle phases are the same on every device. */
+function rng(seed: number) {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function validLandmarks(points: readonly Landmark[] | null | undefined): points is readonly Landmark[] {
+  return !!points && points.length >= 21 && points.slice(0, 21).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+}
+
+function toPose(points: readonly Landmark[] | null | undefined, mirror: boolean): Vec3[] {
+  if (validLandmarks(points)) {
+    try {
+      return normalizePose(points, { mirror });
+    } catch {
+      /* fall through to the generic hand */
+    }
+  }
+  return genericHand();
+}
+
+function lineGrid(): BufferGeometry {
+  const lines = 41;
+  const extent = 3.2;
+  const seg = 100;
+  const verts: number[] = [];
+  for (let i = 0; i < lines; i++) {
+    const c = -extent + (2 * extent * i) / (lines - 1);
+    for (let j = 0; j < seg; j++) {
+      const a = -extent + (2 * extent * j) / seg;
+      const b = -extent + (2 * extent * (j + 1)) / seg;
+      verts.push(a, 0, c, b, 0, c); // along x
+      verts.push(c, 0, a, c, 0, b); // along z
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new BufferAttribute(new Float32Array(verts), 3));
+  return g;
+}
+
+function pointMaterial(size: number, alpha: number, drift: number): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: POINT_VERT,
+    fragmentShader: POINT_FRAG,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uScale: { value: 800 },
+      uSize: { value: size },
+      uBeam: { value: -9 },
+      uDrift: { value: drift },
+      uTwinkle: { value: 1 },
+      uBlue: { value: BLUE },
+      uCyan: { value: CYAN },
+      uAlpha: { value: alpha },
+      uDim: { value: 1 },
+    },
+  });
+}
+
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+export default function HandStageGL(props: HandStageProps) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const tagEls = useRef<(HTMLSpanElement | null)[]>([]);
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  const poseVersion = useRef(0);
+  const [failed, setFailed] = useState(false);
+
+  // A new pose, mode or mirror asks the running scene to re-read the props.
+  useEffect(() => {
+    poseVersion.current++;
+  }, [props.landmarks, props.mode, props.mirror]);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const phone = typeof matchMedia === "function" && matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+    const lowEnd = (navigator.hardwareConcurrency ?? 8) <= 4;
+    const liveTile = propsRef.current.mode === "live";
+    const count = liveTile ? COUNT_LIVE : phone || lowEnd ? COUNT_SMALL : COUNT_LARGE;
+    const reduce = reducedMotion();
+
+    let renderer: WebGLRenderer;
+    try {
+      renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
+    } catch (err) {
+      console.warn("3D hand: WebGL unavailable", err);
+      setFailed(true);
+      return;
+    }
+    renderer.setClearColor(0x000000, 0);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, liveTile ? 1 : phone ? 1.5 : 2));
+    const canvas = renderer.domElement;
+    mount.appendChild(canvas);
+
+    const scene = new Scene();
+    const camera = new PerspectiveCamera(FOV, 1, 0.1, 30);
+    camera.position.set(0, 0.95, 2.95);
+    camera.lookAt(0, -0.06, 0);
+
+    // ---- the hand: particles attached to the bones, a halo of dust, and the wireframe outline
+    const generic = genericHand();
+    const sampled: SampledHand = sampleHand(generic, count, 7);
+    const positions = new Float32Array(count * 3);
+    const posAttr = new BufferAttribute(positions, 3);
+    posAttr.setUsage(35048); // DynamicDrawUsage
+    const rand = rng(11);
+    const seed = new Float32Array(count);
+    const dir = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      seed[i] = rand();
+      const u = rand() * 2 - 1;
+      const a = rand() * Math.PI * 2;
+      const s = Math.sqrt(1 - u * u);
+      dir[i * 3] = s * Math.cos(a);
+      dir[i * 3 + 1] = u;
+      dir[i * 3 + 2] = s * Math.sin(a);
+    }
+    const glowDust = new Float32Array(count);
+    for (let i = 0; i < count; i++) glowDust[i] = 0.12 + sampled.glow[i] * 0.2;
+
+    const handGeo = new BufferGeometry();
+    handGeo.setAttribute("position", posAttr);
+    handGeo.setAttribute("aGlow", new BufferAttribute(sampled.glow, 1));
+    handGeo.setAttribute("aSeed", new BufferAttribute(seed, 1));
+    handGeo.setAttribute("aDir", new BufferAttribute(dir, 3));
+
+    const dustCount = Math.floor(count / 3);
+    const dustGeo = new BufferGeometry();
+    dustGeo.setAttribute("position", posAttr); // follows the hand
+    dustGeo.setAttribute("aGlow", new BufferAttribute(glowDust, 1));
+    dustGeo.setAttribute("aSeed", new BufferAttribute(seed, 1));
+    dustGeo.setAttribute("aDir", new BufferAttribute(dir, 3));
+    dustGeo.setDrawRange(0, dustCount);
+
+    const handMat = pointMaterial(0.02, 1.15, 0);
+    const dustMat = pointMaterial(0.022, 0.3, 0.07);
+    const reflectMat = pointMaterial(0.02, 0.2, 0);
+
+    const wire0 = handWire(generic);
+    let wireAttr = new BufferAttribute(new Float32Array(wire0), 3);
+    const wireGeo = new BufferGeometry();
+    wireGeo.setAttribute("position", wireAttr);
+    const wireMat = new LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.16, blending: AdditiveBlending, depthWrite: false });
+
+    const makeRig = (reflect: boolean) => {
+      const rig = new Group();
+      rig.position.y = RIG_Y;
+      rig.add(new Points(handGeo, reflect ? reflectMat : handMat));
+      if (!reflect) {
+        rig.add(new Points(dustGeo, dustMat));
+        rig.add(new LineSegments(wireGeo, wireMat));
+      }
+      return rig;
+    };
+
+    const spinner = new Group();
+    spinner.add(makeRig(false));
+    const mirror = new Group();
+    mirror.position.y = 2 * FLOOR_Y;
+    mirror.scale.y = -1;
+    mirror.add(makeRig(true));
+    spinner.add(mirror);
+
+    const beamMat = new MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false, side: DoubleSide });
+    const beam = new Mesh(new RingGeometry(0.62, 0.655, 96), beamMat);
+    beam.rotation.x = -Math.PI / 2;
+    const beamFill = new Mesh(
+      new RingGeometry(0, 0.62, 96),
+      new MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.07, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }),
+    );
+    beamFill.rotation.x = -Math.PI / 2;
+    const beamGroup = new Group();
+    beamGroup.add(beam, beamFill);
+    beamGroup.position.y = RIG_Y;
+    spinner.add(beamGroup);
+
+    const gridMat = new ShaderMaterial({
+      vertexShader: GRID_VERT,
+      fragmentShader: GRID_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uAmp: { value: 0.03 }, uBlue: { value: BLUE }, uCyan: { value: CYAN }, uAlpha: { value: 0.5 } },
+    });
+    const grid = new LineSegments(lineGrid(), gridMat);
+    grid.position.y = FLOOR_Y;
+
+    scene.add(grid, spinner);
+
+    // ---- pose handling: the target pose is eased into the current one (live hands jitter)
+    let target: Vec3[] = generic;
+    let current: Vec3[] = generic.map((p) => ({ ...p }));
+    let seenVersion = -1;
+    let lastLive = performance.now();
+    let dim = 1;
+
+    const repose = () => {
+      poseSamples(sampled, current, positions);
+      posAttr.needsUpdate = true;
+      const w = handWire(current);
+      if (w.length !== wireAttr.array.length) {
+        wireAttr = new BufferAttribute(new Float32Array(w), 3);
+        wireGeo.setAttribute("position", wireAttr);
+      } else {
+        (wireAttr.array as Float32Array).set(w);
+        wireAttr.needsUpdate = true;
+      }
+    };
+    repose();
+
+    // ---- interaction
+    let userYaw = 0;
+    let userPitch = 0;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let autoResumeAt = 0;
+    const onDown = (e: PointerEvent) => {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      canvas.setPointerCapture?.(e.pointerId);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      userYaw += (e.clientX - lastX) * 0.012;
+      userPitch = Math.max(-0.45, Math.min(0.45, userPitch + (e.clientY - lastY) * 0.005));
+      lastX = e.clientX;
+      lastY = e.clientY;
+      autoResumeAt = performance.now() + 2200;
+      requestRender();
+    };
+    const onUp = () => {
+      dragging = false;
+    };
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+
+    // ---- sizing
+    let width = 0;
+    let height = 0;
+    const resize = () => {
+      const r = mount.getBoundingClientRect();
+      const w = Math.max(1, Math.round(r.width));
+      const h = Math.max(1, Math.round(r.height));
+      if (w === width && h === height) return;
+      width = w;
+      height = h;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      // keep the whole hand in view on narrow (portrait) stages
+      camera.fov = w / h < 0.8 ? FOV + (0.8 - w / h) * 30 : FOV;
+      camera.updateProjectionMatrix();
+      const scale = renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
+      for (const m of [handMat, dustMat, reflectMat]) m.uniforms.uScale.value = scale;
+      requestRender();
+    };
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
+
+    // ---- the frame
+    let raf = 0;
+    let looping = false;
+    let visible = true;
+    let lost = false;
+    let lastFrame = 0;
+    const t0 = performance.now();
+    const tmp = new Vector3();
+    const m4 = new Matrix4();
+
+    const frame = (now: number) => {
+      raf = 0;
+      const p = propsRef.current;
+      const live = p.mode === "live";
+      const dt = Math.min(0.1, lastFrame ? (now - lastFrame) / 1000 : 0.016);
+      lastFrame = now;
+      const t = reduce ? 1.2 : (now - t0) / 1000;
+
+      if (seenVersion !== poseVersion.current) {
+        seenVersion = poseVersion.current;
+        if (p.mode !== "live") {
+          target = p.mode === "static" ? toPose(p.landmarks, !!p.mirror) : generic;
+          current = target.map((v) => ({ ...v }));
+          repose();
+        }
+      }
+      if (live) {
+        const src = p.poseRef?.current;
+        if (validLandmarks(src)) {
+          target = toPose(src, !!p.mirror);
+          lastLive = now;
+        }
+        const k = 1 - Math.exp(-dt * 14);
+        let moved = 0;
+        current = current.map((c, i) => {
+          const g = target[i] ?? c;
+          const nx = c.x + (g.x - c.x) * k;
+          const ny = c.y + (g.y - c.y) * k;
+          const nz = c.z + (g.z - c.z) * k;
+          moved = Math.max(moved, Math.abs(nx - c.x), Math.abs(ny - c.y), Math.abs(nz - c.z));
+          return { x: nx, y: ny, z: nz };
+        });
+        if (moved > 1e-4) repose();
+        const stale = (now - lastLive) / 1000;
+        dim += ((stale > 1.5 ? 0.35 : 1) - dim) * (1 - Math.exp(-dt * 2));
+      } else {
+        dim = 1;
+      }
+
+      // rotation: a slow sway (wider while scanning, gentle where labels or the live hand must stay readable)
+      const amp = p.mode === "scan" ? SCAN_SWING_RAD : SWING_RAD;
+      const yaw = reduce ? 0.35 : now > autoResumeAt ? Math.sin((t * 2 * Math.PI) / TURN_S) * amp : 0;
+      spinner.rotation.y = yaw + userYaw;
+      spinner.rotation.x = -0.12 + userPitch;
+
+      const beamOn = p.mode === "scan" && !reduce;
+      const beamY = beamOn ? -0.05 + (1.2 * ((t % 2.6) / 2.6)) : -9;
+      for (const m of [handMat, dustMat, reflectMat]) {
+        m.uniforms.uTime.value = t;
+        m.uniforms.uBeam.value = beamY;
+        m.uniforms.uTwinkle.value = reduce ? 0 : 1;
+        m.uniforms.uDim.value = dim;
+      }
+      dustMat.uniforms.uDrift.value = reduce ? 0 : 0.07;
+      gridMat.uniforms.uTime.value = t;
+      gridMat.uniforms.uAmp.value = reduce ? 0.018 : p.mode === "scan" ? 0.05 : 0.03;
+      beamGroup.visible = beamOn;
+      beamGroup.position.y = RIG_Y + beamY;
+      wireMat.opacity = 0.16 * dim;
+
+      renderer.render(scene, camera);
+      updateTags();
+    };
+
+    const updateTags = () => {
+      const tags = propsRef.current.tags;
+      if (!tags) return;
+      spinner.updateMatrixWorld();
+      m4.copy(camera.matrixWorldInverse);
+      const centre = tmp.set(0, 0.5 + RIG_Y, 0).applyMatrix4(spinner.matrixWorld).applyMatrix4(m4);
+      const centreDepth = centre.z;
+      const spots = tags.map((tag, i) => {
+        const j = current[tag.joint];
+        if (!j) return null;
+        const v = tmp.set(j.x, j.y + RIG_Y, j.z).applyMatrix4(spinner.matrixWorld);
+        const view = v.clone().applyMatrix4(camera.matrixWorldInverse);
+        v.project(camera);
+        return {
+          i,
+          x: (v.x * 0.5 + 0.5) * width,
+          y: (-v.y * 0.5 + 0.5) * height,
+          hidden: view.z < centreDepth - 0.28 /* farther from the camera than the hand's middle */ || Math.abs(v.x) > 0.96 || Math.abs(v.y) > 0.96,
+        };
+      });
+      // Labels are placed left to right; each one rises until it clears the labels already placed
+      // (fingertips differ in height, so a fixed step by rank would still collide).
+      const order = spots.filter((s): s is NonNullable<typeof s> => !!s).sort((a, b) => a.x - b.x);
+      const placed: { x: number; y: number; w: number }[] = [];
+      const GAP = 3;
+      order.forEach((s) => {
+        const el = tagEls.current[s.i];
+        if (!el) return;
+        const w = el.offsetWidth || 90;
+        const h = el.offsetHeight || 24;
+        let top = s.y - 10 - h;
+        for (let guard = 0; guard < 8; guard++) {
+          const hit = placed.find((p) => Math.abs(p.x - s.x) < (p.w + w) / 2 + GAP && Math.abs(p.y - top) < h + GAP);
+          if (!hit) break;
+          top = hit.y - h - GAP;
+        }
+        top = Math.max(4, top); // never above the stage
+        placed.push({ x: s.x, y: top, w });
+        el.style.setProperty("--lead", `${Math.max(8, s.y - top - h)}px`);
+        el.style.transform = `translate(${s.x.toFixed(1)}px, ${top.toFixed(1)}px) translateX(-50%)`;
+        el.style.opacity = s.hidden ? "0" : "1";
+      });
+    };
+
+    const loopWanted = () => !reduce && visible && !document.hidden && !lost;
+    const tick = (now: number) => {
+      raf = 0;
+      if (!loopWanted()) {
+        looping = false;
+        return;
+      }
+      const cap = propsRef.current.mode === "live" ? LIVE_FPS : phone ? 40 : 60;
+      if (now - lastFrame >= 1000 / cap - 2) frame(now);
+      raf = requestAnimationFrame(tick);
+    };
+    const start = () => {
+      if (looping || !loopWanted()) return;
+      looping = true;
+      lastFrame = 0;
+      raf = requestAnimationFrame(tick);
+    };
+    function requestRender() {
+      if (looping || raf || lost) return;
+      raf = requestAnimationFrame((n) => {
+        raf = 0;
+        frame(n);
+      });
+    }
+
+    const io = new IntersectionObserver((entries) => {
+      visible = entries[entries.length - 1]?.isIntersecting ?? true;
+      if (visible) start();
+    });
+    io.observe(mount);
+    const onVisibility = () => {
+      if (!document.hidden) start();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      lost = true;
+      setFailed(true);
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+
+    resize();
+    requestRender();
+    start();
+
+    return () => {
+      lost = true;
+      if (raf) cancelAnimationFrame(raf);
+      ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
+      canvas.removeEventListener("webglcontextlost", onLost);
+      for (const g of [handGeo, dustGeo, wireGeo, grid.geometry, beam.geometry, beamFill.geometry]) g.dispose();
+      for (const m of [handMat, dustMat, reflectMat, wireMat, beamMat, gridMat, beamFill.material as MeshBasicMaterial]) m.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      canvas.remove();
+    };
+  }, []);
+
+  if (failed) return <div className="hand-stage-fallback" aria-hidden="true" />;
+  return (
+    <>
+      <div ref={mountRef} className="hand-stage-gl" />
+      {props.tags && props.tags.length > 0 && (
+        <div className="hand-stage-tags" aria-hidden="true">
+          {props.tags.map((tag, i) => (
+            <span key={`${tag.joint}-${tag.label}`} ref={(el) => void (tagEls.current[i] = el)} className="hand-stage-tag">
+              {tag.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, submitScan, warmupService } from "../api/client";
 import type { CaptureView, FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
+import type { Landmark } from "../hand3d/handModel";
+import { HandStage, webglAvailable } from "../hand3d/HandStage";
 import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
 import {
   canSkipRemaining,
@@ -70,6 +72,8 @@ export function ScanScreen<R = ScanResponse>({
   const [cameraAllowed, setCameraAllowed] = useState(guide !== "intro" && !confirming);
   const mirroredRef = useRef(false);
   mirroredRef.current = status?.mirrored ?? false;
+  // The tracked hand of every camera frame, for the small live 3D hand (read by the scene, no re-render).
+  const poseRef = useRef<readonly Landmark[] | null>(null);
   const startClickTimeRef = useRef<number>(0);
 
   // Guided angles. With more than one, a view that completes is kept (tagged) and the customer chooses
@@ -137,6 +141,9 @@ export function ScanScreen<R = ScanResponse>({
       referenceDiameterMm: ref.diameter,
       view: viewList[viewIdxRef.current],
       onStatus: setStatus,
+      onPose: (landmarks) => {
+        poseRef.current = landmarks;
+      },
       onComplete: (frames, timing) => {
         const current = viewList[viewIdxRef.current];
         const next = nextView(viewList, viewIdxRef.current);
@@ -315,6 +322,11 @@ export function ScanScreen<R = ScanResponse>({
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className={status?.mirrored ? "mirrored" : ""} aria-hidden="true" />
         {phase === "running" && !handSeen && <Guide />}
+        {phase === "running" && !between && !submitting && !submitError && (
+          <div className="scan-hand3d" aria-hidden="true">
+            <HandStage mode="live" poseRef={poseRef} mirror={status?.mirrored ?? false} className="hand-stage-tile" label="Your hand, followed live in 3D" />
+          </div>
+        )}
         {phase === "running" && status?.live && (
           <div className={`live-pill ${status.live.ok ? "ok" : ""}`} aria-hidden="true">
             <span key={status.live.message} className="live-text">
@@ -363,8 +375,14 @@ export function ScanScreen<R = ScanResponse>({
         {(submitting || submitError) && (
           <div className="stage-message" style={{ background: "rgba(14,16,19,0.7)" }}>
             {submitting ? (
-              <div className="stack" style={{ alignItems: "center", maxWidth: 320, textAlign: "center" }}>
-                <div className="spinner" />
+              <div className="stack" style={{ alignItems: "center", maxWidth: 340, textAlign: "center" }}>
+                {webglAvailable() ? (
+                  <div className="calc-hand3d">
+                    <HandStage mode="scan" label="A glowing 3D hand while your measurements are calculated" />
+                  </div>
+                ) : (
+                  <div className="spinner" />
+                )}
                 <p>
                   {submittingSec > 15
                     ? "Processing hand measurements… almost ready"

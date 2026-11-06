@@ -1,0 +1,139 @@
+/* The 3D hand stage: a dark glowing panel inside the cream pages (like the camera surfaces). */
+.hand-stage {
+  --hs-ratio: 4 / 5;
+  --hs-cyan: #19e6e6;
+  --hs-blue: #2b8cff;
+  position: relative;
+  width: 100%;
+  min-height: 220px;
+  aspect-ratio: var(--hs-ratio);
+  border-radius: var(--radius, 28px);
+  overflow: hidden;
+  isolation: isolate;
+  color: #d6f6ff;
+  background:
+    radial-gradient(120% 80% at 50% 38%, #06182b 0%, #04101d 48%, #02070d 100%);
+  box-shadow:
+    inset 0 0 0 1px rgb(80 190 255 / 0.16),
+    inset 0 0 60px rgb(25 120 220 / 0.14),
+    0 18px 40px -22px rgb(2 20 40 / 0.55);
+}
+
+.hand-stage-gl {
+  position: absolute;
+  inset: 0;
+}
+
+.hand-stage-gl canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y; /* the page still scrolls under a finger */
+  cursor: grab;
+}
+
+.hand-stage-gl canvas:active {
+  cursor: grabbing;
+}
+
+/* Labels on the joints (finger lengths on the result page). */
+.hand-stage-tags {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hand-stage-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font: 600 11px/1.2 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #e9fbff;
+  background: rgb(4 20 36 / 0.78);
+  border: 1px solid rgb(25 230 230 / 0.45);
+  box-shadow: 0 0 14px rgb(25 230 230 / 0.28);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  will-change: transform, opacity;
+}
+
+/* leader line and dot down to the joint */
+.hand-stage-tag::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: var(--lead, 14px);
+  background: linear-gradient(rgb(25 230 230 / 0.8), rgb(25 230 230 / 0));
+}
+
+.hand-stage-tag::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--lead, 14px) - 2px);
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px 2px rgb(25 230 230 / 0.9);
+}
+
+/* Never blank: a CSS-only glow ring with a slowly breathing outline of a hand-sized oval. */
+.hand-stage-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.hand-stage-fallback::before {
+  content: "";
+  width: 46%;
+  aspect-ratio: 3 / 4;
+  border-radius: 46% 46% 40% 40% / 58% 58% 38% 38%;
+  border: 1px solid rgb(25 230 230 / 0.55);
+  background: radial-gradient(closest-side, rgb(43 140 255 / 0.32), rgb(43 140 255 / 0) 78%);
+  box-shadow: 0 0 40px rgb(25 230 230 / 0.28), inset 0 0 30px rgb(43 140 255 / 0.25);
+  animation: hand-stage-breathe 3.2s ease-in-out infinite;
+}
+
+.hand-stage-fallback::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 14%;
+  height: 22%;
+  border-radius: 50%;
+  border: 1px solid rgb(43 140 255 / 0.4);
+  box-shadow: 0 0 22px rgb(43 140 255 / 0.25);
+  transform: perspective(320px) rotateX(64deg);
+}
+
+@keyframes hand-stage-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-stage-fallback::before {
+    animation: none;
+  }
+  .hand-stage-tag {
+    transition: none;
+  }
+}

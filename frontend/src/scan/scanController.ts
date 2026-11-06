@@ -4,6 +4,7 @@ import type { CaptureView, FrameObservation, Point, PublicConfig } from "../api/
 import { describeCameraError, isMobileDevice, openCamera, stopStream, type CameraErrorInfo, type Facing } from "../camera/camera";
 import { ExposureController } from "../camera/exposure";
 import { ScreenWakeLock } from "../camera/wakeLock";
+import type { Landmark } from "../hand3d/handModel";
 import { getCoinEngine, type CoinEngine } from "../vision/coinEngine";
 import { detectCoin, type CoinDetection, type RgbaImage } from "../vision/coinDetector";
 import type { CoinJobResult } from "../vision/coinJob";
@@ -84,6 +85,9 @@ export interface ScanControllerOptions {
   referenceDiameterMm?: number;
   /** The capture view being scanned (its own guidance wording); the primary (palm) view by default. */
   view?: CaptureView;
+  /** Called every processed camera frame with the tracked hand's landmarks (the ones drawn on the
+   *  overlay), or null when there is no hand. For the small live 3D hand: no React state is needed. */
+  onPose?: (landmarks: Landmark[] | null) => void;
 }
 
 // Loop settings come from config/measurement.json "live_scan":
@@ -698,6 +702,7 @@ export class ScanController {
       this.generation++; // a coin search still running belongs to a hand that is gone
     }
 
+    this.opts.onPose?.(smoothed);
     const coin = hand ? this.lastCoin : null;
     const frameLive = this.evaluate(hand ? this.observe(hand, now, w, h, coin, this.lastBrightness) : null, this.lastLandmarks, this.tiltDeg);
     const live = this.shown(frameLive, now);
