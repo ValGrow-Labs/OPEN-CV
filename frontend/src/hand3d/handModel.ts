@@ -456,8 +456,9 @@ const RING_COS = Array.from({ length: RING }, (_, i) => Math.cos((2 * Math.PI * 
 const RING_SIN = Array.from({ length: RING }, (_, i) => Math.sin((2 * Math.PI * i) / RING));
 
 /** Line-segment endpoints (pairs of xyz) outlining the bones and palm of ``pose``: the wireframe layer. */
-export function handWire(pose: readonly Vec3[]): Float32Array {
+export function handWire(pose: readonly Vec3[], opts?: { dense?: boolean }): Float32Array {
   computeFrames(pose);
+  const dense = !!opts?.dense;
   const seg: number[] = [];
   const line = (a: ArrayLike<number>, b: ArrayLike<number>) => {
     seg.push(a[0], a[1], a[2], b[0], b[1], b[2]);
@@ -494,7 +495,9 @@ export function handWire(pose: readonly Vec3[]): Float32Array {
 
   // palm: a grid on the face towards the viewer (+normal): lines along the hand and across it
   const hh = PALM_HALF_THICKNESS;
-  const gridP = [PALM_P_MIN, 0, 1, 2, 3, PALM_P_MAX];
+  // (dense: twice as many lines each way, the fine mesh of the light theme)
+  const gridP = dense ? [PALM_P_MIN, 0, 0.5, 1, 1.5, 2, 2.5, 3, PALM_P_MAX] : [PALM_P_MIN, 0, 1, 2, 3, PALM_P_MAX];
+  const gridT = dense ? [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] : [0, 0.25, 0.5, 0.75, 1];
   const point = (p: number, t: number, out: number[]) => {
     const k = clamp(Math.floor(p), 0, 2);
     palmAt(p - k, t, 0, hh, k, TMP);
@@ -509,7 +512,7 @@ export function handWire(pose: readonly Vec3[]): Float32Array {
       line(P, Q);
     }
   }
-  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+  for (const t of gridT) {
     for (let s = 0; s < 16; s++) {
       point(PALM_P_MIN + ((PALM_P_MAX - PALM_P_MIN) * s) / 16, t, P);
       point(PALM_P_MIN + ((PALM_P_MAX - PALM_P_MIN) * (s + 1)) / 16, t, Q);
@@ -536,5 +539,57 @@ export function handWire(pose: readonly Vec3[]): Float32Array {
     stubAt(1, (Math.PI / 2) * q, Q);
     line(P, Q);
   }
+  return Float32Array.from(seg);
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Measuring rings (the light theme): where a width or girth is taken
+
+/** The bones whose middle gets a measuring ring: the middle phalanx of index, middle, ring and little. */
+const MEASURE_BONES: readonly number[] = [6, 10, 14, 18];
+const MEASURE_RING = 20;
+
+/** Line-segment endpoints (pairs of xyz) of the measuring rings of ``pose``: a ring around each of the four
+ *  fingers (halfway along its middle phalanx, a little wider than the finger) and one around the palm at the
+ *  knuckles (the palm girth). Always the same number of segments, so a pose change only moves them. */
+export function measureRings(pose: readonly Vec3[]): Float32Array {
+  computeFrames(pose);
+  const seg: number[] = [];
+  const line = (a: ArrayLike<number>, b: ArrayLike<number>) => {
+    seg.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+  };
+  const P = [0, 0, 0];
+  const Q = [0, 0, 0];
+  for (const b of MEASURE_BONES) {
+    const [ra, rb] = BONE_RADII[b]!;
+    const o = b * FS;
+    const r = 1.4 * ((ra + rb) / 2);
+    const cx = FR[o] + 0.5 * FR[o + 3];
+    const cy = FR[o + 1] + 0.5 * FR[o + 4];
+    const cz = FR[o + 2] + 0.5 * FR[o + 5];
+    for (let i = 0; i < MEASURE_RING; i++) {
+      const a0 = (2 * Math.PI * i) / MEASURE_RING;
+      const a1 = (2 * Math.PI * (i + 1)) / MEASURE_RING;
+      for (let c = 0; c < 3; c++) {
+        const ctr = c === 0 ? cx : c === 1 ? cy : cz;
+        P[c] = ctr + r * (Math.cos(a0) * FR[o + 9 + c] + Math.sin(a0) * FR[o + 12 + c]);
+        Q[c] = ctr + r * (Math.cos(a1) * FR[o + 9 + c] + Math.sin(a1) * FR[o + 12 + c]);
+      }
+      line(P, Q);
+    }
+  }
+  // palm girth: a loop around the slab at the knuckles (over the front face, back over the rear face)
+  const hh = PALM_HALF_THICKNESS * 1.25;
+  const T = 0.62;
+  const N = 14;
+  const loop: number[][] = [];
+  const at = (p: number, w: number) => {
+    const k = clamp(Math.floor(p), 0, 2);
+    palmAt(p - k, T, 0, w, k, TMP);
+    loop.push([TMP[0], TMP[1], TMP[2]]);
+  };
+  for (let s = 0; s <= N; s++) at(PALM_P_MIN + ((PALM_P_MAX - PALM_P_MIN) * s) / N, hh);
+  for (let s = N; s >= 0; s--) at(PALM_P_MIN + ((PALM_P_MAX - PALM_P_MIN) * s) / N, -hh);
+  for (let i = 0; i < loop.length; i++) line(loop[i], loop[(i + 1) % loop.length]);
   return Float32Array.from(seg);
 }

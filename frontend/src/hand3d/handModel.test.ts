@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BONES, genericHand, handWire, normalizePose, poseSamples, sampleHand, type Landmark, type Vec3 } from "./handModel";
+import { BONES, genericHand, handWire, measureRings, normalizePose, poseSamples, sampleHand, type Landmark, type Vec3 } from "./handModel";
 
 const dist3 = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
@@ -255,5 +255,38 @@ describe("handWire", () => {
     const b = handWire(shifted);
     expect(b).toHaveLength(a.length);
     expect(b[0]).not.toBeCloseTo(a[0], 3);
+  });
+});
+
+describe("light theme geometry", () => {
+  it("handWire is unchanged by default and denser with { dense: true }", () => {
+    const hand = genericHand();
+    const base = handWire(hand);
+    expect(Array.from(handWire(hand, {}))).toEqual(Array.from(base));
+    expect(Array.from(handWire(hand, { dense: false }))).toEqual(Array.from(base));
+    const dense = handWire(hand, { dense: true });
+    expect(dense.length).toBeGreaterThan(base.length);
+    expect(dense.length % 6).toBe(0);
+    for (const v of dense) expect(Number.isFinite(v)).toBe(true);
+  });
+
+  it("measureRings: the same number of segments for every pose, all finite, and they follow the pose", () => {
+    const a = measureRings(genericHand());
+    expect(a.length % 6).toBe(0);
+    expect(a.length).toBeGreaterThan(0);
+    const shifted = genericHand().map((p) => ({ x: p.x + 2, y: p.y, z: p.z }));
+    const b = measureRings(shifted);
+    expect(b.length).toBe(a.length);
+    for (let i = 0; i < a.length; i += 3) expect(b[i] - a[i]).toBeCloseTo(2, 4);
+    for (const v of b) expect(Number.isFinite(v)).toBe(true);
+    const pixels = normalizePose(asImagePixels(300, { x: 50, y: 500, z: 0 }, true));
+    expect(measureRings(pixels).length).toBe(a.length);
+  });
+
+  it("each finger ring is a closed loop: consecutive segments join up", () => {
+    const r = measureRings(genericHand());
+    for (let i = 0; i < 19; i++) {
+      for (let c = 0; c < 3; c++) expect(r[i * 6 + 3 + c]).toBeCloseTo(r[(i + 1) * 6 + c], 5);
+    }
   });
 });

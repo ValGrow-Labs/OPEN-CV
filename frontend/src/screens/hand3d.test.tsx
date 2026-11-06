@@ -392,12 +392,12 @@ describe("the customer's hand on the result page", () => {
         ],
       }),
     );
-    const card = container.querySelector(".result-hand3d")!;
-    expect(card.querySelector("h2")!.textContent).toBe("Your hand");
+    const card = container.querySelector(".rv2-stage")!;
     expect(card.querySelector('[role="img"]')!.getAttribute("data-mode")).toBe("static");
     expect(screen.getByText("An illustration drawn from the 21 hand points we measured, not a 3D scan.")).toBeTruthy();
     const p = stages.at(-1)!;
     expect(p.landmarks).toBe(landmarks);
+    expect(p.theme).toBe("light"); // the result page's hand is drawn on the light stage
     expect(p.tags).toEqual([
       { joint: 8, label: "Index 72 mm" },
       { joint: 12, label: "Middle 78 mm" },
@@ -406,14 +406,35 @@ describe("the customer's hand on the result page", () => {
 
   it("is left out when there are no camera points (a tape-only result)", () => {
     const { container } = results(response({ status: "rejected", landmarks_px_median: null }));
-    expect(container.querySelector(".result-hand3d")).toBeNull();
+    expect(container.querySelector(".rv2-stage")).toBeNull();
     expect(screen.queryByText(/not a 3D scan/)).toBeNull();
   });
 
-  it("comes after the size, which still leads the page", () => {
+  it("sits in the first card, above the suggested size, with the details after it", () => {
     const { container } = results(response({ landmarks_px_median: goodFrame().landmarks }));
-    const hero = container.querySelector(".result-hero")!;
-    const hand = container.querySelector(".result-hand3d")!;
-    expect(hero.compareDocumentPosition(hand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const hero = container.querySelector(".rv2-hero")!;
+    const hand = hero.querySelector(".rv2-stage")!;
+    const size = hero.querySelector(".rv2-size")!;
+    expect(hand.compareDocumentPosition(size) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(hero.compareDocumentPosition(container.querySelector(".result-hero")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("labels the hand length between the points it is measured between, and only when measured", () => {
+    results(
+      response({
+        landmarks_px_median: goodFrame().landmarks,
+        measurements: [finger("hand_length_mm", 186.4), finger("mcp_span_mm", 80.2), finger("palm_breadth_mm", null, "not_measured")],
+      }),
+    );
+    expect(stages.at(-1)!.tags).toEqual([
+      { joint: 12, between: [0, 12], label: "Length 186 mm", emphasis: true },
+    ]);
+  });
+
+  it("says which coin set the scale, and never claims more than a size estimate", () => {
+    results(response({ landmarks_px_median: goodFrame().landmarks }));
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Hand measurement scan");
+    expect(screen.getByText(/an estimate from a camera/i)).toBeTruthy();
+    expect(screen.queryByText(/calibration: complete/i)).toBeNull();
   });
 });

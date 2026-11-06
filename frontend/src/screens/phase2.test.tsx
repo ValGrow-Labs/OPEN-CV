@@ -248,9 +248,9 @@ describe("uncertain recommendations", () => {
     const { container } = render(
       <ResultsScreen recommendation={rec} result={accepted} extraMeasurements={[]} onRescan={() => {}} onBack={() => {}} onStartOver={() => {}} />,
     );
-    expect(container.querySelector(".size-plate .size")!.textContent).toBe("S");
-    expect(container.querySelector(".size-plate-or")!.textContent).toBe("or M");
-    expect(screen.getByText("Most likely size")).toBeTruthy();
+    expect(container.querySelector(".rv2-size .size")!.textContent).toBe("S");
+    expect(container.querySelector(".rv2-size-side")!.textContent).toMatch(/or M/);
+    expect(screen.getByText("Most likely size:")).toBeTruthy();
     expect(screen.getByText(/but could also be XS, M, L/).textContent).toMatch(/A tape measurement would settle it\./);
     expect(container.querySelector(".size-tile")).toBeNull(); // still no *recommended* size
     expect(screen.queryByText("Recommended size")).toBeNull();

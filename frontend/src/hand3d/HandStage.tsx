@@ -44,6 +44,10 @@ export interface HandStageProps {
   onDegrade?: (reason: "disabled") => void;
   /** Overlay mode: what the layer may cost before it steps itself down (perfGuard.ts). */
   budget?: Budget;
+  /** "dark" (default): the glowing hand on a dark stage. "light": a blue hologram on a transparent background
+   *  (the page supplies a pale stage): normal blending, orbit rings, a fine mesh, navy labels and a bracket for
+   *  the hand length. Only the stage modes ("static", "scan") use it; "live" and "overlay" ignore it. */
+  theme?: "dark" | "light";
 }
 
 const Scene = lazy(() => import("./HandStageGL"));
@@ -110,9 +114,10 @@ export function HandStage(props: HandStageProps) {
     );
   }
 
+  const light = props.theme === "light" && props.mode !== "live";
   const fallback = <div className="hand-stage-fallback" aria-hidden="true" />;
   return (
-    <div className={`hand-stage ${className}`} role="img" aria-label={label}>
+    <div className={`hand-stage ${light ? "hand-stage--light " : ""}${className}`} role="img" aria-label={label}>
       {available ? (
         <SceneBoundary fallback={fallback} onError={() => undefined}>
           <Suspense fallback={fallback}>

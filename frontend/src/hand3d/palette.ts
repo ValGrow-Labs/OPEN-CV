@@ -42,6 +42,28 @@ export function toneAccentRgb(tone: Tone | undefined): string {
   return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
 }
 
+/** The light theme (the result page): a blue hologram on a pale stage, normal blending, so every colour must
+ *  read on white. ``ink`` is the navy of the labels and bracket; the ring colours give the orbit rings a white
+ *  core with a blue halo (and a touch of gold on the second ring). One table, so the scene and the CSS agree. */
+export const LIGHT_HEX = {
+  deep: "#0a3a8c",
+  mid: "#2b8cff",
+  glow: "#19b6ff",
+  pale: "#bfe6ff",
+  ink: "#0b1f4a",
+  measure: "#0b4fd0",
+  ringCore: "#ffffff",
+  ringHalo: "#7cc8ff",
+  ringGold: "#ffcf6a",
+} as const;
+export type LightRole = keyof typeof LIGHT_HEX;
+
+/** A light-theme colour as "r g b" (0-255), for CSS ``rgb(var(--tag-rgb) / a)``. */
+export function lightRgb(role: LightRole): string {
+  const n = parseInt(LIGHT_HEX[role].slice(1), 16);
+  return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+}
+
 /** Index of a role's first number in a palette array. */
 export const roleAt = (role: Role): number => ROLES.indexOf(role) * 3;
 

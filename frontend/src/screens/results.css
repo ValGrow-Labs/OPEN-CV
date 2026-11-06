@@ -1,0 +1,287 @@
+/* The results page: a light, cool "instrument" look (white and pale blue, navy ink, one blue accent).
+   Scoped to .results-v2, so the rest of the app keeps its own theme. The tokens are set on the page and,
+   where the browser supports :has(), on the body too, so the top bar and the background match. */
+
+body:has(.results-v2),
+.results-v2 {
+  --paper: #eef4fb;
+  --surface: #ffffff;
+  --surface-2: #f3f7fc;
+  --surface-3: #e3ebf6;
+  --ink: #0b1f4a;
+  --ink-2: #2b3d63;
+  --muted: #5f7091;
+  --line: rgba(11, 31, 74, 0.08);
+  --line-strong: rgba(11, 31, 74, 0.16);
+  --accent: #1f5eea;
+  --accent-hover: #174ecb;
+  --accent-ink: #ffffff;
+  --accent-text: #1a4fd0;
+  --accent-soft: rgba(31, 94, 234, 0.09);
+  --accent-line: rgba(31, 94, 234, 0.3);
+  --glow: rgba(31, 94, 234, 0.12);
+  --lift: 0 30px 60px -38px rgba(20, 60, 140, 0.36), 0 2px 8px rgba(20, 60, 140, 0.05);
+  --focus: 0 0 0 3px rgba(31, 94, 234, 0.35);
+  --ring: 0 0 0 1px rgba(11, 31, 74, 0.07);
+  --tint: rgba(11, 31, 74, 0.04);
+  --shell: rgba(11, 31, 74, 0.04);
+  --shell-line: rgba(11, 31, 74, 0.08);
+  --hover-line: #b4c3dc;
+  --btn-bg: #1f5eea;
+  --btn-bg-hover: #174ecb;
+  --btn-ink: #ffffff;
+  --display: var(--font);
+}
+
+body:has(.results-v2) {
+  background:
+    radial-gradient(900px 520px at 50% 18%, rgba(255, 255, 255, 0.95), transparent 70%),
+    radial-gradient(1100px 600px at 12% -10%, rgba(120, 170, 255, 0.16), transparent 62%),
+    var(--paper);
+}
+
+.results-v2 {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  color: var(--ink);
+}
+
+/* Fine circuit traces either side of the hero, like the reference. Wide screens only. */
+@media (min-width: 960px) {
+  .results-v2::before,
+  .results-v2::after {
+    content: "";
+    position: absolute;
+    top: 150px;
+    width: 340px;
+    height: 220px;
+    z-index: -1;
+    background-repeat: no-repeat;
+    pointer-events: none;
+  }
+  .results-v2::before {
+    left: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='220' fill='none' stroke='%23bccbe1' stroke-width='1.2'%3E%3Cpath d='M0 150H90L130 110H230'/%3E%3Cpath d='M0 176H70L120 126H200'/%3E%3Cpath d='M0 124H56L88 94H170'/%3E%3Cpath d='M0 96H40L64 72H120'/%3E%3Ccircle cx='234' cy='110' r='3.5'/%3E%3Ccircle cx='204' cy='126' r='3.5'/%3E%3Ccircle cx='174' cy='94' r='3.5'/%3E%3Ccircle cx='124' cy='72' r='3.5'/%3E%3C/svg%3E");
+  }
+  .results-v2::after {
+    right: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='220' fill='none' stroke='%23bccbe1' stroke-width='1.2'%3E%3Cpath d='M340 150H250L210 110H110'/%3E%3Cpath d='M340 176H270L220 126H140'/%3E%3Cpath d='M340 124H284L252 94H170'/%3E%3Cpath d='M340 96H300L276 72H220'/%3E%3Ccircle cx='106' cy='110' r='3.5'/%3E%3Ccircle cx='136' cy='126' r='3.5'/%3E%3Ccircle cx='166' cy='94' r='3.5'/%3E%3Ccircle cx='216' cy='72' r='3.5'/%3E%3C/svg%3E");
+  }
+}
+
+/* ----------------------------------------------------------------------------- the hero */
+
+.rv2-hero {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 26px clamp(16px, 5vw, 26px) 22px;
+  border-radius: 34px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(11, 31, 74, 0.06),
+    0 46px 90px -44px rgba(20, 60, 140, 0.42),
+    0 3px 10px rgba(20, 60, 140, 0.06);
+}
+
+/* A soft glass disc behind the hero, with two hairline rings (wide screens only, so it never overflows a phone). */
+@media (min-width: 720px) {
+  .rv2-hero::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: 50%;
+    top: 46%;
+    width: 760px;
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.95) 62%, rgba(214, 228, 247, 0.55) 100%);
+    box-shadow:
+      0 0 0 1px rgba(170, 195, 230, 0.45),
+      0 0 0 22px rgba(255, 255, 255, 0.4),
+      0 0 0 23px rgba(170, 195, 230, 0.28);
+    pointer-events: none;
+  }
+}
+
+.rv2-head {
+  display: grid;
+  gap: 4px;
+}
+
+.rv2-title {
+  margin: 0;
+  font-size: clamp(1.25rem, 4.6vw, 1.55rem);
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.rv2-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.rv2-stage {
+  margin: 4px -6px 0;
+  position: relative;
+}
+
+.rv2-stage-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1.2;
+  max-height: 470px;
+  background: radial-gradient(58% 52% at 50% 50%, rgba(110, 185, 255, 0.2), rgba(110, 185, 255, 0) 72%);
+}
+
+.rv2-stage-box > .hand-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.rv2-caption {
+  margin: 2px 6px 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* The suggested size, in a white card like the reference. */
+.rv2-size {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #dde6f2;
+  box-shadow: 0 10px 26px -18px rgba(20, 60, 140, 0.4);
+}
+
+.rv2-size-caption {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rv2-size-letter {
+  font-family: var(--font);
+  font-size: clamp(2.4rem, 11vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.rv2-size-none {
+  margin-top: 4px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rv2-size-side {
+  display: grid;
+  gap: 1px;
+  text-align: right;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.rv2-size-side strong {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.rv2-note {
+  margin: 10px 4px 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--muted);
+}
+
+.rv2-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.rv2-cta {
+  appearance: none;
+  display: block;
+  width: 100%;
+  padding: 13px 18px;
+  border: 0;
+  border-radius: 999px;
+  font: 650 0.84rem/1.2 var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(180deg, #4d8dff 0%, #1f5eea 52%, #1747cf 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 0 rgba(8, 30, 110, 0.25),
+    0 0 0 2px rgba(31, 94, 234, 0.18),
+    0 14px 26px -12px rgba(31, 94, 234, 0.65);
+  transition: transform 0.18s var(--ease-out, ease), box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.rv2-cta:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.rv2-cta:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.rv2-cta-ghost {
+  color: var(--ink-2);
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #c9d6ea;
+}
+
+.rv2-cta-ghost:hover {
+  filter: none;
+  background: #f5f8fd;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rv2-cta {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ the rest of the page */
+
+.results-v2 .card {
+  border-radius: 24px;
+  box-shadow: 0 0 0 1px rgba(11, 31, 74, 0.06), 0 26px 50px -34px rgba(20, 60, 140, 0.32);
+}
+
+.results-v2 .meter span {
+  border-radius: 3px;
+}
+
+.results-v2 .actions {
+  justify-content: center;
+}

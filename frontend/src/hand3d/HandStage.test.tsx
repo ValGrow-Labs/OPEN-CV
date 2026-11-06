@@ -58,6 +58,44 @@ describe("HandStage wrapper (jsdom has no WebGL)", () => {
   });
 });
 
+describe("theme (dark by default, light for the result page)", () => {
+  const pose = Array.from({ length: 21 }, (_, i) => ({ x: i, y: i }));
+
+  it("is the dark stage unless asked: no light class", () => {
+    for (const mode of ["scan", "static", "live"] as const) {
+      const { container, unmount } = render(<HandStage mode={mode} landmarks={pose} />);
+      expect(container.querySelector(".hand-stage--light")).toBeNull();
+      expect(container.querySelector(".hand-stage")).not.toBeNull();
+      unmount();
+    }
+    const { container } = render(<HandStage mode="static" theme="dark" landmarks={pose} />);
+    expect(container.querySelector(".hand-stage--light")).toBeNull();
+  });
+
+  it("theme=light adds hand-stage--light next to the existing classes for the stage modes", () => {
+    for (const mode of ["static", "scan"] as const) {
+      const { container, unmount } = render(<HandStage mode={mode} theme="light" landmarks={pose} className="mine" label={`light ${mode}`} />);
+      const stage = screen.getByRole("img", { name: `light ${mode}` });
+      expect(stage.classList.contains("hand-stage")).toBe(true);
+      expect(stage.classList.contains("hand-stage--light")).toBe(true);
+      expect(stage.classList.contains("mine")).toBe(true);
+      expect(container.querySelector(".hand-stage-fallback")).not.toBeNull(); // no WebGL here: the CSS fallback
+      unmount();
+    }
+  });
+
+  it("the live tile and the overlay ignore the theme", () => {
+    const live = render(<HandStage mode="live" theme="light" />);
+    expect(live.container.querySelector(".hand-stage--light")).toBeNull();
+    live.unmount();
+    const getContext = vi.mocked(HTMLCanvasElement.prototype.getContext);
+    getContext.mockReturnValue({} as unknown as RenderingContext);
+    const overlay = render(<HandStage mode="overlay" theme="light" onDegrade={() => undefined} />);
+    expect(overlay.container.querySelector(".hand-stage--light")).toBeNull();
+    expect(overlay.container.querySelector(".hand-stage-overlay")).not.toBeNull();
+  });
+});
+
 describe("overlay mode (the camera view as a 3D measuring display)", () => {
   it("without WebGL renders nothing and tells the screen once, so it keeps its 2D drawing", () => {
     const onDegrade = vi.fn();

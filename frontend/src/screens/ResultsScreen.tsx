@@ -3,8 +3,9 @@ import { HandStage, type HandStageTag } from "../hand3d/HandStage";
 import { Badge } from "../ui/components";
 import { CONFIDENCE, fingerBendDetail, fmtMm } from "../ui/format";
 import { MeasureList, type MeasureItem } from "../ui/measureList";
-import { ButtonIcon, stagger } from "../ui/motion";
+import { stagger } from "../ui/motion";
 import { hasViews, ViewsNotice, ViewsTable } from "../ui/viewsBlock";
+import "./results.css";
 
 interface Props {
   recommendation: Recommendation;
@@ -39,6 +40,17 @@ const FINGER_TAGS: { key: string; name: string; joint: number }[] = [
   { key: "little_length_mm", name: "Little", joint: 20 },
 ];
 
+// Plain words for the usual size letters, shown only when the recommended size is one of them.
+const SIZE_WORDS: Record<string, string> = {
+  XS: "Extra small",
+  S: "Small",
+  M: "Medium",
+  L: "Large",
+  XL: "Extra large",
+  XXL: "Double extra large",
+  "2XL": "Double extra large",
+};
+
 const SPLNTD_CIRCUMFERENCES = [
   { finger: "Thumb", base: "75 mm", tip: "65 mm" },
   { finger: "Index", base: "70 mm", tip: "55 mm" },
@@ -57,11 +69,27 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
   const byKey = new Map<string, Measurement>();
   for (const m of [...result.measurements, ...extraMeasurements]) byKey.set(m.key, m);
   // A finger is labelled only when it was measured (a tape-only result has no camera finger lengths).
-  const tags: HandStageTag[] = FINGER_TAGS.flatMap((f) => {
-    const m = byKey.get(f.key);
-    const ok = m && m.value_mm !== null && m.status !== "invalid" && m.status !== "not_measured";
-    return ok ? [{ joint: f.joint, label: `${f.name} ${fmtMm(m.value_mm as number)}` }] : [];
-  });
+  const measured = (key: string): number | null => {
+    const m = byKey.get(key);
+    return m && m.value_mm !== null && m.status !== "invalid" && m.status !== "not_measured" ? m.value_mm : null;
+  };
+  const tags: HandStageTag[] = [
+    ...FINGER_TAGS.flatMap((f) => {
+      const v = measured(f.key);
+      return v === null ? [] : [{ joint: f.joint, label: `${f.name} ${fmtMm(v)}` }];
+    }),
+    // The hand length is drawn between the two landmarks it is measured between (wrist and middle fingertip).
+    ...((): HandStageTag[] => {
+      const v = measured("hand_length_mm");
+      return v === null ? [] : [{ joint: 12, between: [0, 12], label: `Length ${fmtMm(v)}`, emphasis: true }];
+    })(),
+  ];
+  const calibration = result.calibration
+    ? `Calibration: ${result.calibration.reference_label} (${result.calibration.reference_diameter_mm.toFixed(2)} mm)`
+    : "Based on the tape measurement you entered";
+  const heroSize = rec.size ?? closest;
+  const sizeWord = rec.size ? SIZE_WORDS[rec.size.toUpperCase()] : undefined;
+  const showMeasurements = () => document.getElementById("measures-heading")?.scrollIntoView({ block: "start" });
   const items = (defs: Omit<MeasureItem, "m">[]) =>
     defs.map((d) => {
       const m = byKey.get(d.key);
@@ -69,16 +97,68 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
     });
 
   return (
-    <main className="page stack stack-lg">
-      <header className="page-head">
-        <span className="eyebrow">Your size</span>
-        <h1 className="page-title">Your glove size results</h1>
-        <p className="lead">
-          {result.status === "rejected"
-            ? "Based on the tape measurement you entered."
-            : `Based on ${result.frames_accepted} camera frames that passed every quality check.`}
-        </p>
-      </header>
+    <main className="page stack stack-lg results-v2">
+      <section className="rv2-hero" aria-labelledby="rv2-title">
+        <header className="rv2-head">
+          <h1 id="rv2-title" className="rv2-title">
+            Hand measurement scan
+          </h1>
+          <p className="rv2-sub">{calibration}</p>
+        </header>
+
+        {result.landmarks_px_median && (
+          <figure className="rv2-stage">
+            <div className="rv2-stage-box">
+              <HandStage
+                mode="static"
+                theme="light"
+                landmarks={result.landmarks_px_median}
+                tags={tags}
+                label="A glowing 3D model of your hand with its measured lengths"
+              />
+            </div>
+            <figcaption className="rv2-caption">An illustration drawn from the 21 hand points we measured, not a 3D scan.</figcaption>
+          </figure>
+        )}
+
+        <div className="rv2-size" role="group" aria-labelledby="size-heading">
+          <div className="rv2-size-main">
+            <div className="rv2-size-caption" id="size-heading">
+              {rec.size && rec.status !== "needs_more_data" ? "Suggested size:" : "Most likely size:"}
+            </div>
+            {heroSize ? <div className="size rv2-size-letter">{heroSize}</div> : <div className="rv2-size-none">No size yet</div>}
+          </div>
+          <div className="rv2-size-side">
+            {rec.size && sizeWord ? (
+              <>
+                <span>Estimated best fit:</span>
+                <strong>{sizeWord}</strong>
+              </>
+            ) : rec.size ? (
+              <>
+                <span>Estimated best fit</span>
+                {product && <strong>{product}</strong>}
+              </>
+            ) : (
+              <>
+                <span>Not a recommendation</span>
+                <strong>{rec.closest_alternative ? `or ${rec.closest_alternative}` : "A tape measurement would settle it"}</strong>
+              </>
+            )}
+          </div>
+        </div>
+
+        <p className="rv2-note">An estimate from a camera. It cannot guarantee how a glove will fit.</p>
+
+        <div className="rv2-actions">
+          <button className="rv2-cta" onClick={showMeasurements}>
+            See full measurements
+          </button>
+          <button className="rv2-cta rv2-cta-ghost" onClick={onRescan}>
+            Rescan
+          </button>
+        </div>
+      </section>
 
       {rec.is_demo_chart && (
         <div className="notice notice-demo small" role="note">
@@ -88,79 +168,65 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
 
       <ViewsNotice result={result} />
 
-      <section className="card stack result-hero" aria-labelledby="size-heading">
+      <section className="card stack result-hero" aria-label="About this estimate">
+        <p className="lead">
+          {result.status === "rejected"
+            ? "Based on the tape measurement you entered."
+            : `Based on ${result.frames_accepted} camera frames that passed every quality check.`}
+        </p>
         {rec.size ? (
-          <div className="size-hero">
-            <div className="size-tile">
-              <div className="size-caption" id="size-heading">
-                {rec.status === "needs_more_data" ? "Most likely size" : "Recommended size"}
-              </div>
-              <div className="size">{rec.size}</div>
-            </div>
-            <div className="stack size-facts">
-              {product && <div className="muted">{product}</div>}
-              {rec.alternative_size && (
-                <p>
-                  <strong>Also consider size {rec.alternative_size}.</strong>{" "}
-                  <span className="muted">Your measurement is close to the boundary between the two sizes.</span>
-                </p>
-              )}
-              {level && (
-                <div className="confidence">
-                  <div className="confidence-head">
-                    <span className="small">Measurement confidence</span>
-                    <strong className="small">{CONFIDENCE[level].label}</strong>
-                  </div>
-                  <div className={`meter level-${level}`} aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <p className="small muted">{CONFIDENCE[level].text}</p>
+          <div className="stack size-facts">
+            {product && <div className="muted">{product}</div>}
+            {rec.alternative_size && (
+              <p>
+                <strong>Also consider size {rec.alternative_size}.</strong>{" "}
+                <span className="muted">Your measurement is close to the boundary between the two sizes.</span>
+              </p>
+            )}
+            {level && (
+              <div className="confidence">
+                <div className="confidence-head">
+                  <span className="small">Measurement confidence</span>
+                  <strong className="small">{CONFIDENCE[level].label}</strong>
                 </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className={closest ? "size-hero" : "stack"}>
-            {closest && (
-              <div className="size-plate" aria-labelledby="plate-caption">
-                <div className="size-caption" id="plate-caption">
-                  Most likely size
+                <div className={`meter level-${level}`} aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
                 </div>
-                <div className="size">{closest}</div>
-                {rec.closest_alternative && <div className="size-plate-or">or {rec.closest_alternative}</div>}
+                <p className="small muted">{CONFIDENCE[level].text}</p>
               </div>
             )}
-            <div className="stack size-facts">
-              <h2 id="size-heading">More information needed</h2>
-              <p>
-                A reliable glove size recommendation cannot yet be determined from the available camera data.
-                {closest && (
-                  <>
-                    {" "}
-                    Your camera reading falls in size <strong>{closest}</strong>
-                    {alsoPossible.length > 0 && <>, but could also be {alsoPossible.join(", ")}</>}. A tape measurement would settle it.
-                  </>
-                )}
-              </p>
-              {rec.plausible_sizes.length > 0 && (
-                <div className="row" aria-label="Sizes that are still possible">
-                  <span className="small muted">Plausible sizes:</span>
-                  {rec.plausible_sizes.map((s) => (
-                    <Badge key={s} tone={s === closest ? "good" : "neutral"}>
-                      {s}
-                      {s === closest && <span className="visually-hidden"> (closest to your reading)</span>}
-                    </Badge>
-                  ))}
-                </div>
+          </div>
+        ) : (
+          <div className="stack size-facts">
+            <h2 id="need-more-heading">More information needed</h2>
+            <p>
+              A reliable glove size recommendation cannot yet be determined from the available camera data.
+              {closest && (
+                <>
+                  {" "}
+                  Your camera reading falls in size <strong>{closest}</strong>
+                  {alsoPossible.length > 0 && <>, but could also be {alsoPossible.join(", ")}</>}. A tape measurement would settle it.
+                </>
               )}
-              <div>
-                <button className="btn btn-primary" onClick={onBack}>
-                  Add a tape measurement
-                </button>
+            </p>
+            {rec.plausible_sizes.length > 0 && (
+              <div className="row" aria-label="Sizes that are still possible">
+                <span className="small muted">Plausible sizes:</span>
+                {rec.plausible_sizes.map((s) => (
+                  <Badge key={s} tone={s === closest ? "good" : "neutral"}>
+                    {s}
+                    {s === closest && <span className="visually-hidden"> (closest to your reading)</span>}
+                  </Badge>
+                ))}
               </div>
+            )}
+            <div>
+              <button className="btn btn-primary" onClick={onBack}>
+                Add a tape measurement
+              </button>
             </div>
           </div>
         )}
@@ -180,18 +246,6 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
           </p>
         )}
       </section>
-
-      {result.landmarks_px_median && (
-        <section className="card result-hand3d" aria-labelledby="hand3d-heading" data-reveal>
-          <div className="section-head">
-            <h2 id="hand3d-heading">Your hand</h2>
-          </div>
-          <div className="result-hand3d-stage">
-            <HandStage mode="static" landmarks={result.landmarks_px_median} tags={tags} label="A glowing 3D model of your hand with finger lengths" />
-          </div>
-          <p className="small muted result-hand3d-caption">An illustration drawn from the 21 hand points we measured, not a 3D scan.</p>
-        </section>
-      )}
 
       <section className="card" aria-labelledby="measures-heading" data-reveal>
         <div className="section-head">
@@ -312,10 +366,6 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
       </div>
 
       <div className="actions">
-        <button className="btn btn-primary btn-lg btn-island" onClick={onRescan}>
-          Rescan
-          <ButtonIcon />
-        </button>
         <button className="btn" onClick={onBack}>
           Back to measurements
         </button>

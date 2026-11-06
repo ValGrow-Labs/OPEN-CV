@@ -181,3 +181,111 @@
     transition: none;
   }
 }
+
+/* ---- Light theme (the result page): a blue hologram on whatever pale stage the page draws behind it.
+   The wrapper is transparent; the scene uses normal blending; labels are navy ink with a thin leader. ---- */
+.hand-stage--light {
+  --tag-rgb: 25 182 255;
+  --hs-ink: #0b1f4a;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  color: var(--hs-ink);
+}
+
+.hand-stage--light .hand-stage-gl canvas {
+  cursor: default;
+}
+
+.hand-stage--light .hand-stage-tag {
+  padding: 0 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--hs-ink);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgb(255 255 255 / 0.9), 0 0 2px rgb(255 255 255 / 0.9);
+}
+
+.hand-stage--light .hand-stage-tag-name::after {
+  content: ":";
+}
+
+.hand-stage--light .hand-stage-tag-val {
+  text-transform: none; /* "mm" stays lower case, as in the design */
+  font-weight: 600;
+}
+
+/* leader: a thin navy line ending in a small hollow ring with a blue glow */
+.hand-stage--light .hand-stage-tag::after {
+  width: 1px;
+  background: linear-gradient(var(--hs-ink), rgb(11 31 74 / 0.25));
+}
+
+.hand-stage--light .hand-stage-tag::before {
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  top: calc(100% + var(--lead, 14px) - 3px);
+  border: 1.5px solid #19a0ff;
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 0 8px 1px rgb(25 160 255 / 0.75);
+}
+
+/* the hand length: a vertical bracket with end ticks, the label beside it (left of the line) */
+.hand-stage--light .hand-stage-tag--bracket {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  min-width: 3.2em;
+  max-width: 6.4em;
+  padding: 0 8px 0 0;
+  border-right: 1px solid var(--hs-ink);
+  text-align: right;
+  white-space: normal;
+  font-size: 11px;
+}
+
+.hand-stage--light .hand-stage-tag--bracket .hand-stage-tag-val {
+  display: block;
+}
+
+.hand-stage--light .hand-stage-tag--bracket::before,
+.hand-stage--light .hand-stage-tag--bracket::after {
+  left: auto;
+  right: -4px;
+  width: 7px;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--hs-ink);
+  box-shadow: none;
+}
+
+.hand-stage--light .hand-stage-tag--bracket::before {
+  top: 0;
+}
+
+.hand-stage--light .hand-stage-tag--bracket::after {
+  top: auto;
+  bottom: 0;
+}
+
+.hand-stage--light .hand-stage-fallback::before {
+  border-color: rgb(25 160 255 / 0.55);
+  background: radial-gradient(closest-side, rgb(43 140 255 / 0.28), rgb(43 140 255 / 0) 78%);
+  box-shadow: 0 0 40px rgb(25 182 255 / 0.3), inset 0 0 26px rgb(43 140 255 / 0.2);
+}
+
+.hand-stage--light .hand-stage-fallback::after {
+  border-color: rgb(25 160 255 / 0.5);
+  box-shadow: 0 0 18px rgb(25 182 255 / 0.3);
+}

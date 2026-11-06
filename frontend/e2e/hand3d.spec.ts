@@ -178,23 +178,24 @@ async function handInTheFlow(page: Page, tag: string) {
   await page.getByLabel("Unit").selectOption("mm");
   await page.getByLabel("Hand length").fill("181");
   await page.getByRole("button", { name: "See my size" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your glove size results");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hand measurement scan");
 
-  // The result page: the size still leads; the customer's own hand follows, with the honest caption.
-  const card = page.locator(".result-hand3d");
+  // The result page: one card with the customer's own hand, the suggested size and the honest caption.
+  const card = page.locator(".rv2-hero");
   await card.scrollIntoViewIfNeeded();
-  await expect(card.getByRole("heading", { name: "Your hand" })).toBeVisible();
   await expect(card.getByText("An illustration drawn from the 21 hand points we measured, not a 3D scan.")).toBeVisible();
   await expect(card.getByRole("img")).toBeVisible();
-  const hero = await box(page, ".result-hero");
-  const h = await box(page, ".result-hand3d");
-  expect(h.y).toBeGreaterThan(hero.y + hero.height - 1);
-  const s = await box(page, ".result-hand3d-stage");
+  await expect(card.locator(".rv2-size .size")).toBeVisible();
+  const hand = await box(page, ".rv2-stage");
+  const size = await box(page, ".rv2-size");
+  expect(size.y).toBeGreaterThan(hand.y + hand.height - 1); // the size sits below the hand
+  const s = await box(page, ".rv2-stage-box");
   expect(s.width).toBeLessThanOrEqual(vp.width);
-  expect(s.height).toBeLessThanOrEqual(Math.max(vp.height * 0.46, 420) + 1); // capped: phones ~46vh, wide screens 420px
+  expect(s.height).toBeLessThanOrEqual(471); // capped
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.waitForTimeout(1200);
   await card.screenshot({ path: `test-results/hand3d-${tag}-result.png` });
+  await page.screenshot({ path: `test-results/hand3d-${tag}-result-page.png`, fullPage: true });
   expect(errors).toEqual([]);
 }
 

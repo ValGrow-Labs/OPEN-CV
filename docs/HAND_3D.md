@@ -84,3 +84,14 @@ phone GPU (see below).
   layer reduces itself and then goes away rather than slow the scan.
 * The look was checked on one still photograph with MediaPipe's own landmarks (bright and dark backgrounds, mirrored,
   with and without depth, at 360 and 390 px wide), not on live video of many hands.
+
+## The result page's light stage
+
+The result page shows the hand on a light stage (white and pale blue, navy ink), as one card with the size:
+`HandStage` takes `theme="light"` (default `"dark"`; the live overlay and the calculating screen are unchanged).
+The look is display-only: it reads the same 21 landmarks and measured values as before and changes no
+measurement, threshold or config. Labels show only what was measured (the four finger lengths and the hand
+length); nothing is added for circumference or palm girth, which the camera does not measure. The card says
+which coin set the scale, never that calibration is "complete", and keeps the line that a camera estimate cannot
+guarantee fit. Styles: `frontend/src/screens/results.css` (scoped to `.results-v2`) and `.hand-stage--light` in
+`handStage.css`. Real-phone speed of the extra layers (orbit rings, sparkles) has not been timed.

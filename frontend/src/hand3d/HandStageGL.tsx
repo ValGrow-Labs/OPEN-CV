@@ -26,6 +26,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
   Points,
   RingGeometry,
   Scene,
@@ -36,7 +37,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { HandStageProps } from "./HandStage";
 import HandOverlayGL from "./HandOverlayGL";
-import { genericHand, handWire, normalizePose, poseSamples, sampleHand, type Landmark, type SampledHand, type Vec3 } from "./handModel";
+import { genericHand, handWire, measureRings, normalizePose, poseSamples, sampleHand, type Landmark, type SampledHand, type Vec3 } from "./handModel";
+import { bracketBox, splitLabel } from "./lightLayout";
+import { LIGHT_HEX } from "./palette";
 
 const FOV = 36;
 const FLOOR_Y = -0.62; // the floor, in the spinning frame (the wrist sits at -0.5)
@@ -52,6 +55,12 @@ const LIVE_FPS = 24;
 
 const BLUE = new Color("#2b8cff");
 const CYAN = new Color("#19e6e6");
+
+// The light theme (result page): normal blending on a pale stage, so colours are saturated blues.
+const SWING_LIGHT_RAD = (20 * Math.PI) / 180; // the labels sit beside the hand: it sways a little less
+const L_DEEP = new Color(LIGHT_HEX.deep);
+const L_MID = new Color(LIGHT_HEX.mid);
+const L_GLOW = new Color(LIGHT_HEX.glow);
 
 const POINT_VERT = /* glsl */ `
   attribute float aGlow;
@@ -197,6 +206,106 @@ function pointMaterial(size: number, alpha: number, drift: number): ShaderMateri
   });
 }
 
+// Light theme points: a soft blue speck whose colour climbs from deep blue to bright cyan-blue with its glow,
+// drawn with normal alpha blending (additive light would vanish on a white page).
+const LIGHT_POINT_FRAG = /* glsl */ `
+  uniform vec3 uDeep;
+  uniform vec3 uMid;
+  uniform vec3 uGlow;
+  uniform float uAlpha;
+  uniform float uDim;
+  varying float vGlow;
+  varying float vBeam;
+  varying float vTw;
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float r = length(c) * 2.0;
+    if (r > 1.0) discard;
+    float a = pow(1.0 - r, 1.35);
+    float g = clamp(vGlow * vTw + vBeam * 0.55, 0.0, 1.25);
+    vec3 col = mix(uDeep, uMid, smoothstep(0.0, 0.12, g));
+    col = mix(col, uGlow, smoothstep(0.15, 0.8, g));
+    float k = (0.4 + g * 0.8) * uAlpha * uDim;
+    gl_FragColor = vec4(col, clamp(a * k, 0.0, 1.0));
+  }
+`;
+
+function lightPointMaterial(size: number, alpha: number, drift: number): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: POINT_VERT,
+    fragmentShader: LIGHT_POINT_FRAG,
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uScale: { value: 800 },
+      uSize: { value: size },
+      uBeam: { value: -9 },
+      uDrift: { value: drift },
+      uTwinkle: { value: 1 },
+      uDeep: { value: L_DEEP },
+      uMid: { value: L_MID },
+      uGlow: { value: L_GLOW },
+      uAlpha: { value: alpha },
+      uDim: { value: 1 },
+    },
+  });
+}
+
+// A soft cyan aura behind the hand (a radial gradient on a quad that faces the camera).
+const AURA_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const AURA_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  varying vec2 vUv;
+  void main() {
+    float d = length((vUv - 0.5) * vec2(1.0, 0.9)) * 2.0;
+    float a = pow(clamp(1.0 - d, 0.0, 1.0), 2.2) * uAlpha;
+    gl_FragColor = vec4(uColor, a);
+  }
+`;
+
+interface OrbitLayer {
+  inner: number;
+  outer: number;
+  color: string;
+  opacity: number;
+}
+
+/** One luminous orbit ring: layered flat rings (a wide faint halo, a blue body, a white-hot core), each split in
+ *  two halves so the back half can be drawn behind the hand and the front half in front of it. The ring lies in
+ *  the group's XZ plane; its front (towards the camera) is the half with z > 0. */
+function orbitRing(radius: number, halo: string, layers: readonly [number, number, number][]): { group: Group; disposables: (BufferGeometry | MeshBasicMaterial)[] } {
+  const group = new Group();
+  const disposables: (BufferGeometry | MeshBasicMaterial)[] = [];
+  const spec: OrbitLayer[] = layers.map(([w, op, which]) => ({
+    inner: radius - w / 2,
+    outer: radius + w / 2,
+    color: which === 0 ? halo : which === 1 ? LIGHT_HEX.mid : LIGHT_HEX.ringCore,
+    opacity: op,
+  }));
+  spec.forEach((l, i) => {
+    const mat = new MeshBasicMaterial({ color: l.color, transparent: true, opacity: l.opacity, depthWrite: false, side: DoubleSide });
+    disposables.push(mat);
+    // after a -90 degree turn about x, geometry y < 0 (theta in pi..2pi) faces the camera
+    for (const front of [false, true]) {
+      const geo = new RingGeometry(l.inner, l.outer, 120, 1, front ? Math.PI : 0, Math.PI);
+      disposables.push(geo);
+      const m = new Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.renderOrder = front ? 3 + i * 0.01 : -2 + i * 0.01;
+      group.add(m);
+    }
+  });
+  return { group, disposables };
+}
+
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** The camera overlay or the stage scenes, by mode. */
@@ -226,6 +335,8 @@ function ClassicScene(props: HandStageProps) {
     const liveTile = propsRef.current.mode === "live";
     const count = liveTile ? COUNT_LIVE : phone || lowEnd ? COUNT_SMALL : COUNT_LARGE;
     const reduce = reducedMotion();
+    // the light theme belongs to the stage modes: a live tile and the overlay never use it
+    const light = propsRef.current.theme === "light" && propsRef.current.mode !== "live";
 
     let renderer: WebGLRenderer;
     try {
@@ -280,21 +391,29 @@ function ClassicScene(props: HandStageProps) {
     dustGeo.setAttribute("aDir", new BufferAttribute(dir, 3));
     dustGeo.setDrawRange(0, dustCount);
 
-    const handMat = pointMaterial(0.02, 1.15, 0);
-    const dustMat = pointMaterial(0.022, 0.3, 0.07);
+    const handMat = light ? lightPointMaterial(0.017, 0.95, 0) : pointMaterial(0.02, 1.15, 0);
+    const dustMat = light ? lightPointMaterial(0.026, 0.5, 0.12) : pointMaterial(0.022, 0.3, 0.07);
     const reflectMat = pointMaterial(0.02, 0.2, 0);
+    // light theme: a soft, wide glow under the fine points (a third of them, big and faint) so the hand reads as luminous
+    const bloomMat = light ? lightPointMaterial(0.08, 0.17, 0.02) : null;
+    const pointMats: ShaderMaterial[] = [handMat, dustMat, reflectMat];
+    if (bloomMat) pointMats.push(bloomMat);
+    const wireOpacity = light ? 0.5 : 0.16;
 
-    const wire0 = handWire(generic);
+    const wire0 = handWire(generic, { dense: light });
     let wireAttr = new BufferAttribute(new Float32Array(wire0), 3);
     const wireGeo = new BufferGeometry();
     wireGeo.setAttribute("position", wireAttr);
-    const wireMat = new LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.16, blending: AdditiveBlending, depthWrite: false });
+    const wireMat = light
+      ? new LineBasicMaterial({ color: L_MID, transparent: true, opacity: wireOpacity, depthWrite: false })
+      : new LineBasicMaterial({ color: CYAN, transparent: true, opacity: wireOpacity, blending: AdditiveBlending, depthWrite: false });
 
     const makeRig = (reflect: boolean) => {
       const rig = new Group();
       rig.position.y = RIG_Y;
       rig.add(new Points(handGeo, reflect ? reflectMat : handMat));
       if (!reflect) {
+        if (bloomMat) rig.add(new Points(dustGeo, bloomMat));
         rig.add(new Points(dustGeo, dustMat));
         rig.add(new LineSegments(wireGeo, wireMat));
       }
@@ -307,7 +426,89 @@ function ClassicScene(props: HandStageProps) {
     mirror.position.y = 2 * FLOOR_Y;
     mirror.scale.y = -1;
     mirror.add(makeRig(true));
-    spinner.add(mirror);
+    if (!light) spinner.add(mirror);
+
+    // ---- light theme only: measuring rings, sparkles around the hand, an aura, and two luminous orbit rings
+    const lightDispose: { dispose(): void }[] = [];
+    let measureAttr: BufferAttribute | null = null;
+    let orbitA: Group | null = null;
+    let orbitB: Group | null = null;
+    if (light) {
+      const mGeo = new BufferGeometry();
+      measureAttr = new BufferAttribute(measureRings(generic), 3);
+      mGeo.setAttribute("position", measureAttr);
+      const mMat = new LineBasicMaterial({ color: LIGHT_HEX.measure, transparent: true, opacity: 0.85, depthWrite: false });
+      const mLines = new LineSegments(mGeo, mMat);
+      mLines.renderOrder = 1;
+      const mRig = new Group();
+      mRig.position.y = RIG_Y;
+      mRig.add(mLines);
+      spinner.add(mRig);
+      lightDispose.push(mGeo, mMat);
+      if (bloomMat) lightDispose.push(bloomMat);
+
+      // sparkles: a loose shell around the hand, denser close to its outline, drifting gently
+      const nSpark = phone || lowEnd ? 260 : 520;
+      const sp = new Float32Array(nSpark * 3);
+      const sSeed = new Float32Array(nSpark);
+      const sGlow = new Float32Array(nSpark);
+      const sDir = new Float32Array(nSpark * 3);
+      const sr = rng(23);
+      for (let i = 0; i < nSpark; i++) {
+        const u = sr() * 2 - 1;
+        const a = sr() * Math.PI * 2;
+        const q = Math.sqrt(1 - u * u);
+        const dx = q * Math.cos(a);
+        const dz = q * Math.sin(a);
+        const k = 0.95 + 0.85 * sr() * sr();
+        sp[i * 3] = dx * 0.58 * k;
+        sp[i * 3 + 1] = 0.5 + u * 0.72 * k;
+        sp[i * 3 + 2] = dz * 0.3 * k;
+        sSeed[i] = sr();
+        sGlow[i] = 0.12 + sr() * 0.6;
+        sDir[i * 3] = dx;
+        sDir[i * 3 + 1] = u;
+        sDir[i * 3 + 2] = dz;
+      }
+      const sGeo = new BufferGeometry();
+      sGeo.setAttribute("position", new BufferAttribute(sp, 3));
+      sGeo.setAttribute("aGlow", new BufferAttribute(sGlow, 1));
+      sGeo.setAttribute("aSeed", new BufferAttribute(sSeed, 1));
+      sGeo.setAttribute("aDir", new BufferAttribute(sDir, 3));
+      const sparkMat = lightPointMaterial(0.022, 0.85, 0.09);
+      pointMats.push(sparkMat);
+      const sRig = new Group();
+      sRig.position.y = RIG_Y;
+      sRig.add(new Points(sGeo, sparkMat));
+      spinner.add(sRig);
+      lightDispose.push(sGeo, sparkMat);
+
+      const aura = new Mesh(
+        new PlaneGeometry(3.0, 3.0),
+        new ShaderMaterial({ vertexShader: AURA_VERT, fragmentShader: AURA_FRAG, transparent: true, depthWrite: false, uniforms: { uColor: { value: L_GLOW }, uAlpha: { value: 0.3 } } }),
+      );
+      aura.position.set(0, 0.04, -0.4);
+      aura.renderOrder = -3;
+      scene.add(aura);
+      lightDispose.push(aura.geometry, aura.material as ShaderMaterial);
+
+      const layers: [number, number, number][] = [
+        [0.09, 0.05, 0],
+        [0.05, 0.09, 0],
+        [0.022, 0.4, 1],
+        [0.008, 1, 2],
+      ];
+      const a = orbitRing(0.8, LIGHT_HEX.ringHalo, layers);
+      a.group.position.y = 0.02;
+      a.group.rotation.set(0.3, 0, -0.34);
+      orbitA = a.group;
+      const b = orbitRing(0.64, LIGHT_HEX.ringGold, layers);
+      b.group.position.y = 0.06;
+      b.group.rotation.set(0.52, 0, 0.4);
+      orbitB = b.group;
+      scene.add(a.group, b.group);
+      lightDispose.push(...a.disposables, ...b.disposables);
+    }
 
     const beamMat = new MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false, side: DoubleSide });
     const beam = new Mesh(new RingGeometry(0.62, 0.655, 96), beamMat);
@@ -333,7 +534,8 @@ function ClassicScene(props: HandStageProps) {
     const grid = new LineSegments(lineGrid(), gridMat);
     grid.position.y = FLOOR_Y;
 
-    scene.add(grid, spinner);
+    if (!light) scene.add(grid);
+    scene.add(spinner);
 
     // ---- pose handling: the target pose is eased into the current one (live hands jitter)
     let target: Vec3[] = generic;
@@ -345,7 +547,11 @@ function ClassicScene(props: HandStageProps) {
     const repose = () => {
       poseSamples(sampled, current, positions);
       posAttr.needsUpdate = true;
-      const w = handWire(current);
+      const w = handWire(current, { dense: light });
+      if (measureAttr) {
+        (measureAttr.array as Float32Array).set(measureRings(current));
+        measureAttr.needsUpdate = true;
+      }
       if (w.length !== wireAttr.array.length) {
         wireAttr = new BufferAttribute(new Float32Array(w), 3);
         wireGeo.setAttribute("position", wireAttr);
@@ -402,7 +608,7 @@ function ClassicScene(props: HandStageProps) {
       camera.fov = w / h < 0.8 ? FOV + (0.8 - w / h) * 30 : FOV;
       camera.updateProjectionMatrix();
       const scale = renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
-      for (const m of [handMat, dustMat, reflectMat]) m.uniforms.uScale.value = scale;
+      for (const m of pointMats) m.uniforms.uScale.value = scale;
       requestRender();
     };
     const ro = new ResizeObserver(resize);
@@ -458,25 +664,31 @@ function ClassicScene(props: HandStageProps) {
       }
 
       // rotation: a slow sway (wider while scanning, gentle where labels or the live hand must stay readable)
-      const amp = p.mode === "scan" ? SCAN_SWING_RAD : SWING_RAD;
+      const amp = p.mode === "scan" ? SCAN_SWING_RAD : light ? SWING_LIGHT_RAD : SWING_RAD;
       const yaw = reduce ? 0.35 : now > autoResumeAt ? Math.sin((t * 2 * Math.PI) / TURN_S) * amp : 0;
       spinner.rotation.y = yaw + userYaw;
       spinner.rotation.x = -0.12 + userPitch;
 
-      const beamOn = p.mode === "scan" && !reduce;
+      const beamOn = p.mode === "scan" && !reduce && !light;
       const beamY = beamOn ? -0.05 + (1.2 * ((t % 2.6) / 2.6)) : -9;
-      for (const m of [handMat, dustMat, reflectMat]) {
+      for (const m of pointMats) {
         m.uniforms.uTime.value = t;
         m.uniforms.uBeam.value = beamY;
         m.uniforms.uTwinkle.value = reduce ? 0 : 1;
         m.uniforms.uDim.value = dim;
       }
-      dustMat.uniforms.uDrift.value = reduce ? 0 : 0.07;
+      dustMat.uniforms.uDrift.value = reduce ? 0 : light ? 0.12 : 0.07;
+      if (orbitA && orbitB) {
+        // the orbit rings breathe: a slow tilt, never a spin (their back and front halves are fixed)
+        const w = reduce ? 0 : t;
+        orbitA.rotation.set(0.3 + 0.05 * Math.sin(w * 0.5), 0, -0.34 + 0.05 * Math.sin(w * 0.37 + 1));
+        orbitB.rotation.set(0.52 + 0.05 * Math.sin(w * 0.43 + 2), 0, 0.4 + 0.05 * Math.sin(w * 0.31));
+      }
       gridMat.uniforms.uTime.value = t;
       gridMat.uniforms.uAmp.value = reduce ? 0.018 : p.mode === "scan" ? 0.05 : 0.03;
       beamGroup.visible = beamOn;
       beamGroup.position.y = RIG_Y + beamY;
-      wireMat.opacity = 0.16 * dim;
+      wireMat.opacity = wireOpacity * dim;
 
       renderer.render(scene, camera);
       updateTags();
@@ -489,7 +701,29 @@ function ClassicScene(props: HandStageProps) {
       m4.copy(camera.matrixWorldInverse);
       const centre = tmp.set(0, 0.5 + RIG_Y, 0).applyMatrix4(spinner.matrixWorld).applyMatrix4(m4);
       const centreDepth = centre.z;
+      // light theme: the hand length is a vertical bracket on the right of the hand, not a label on a joint
+      let handRight = 0;
+      if (light && tags.some((t) => t.between)) {
+        current.forEach((j) => {
+          const v = tmp.set(j.x, j.y + RIG_Y, j.z).applyMatrix4(spinner.matrixWorld).project(camera);
+          handRight = Math.max(handRight, (v.x * 0.5 + 0.5) * width);
+        });
+      }
       const spots = tags.map((tag, i) => {
+        if (light && tag.between) {
+          const [a, b] = tag.between;
+          const ja = current[a];
+          const jb = current[b];
+          const el = tagEls.current[i];
+          if (!ja || !jb || !el) return null;
+          const ya = (-tmp.set(ja.x, ja.y + RIG_Y, ja.z).applyMatrix4(spinner.matrixWorld).project(camera).y * 0.5 + 0.5) * height;
+          const yb = (-tmp.set(jb.x, jb.y + RIG_Y, jb.z).applyMatrix4(spinner.matrixWorld).project(camera).y * 0.5 + 0.5) * height;
+          const box = bracketBox({ y1: ya, y2: yb, handRight, width, height });
+          el.style.height = `${box.height.toFixed(1)}px`;
+          el.style.transform = `translate(${box.x.toFixed(1)}px, ${box.top.toFixed(1)}px) translateX(-100%)`;
+          el.style.opacity = "1";
+          return null;
+        }
         const j = current[tag.joint];
         if (!j) return null;
         const v = tmp.set(j.x, j.y + RIG_Y, j.z).applyMatrix4(spinner.matrixWorld);
@@ -506,7 +740,7 @@ function ClassicScene(props: HandStageProps) {
       // (fingertips differ in height, so a fixed step by rank would still collide).
       const order = spots.filter((s): s is NonNullable<typeof s> => !!s).sort((a, b) => a.x - b.x);
       const placed: { x: number; y: number; w: number }[] = [];
-      const GAP = 3;
+      const GAP = light ? 7 : 3;
       order.forEach((s) => {
         const el = tagEls.current[s.i];
         if (!el) return;
@@ -585,6 +819,7 @@ function ClassicScene(props: HandStageProps) {
       canvas.removeEventListener("webglcontextlost", onLost);
       for (const g of [handGeo, dustGeo, wireGeo, grid.geometry, beam.geometry, beamFill.geometry]) g.dispose();
       for (const m of [handMat, dustMat, reflectMat, wireMat, beamMat, gridMat, beamFill.material as MeshBasicMaterial]) m.dispose();
+      for (const d of lightDispose) d.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();
@@ -597,11 +832,23 @@ function ClassicScene(props: HandStageProps) {
       <div ref={mountRef} className="hand-stage-gl" />
       {props.tags && props.tags.length > 0 && (
         <div className="hand-stage-tags" aria-hidden="true">
-          {props.tags.map((tag, i) => (
-            <span key={`${tag.joint}-${tag.between ? tag.between.join("_") : ""}`} ref={(el) => void (tagEls.current[i] = el)} className="hand-stage-tag">
-              {tag.label}
-            </span>
-          ))}
+          {props.tags.map((tag, i) => {
+            // light theme: "Index 53 mm" is drawn as NAME: value; the text content stays the label
+            const lightTag = props.theme === "light" && props.mode !== "live";
+            const { name, value } = lightTag ? splitLabel(tag.label) : { name: tag.label, value: "" };
+            const cls = `hand-stage-tag${lightTag && tag.between ? " hand-stage-tag--bracket" : ""}${lightTag && tag.emphasis ? " hand-stage-tag--em" : ""}`;
+            return (
+              <span key={`${tag.joint}-${tag.between ? tag.between.join("_") : ""}`} ref={(el) => void (tagEls.current[i] = el)} className={cls}>
+                {lightTag && value ? (
+                  <span className="hand-stage-tag-text">
+                    <span className="hand-stage-tag-name">{name}</span> <span className="hand-stage-tag-val">{value}</span>
+                  </span>
+                ) : (
+                  tag.label
+                )}
+              </span>
+            );
+          })}
         </div>
       )}
     </>

@@ -71,9 +71,9 @@ async function fullScan(page: Page, tag: string) {
   await page.getByLabel("Unit").selectOption("mm");
   await page.getByLabel("Hand length").fill("181");
   await page.getByRole("button", { name: "See my size" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your glove size results");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hand measurement scan");
   // 181 mm +/- 4 mm (tape) sits inside M (175-187 mm).
-  await expect(page.locator(".size-tile .size")).toHaveText("M");
+  await expect(page.locator(".rv2-size .size")).toHaveText("M");
   await expect(page.getByText(/entered by you/)).toBeVisible();
   await expect(page.getByText(/DEMONSTRATION CHART/)).toBeVisible();
   await scrollThrough(page);

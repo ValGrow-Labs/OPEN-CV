@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PALETTE_SIZE, ROLES, approach, assemble, hexToLinear, roleAt, stepPalette, toneAccentRgb, toneMotion, toneTarget, type Tone } from "./palette";
+import { LIGHT_HEX, PALETTE_SIZE, ROLES, approach, assemble, hexToLinear, lightRgb, roleAt, stepPalette, toneAccentRgb, toneMotion, toneTarget, type Tone } from "./palette";
 
 const TONES: Tone[] = ["idle", "ok", "warn"];
 const glow = (pal: Float32Array) => [pal[roleAt("glow")], pal[roleAt("glow") + 1], pal[roleAt("glow") + 2]];
@@ -130,5 +130,39 @@ describe("assemble (the points converge on a hand that has just appeared)", () =
     expect(assemble(-10)).toBe(0);
     expect(assemble(Number.NaN)).toBe(0);
     expect(assemble(50, 0)).toBe(0);
+  });
+});
+
+describe("light theme colours", () => {
+  const luminance = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  };
+
+  it("every colour is a 6-digit hex", () => {
+    for (const hex of Object.values(LIGHT_HEX)) expect(hex).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+
+  it("the hologram blues climb from deep to bright and read on a white page; only the ring core is white", () => {
+    expect(luminance(LIGHT_HEX.deep)).toBeLessThan(luminance(LIGHT_HEX.mid));
+    expect(luminance(LIGHT_HEX.mid)).toBeLessThan(luminance(LIGHT_HEX.glow));
+    for (const role of ["deep", "mid", "glow", "ink", "measure"] as const) expect(luminance(LIGHT_HEX[role])).toBeLessThan(215);
+    expect(LIGHT_HEX.ringCore.toLowerCase()).toBe("#ffffff");
+  });
+
+  it("the label ink is the darkest colour (navy, readable on a pale stage)", () => {
+    const darkest = Math.min(...Object.values(LIGHT_HEX).map(luminance));
+    expect(luminance(LIGHT_HEX.ink)).toBe(darkest);
+  });
+
+  it("lightRgb gives r g b for CSS", () => {
+    expect(lightRgb("ink")).toBe("11 31 74");
+    expect(lightRgb("ringCore")).toBe("255 255 255");
+    expect(lightRgb("glow").split(" ").map(Number).every((n) => n >= 0 && n <= 255)).toBe(true);
+  });
+
+  it("the dark tones are untouched by the light table", () => {
+    expect(toneTarget("idle").length).toBe(PALETTE_SIZE);
+    expect(toneAccentRgb("idle")).toBe("25 230 230");
   });
 });

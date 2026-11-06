@@ -7,3 +7,4 @@ models/
 data/
 validation_report.*
 !backend/scripts/validation_report.py
+.superpowers/
