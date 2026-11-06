@@ -85,9 +85,13 @@ export interface ScanControllerOptions {
   referenceDiameterMm?: number;
   /** The capture view being scanned (its own guidance wording); the primary (palm) view by default. */
   view?: CaptureView;
-  /** Called every processed camera frame with the tracked hand's landmarks (the ones drawn on the
-   *  overlay), or null when there is no hand. For the small live 3D hand: no React state is needed. */
-  onPose?: (landmarks: Landmark[] | null) => void;
+  /** Called every processed camera frame with the tracked hand's landmarks (in video pixels, the ones
+   *  drawn on the overlay), or null when there is no hand, and the video frame's size in pixels. For the
+   *  3D camera overlay: no React state is needed. */
+  onPose?: (landmarks: Landmark[] | null, frame: { width: number; height: number }) => void;
+  /** A 3D layer draws the hand and its finger lengths: skip the 2D outline, skeleton and finger tags
+   *  (the coin ring and search window stay). Can be switched off mid-scan with setOverlay3d. */
+  overlay3d?: boolean;
 }
 
 // Loop settings come from config/measurement.json "live_scan":
@@ -164,6 +168,7 @@ export class ScanController {
   private status: ScanStatus;
 
   private mobile: boolean;
+  private overlay3dOn: boolean;
   private view: CaptureView | null;
   private wakeLock = new ScreenWakeLock();
   private pausedByHide = false;
@@ -180,6 +185,7 @@ export class ScanController {
     this.facing = opts.facing;
     this.roiCanvas = document.createElement("canvas");
     this.mobile = isMobileDevice();
+    this.overlay3dOn = !!opts.overlay3d;
     this.view = opts.view ?? null;
     this.guidance = new GuidanceDebouncer(config.live_scan);
     const ls = config.live_scan;
@@ -376,6 +382,12 @@ export class ScanController {
   /** Let the screen sleep again (the scan is over, or only being submitted). */
   releaseWakeLock(): void {
     void this.wakeLock.release();
+  }
+
+  /** Hand the drawing of the hand back to (or take it from) the 2D layer, from the next frame on: the 3D
+   *  layer is dropped when it runs too slowly or fails. Nothing about the scan itself changes. */
+  setOverlay3d(on: boolean): void {
+    this.overlay3dOn = on;
   }
 
   /** Frames to collect in a view: on a phone the view's own target (never below the minimum the
@@ -702,7 +714,11 @@ export class ScanController {
       this.generation++; // a coin search still running belongs to a hand that is gone
     }
 
-    this.opts.onPose?.(smoothed);
+    try {
+      this.opts.onPose?.(smoothed, { width: w, height: h });
+    } catch (err) {
+      console.error("onPose failed", err); // a drawing consumer must never stop the scan loop
+    }
     const coin = hand ? this.lastCoin : null;
     const frameLive = this.evaluate(hand ? this.observe(hand, now, w, h, coin, this.lastBrightness) : null, this.lastLandmarks, this.tiltDeg);
     const live = this.shown(frameLive, now);
@@ -717,12 +733,14 @@ export class ScanController {
     clear(ctx);
     if (hand && smoothed) {
       if (roi) drawRoi(ctx, roi, scale);
-      const color = live.ok ? COLORS.good : COLORS.neutral;
-      drawHandOutline(ctx, smoothed, color, scale, live.ok ? 1.0 : 0.6);
-      drawSkeleton(ctx, smoothed, color, scale);
+      if (!this.overlay3dOn) {
+        const color = live.ok ? COLORS.good : COLORS.neutral;
+        drawHandOutline(ctx, smoothed, color, scale, live.ok ? 1.0 : 0.6);
+        drawSkeleton(ctx, smoothed, color, scale);
+      }
     }
     if (coin?.found) drawCoin(ctx, coin, scale);
-    if (liveMm && smoothed) {
+    if (liveMm && smoothed && !this.overlay3dOn) {
       for (const f of Object.keys(FINGER_TIPS) as FingerName[]) {
         drawTag(ctx, labelAnchor(smoothed, f, 22 * scale), `${Math.round(liveMm.fingersMm[f])} mm`, scale, this.status.mirrored);
       }

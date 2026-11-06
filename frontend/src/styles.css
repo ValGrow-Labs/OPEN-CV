@@ -3231,59 +3231,35 @@ details.panel > summary {
 
 /* ------------------------------------------------- the 3D hand: where it sits (the scene is in hand3d/) */
 
-.scan-hand3d,
 .calc-hand3d,
 .result-hand3d-stage {
   position: relative;
 }
 
-.scan-hand3d > .hand-stage,
 .calc-hand3d > .hand-stage,
 .result-hand3d-stage > .hand-stage {
   width: 100%;
   height: 100%;
 }
 
-/* A small tile in the bottom corner of the camera picture: clear of the fingertip tags at the top of
-   the hand, the guidance bar above and the scan panel below. It never takes a tap. */
-.scan-hand3d {
+/* The camera picture itself is the 3D measuring display: a transparent layer over the whole camera
+   pane (video and 2D canvas sit in the same box), drawn exactly over the real hand. It never takes a
+   tap, and it comes before the guidance pill in the page, so the pill stays on top of it. */
+.scan-overlay3d {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
-  /* Never more than 40% of the camera picture's height, so a short picture is not buried. */
-  height: min(132px, 40%);
-  aspect-ratio: 104 / 132;
-  z-index: 2;
-  border-radius: 18px;
-  overflow: hidden;
+  inset: 0;
   pointer-events: none;
-  animation: hand3d-tile-in 500ms var(--ease-out) both;
 }
 
-@keyframes hand3d-tile-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (min-width: 768px) {
-  .scan-hand3d {
-    right: 18px;
-    bottom: 18px;
-    height: min(220px, 40%);
-  }
-}
-
-/* A phone on its side leaves the camera picture only a sliver; there is no room for the tile. */
-@media (orientation: landscape) and (max-height: 560px) {
-  .scan-hand3d {
-    display: none;
-  }
+.scan-overlay3d > .hand-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
 }
 
 /* While the measurements are calculated: the hand takes the middle of the screen. */
@@ -3308,11 +3284,5 @@ details.panel > summary {
 @media (min-width: 900px) {
   .result-hand3d-stage {
     height: 420px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .scan-hand3d {
-    animation: none;
   }
 }

@@ -162,7 +162,13 @@
     "exposure_min_ev": -2.0,
     "exposure_max_ev": 1.0,
     "exposure_hold_ms": 1500,
-    "exposure_min_share": 0.4
+    "exposure_min_share": 0.4,
+    "overlay_3d": {
+      "enabled": true,
+      "max_frame_ms": 40,
+      "min_fps": 12,
+      "fallback_after_slow_s": 3
+    }
   },
   "uncertainty": {
     "landmark_model_input_px": 224,

@@ -85,6 +85,50 @@
   box-shadow: 0 0 8px 2px rgb(25 230 230 / 0.9);
 }
 
+/* The camera view as a 3D measuring display: a transparent layer over the live video that takes no input. */
+.hand-stage.hand-stage-overlay {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  isolation: auto;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hand-stage-overlay .hand-stage-gl canvas {
+  cursor: auto;
+  touch-action: auto;
+  pointer-events: none;
+}
+
+/* The finger-length labels float on the picture, so they read on any video: a little darker, a little brighter. */
+.hand-stage-overlay .hand-stage-tag {
+  padding: 2px 7px;
+  font-size: 11px;
+  background: rgb(3 14 26 / 0.7);
+  border-color: rgb(25 230 230 / 0.55);
+  transition: opacity 0.12s ease;
+}
+
+/* The hand length: larger and brighter, beside its rail (no leader line, the rail is the guide). */
+.hand-stage-tag--em {
+  padding: 4px 10px;
+  font-size: 13px;
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.7);
+  box-shadow: 0 0 18px rgb(25 230 230 / 0.5);
+}
+
+.hand-stage-tag--side::before,
+.hand-stage-tag--side::after {
+  display: none;
+}
+
 /* Never blank: a CSS-only glow ring with a slowly breathing outline of a hand-sized oval. */
 .hand-stage-fallback {
   position: absolute;

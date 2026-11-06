@@ -1,24 +1,30 @@
 // @vitest-environment jsdom
-// Where the 3D hand appears: a small live tile during the scan, a large one while the measurements are
-// calculated, and the customer's own hand on the result page. The scene itself is stubbed (jsdom has no WebGL).
+// Where the 3D hand appears: the camera picture itself during the scan (a transparent 3D layer over the
+// real hand), a large one while the measurements are calculated, and the customer's own hand on the result page. The scene itself is stubbed (jsdom has no WebGL).
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Measurement, Recommendation, ScanRequest, ScanResponse } from "../api/types";
 import { goodFrame, publicConfig } from "../test/fixtures";
 
-const webgl = { on: true };
+const webgl = { on: true, throwInStage: false };
 const stages: Record<string, unknown>[] = [];
 
 vi.mock("../hand3d/HandStage", () => ({
   webglAvailable: () => webgl.on,
   HandStage: (props: Record<string, unknown>) => {
+    if (webgl.throwInStage && props.mode === "overlay") throw new Error("scene failed");
     stages.push(props);
     return <div role="img" aria-label={String(props.label)} data-mode={String(props.mode)} />;
   },
 }));
 
-type Opts = { onComplete: (frames: unknown[], timing: unknown) => void; onStatus: (s: unknown) => void; onPose?: (l: unknown) => void };
-const controllers: { opts: Opts }[] = [];
+type Opts = {
+  onComplete: (frames: unknown[], timing: unknown) => void;
+  onStatus: (s: unknown) => void;
+  onPose?: (l: unknown, frame: { width: number; height: number }) => void;
+  overlay3d?: boolean;
+};
+const controllers: { opts: Opts; setOverlay3d: ReturnType<typeof vi.fn> }[] = [];
 
 vi.mock("../scan/scanController", () => ({
   preloadScanTools: () => undefined,
@@ -28,8 +34,9 @@ vi.mock("../scan/scanController", () => ({
     resetCollection = vi.fn();
     releaseWakeLock = vi.fn();
     switchCamera = vi.fn();
+    setOverlay3d = vi.fn();
     constructor(_v: unknown, _c: unknown, _cfg: unknown, public opts: Opts) {
-      controllers.push({ opts });
+      controllers.push({ opts, setOverlay3d: this.setOverlay3d });
     }
     async start() {
       this.opts.onStatus({ phase: "running", live: null, collected: 0, target: 10, coin: null, mirrored: true, fps: 0, timing: { handMs: 0, coinMs: 0 }, error: null, topIssue: null, tilt: { rawDeg: null, smoothedDeg: null }, exposureEv: null, liveMm: null, handedness: null });
@@ -50,10 +57,10 @@ import { ScanScreen } from "./ScanScreen";
 
 const timing = { cameraStartupMs: 1, modelLoadMs: 1, firstLockMs: 1, collectionMs: 1, avgHandMs: 1, avgCoinMs: 1, totalScanMs: 1 };
 
-function mountScan() {
+function mountScan(config = publicConfig()) {
   return render(
     <ScanScreen
-      config={publicConfig()}
+      config={config}
       chartId="demo-length-v1"
       reference={{ object_id: "us_quarter" }}
       onCancel={() => {}}
@@ -66,33 +73,145 @@ function mountScan() {
 
 beforeEach(() => {
   webgl.on = true;
+  webgl.throwInStage = false;
   stages.length = 0;
   controllers.length = 0;
   submitScan.mockClear();
 });
 afterEach(cleanup);
 
-describe("the live 3D hand during the scan", () => {
-  it("is a small tile in the camera area that follows the pose the controller reports", () => {
+describe("the live 3D measuring over the camera picture", () => {
+  const liveMm = { handMm: 183.4, fingersMm: { thumb: 61.2, index: 72.4, middle: 79.6, ring: 73.1, little: 58.9 } };
+  const running = (patch: object) =>
+    act(() =>
+      controllers.at(-1)!.opts.onStatus({ phase: "running", live: null, collected: 0, target: 10, coin: null, mirrored: true, fps: 0, timing: { handMs: 0, coinMs: 0 }, error: null, topIssue: null, tilt: { rawDeg: null, smoothedDeg: null }, exposureEv: null, liveMm: null, handedness: null, ...patch }),
+    );
+
+  it("is a full-size layer in the camera pane, not a small box", () => {
     const { container } = mountScan();
-    const tile = container.querySelector(".scan-hand3d");
-    expect(tile).not.toBeNull();
-    expect(tile!.getAttribute("aria-hidden")).toBe("true"); // decorative: the guidance is the text
-    const live = stages.find((p) => p.mode === "live")!;
-    expect(live.mirror).toBe(true); // the camera picture is mirrored, so is the hand
-    const poseRef = live.poseRef as { current: unknown };
+    const layer = container.querySelector(".stage > .scan-overlay3d");
+    expect(layer).not.toBeNull();
+    expect(layer!.getAttribute("aria-hidden")).toBe("true"); // decorative: the guidance is the text
+    expect(container.querySelector(".scan-hand3d")).toBeNull(); // the small corner tile is gone
+    const overlay = stages.find((p) => p.mode === "overlay")!;
+    expect(overlay.mirror).toBe(true); // the camera picture is mirrored: the scene flips the hand itself
+    expect(controllers.at(-1)!.opts.overlay3d).toBe(true); // the 2D outline and tags are not drawn twice
+  });
+
+  it("follows the pose and the frame size the controller reports, without re-rendering", () => {
+    mountScan();
+    const overlay = stages.find((p) => p.mode === "overlay")!;
+    const poseRef = overlay.poseRef as { current: unknown };
+    const frameRef = overlay.frameRef as { current: unknown };
     expect(poseRef.current).toBeNull();
     const pose = goodFrame().landmarks;
-    act(() => controllers.at(-1)!.opts.onPose!(pose));
-    expect(poseRef.current).toBe(pose); // no re-render needed: the scene reads the ref every frame
-    act(() => controllers.at(-1)!.opts.onPose!(null));
+    act(() => controllers.at(-1)!.opts.onPose!(pose, { width: 1280, height: 720 }));
+    expect(poseRef.current).toBe(pose);
+    expect(frameRef.current).toEqual({ width: 1280, height: 720 });
+    act(() => controllers.at(-1)!.opts.onPose!(null, { width: 720, height: 1280 })); // a phone turned
     expect(poseRef.current).toBeNull();
+    expect(frameRef.current).toEqual({ width: 720, height: 1280 });
+  });
+
+  it("draws the live finger lengths and the hand length as labels once the coin is measured", () => {
+    mountScan();
+    expect(stages.at(-1)!.tags).toBeUndefined();
+    running({ liveMm });
+    const tags = stages.at(-1)!.tags as { joint: number; label: string; between?: number[]; emphasis?: boolean }[];
+    expect(tags.map((t) => t.label)).toEqual(["61 mm", "72 mm", "80 mm", "73 mm", "59 mm", "183 mm"]);
+    expect(tags.slice(0, 5).map((t) => t.joint)).toEqual([4, 8, 12, 16, 20]);
+    expect(tags[5]).toMatchObject({ between: [0, 12], emphasis: true });
   });
 
   it("goes away while the measurements are calculated", async () => {
     const { container } = mountScan();
     await act(async () => controllers.at(-1)!.opts.onComplete([goodFrame()], timing));
-    expect(container.querySelector(".scan-hand3d")).toBeNull();
+    expect(container.querySelector(".scan-overlay3d")).toBeNull();
+  });
+
+  it("without WebGL there is no overlay and the 2D outline is kept", () => {
+    webgl.on = false;
+    const { container } = mountScan();
+    expect(container.querySelector(".scan-overlay3d")).toBeNull();
+    expect(controllers.at(-1)!.opts.overlay3d).toBe(false);
+  });
+});
+
+describe("the 3D overlay never costs the customer the scan", () => {
+  const withOverlay = (patch: object) => {
+    const cfg = publicConfig();
+    return { ...cfg, live_scan: { ...cfg.live_scan, overlay_3d: { ...cfg.live_scan.overlay_3d, ...patch } } };
+  };
+  const status = (fps: number) =>
+    act(() =>
+      controllers.at(-1)!.opts.onStatus({ phase: "running", live: null, collected: 0, target: 10, coin: null, mirrored: false, fps, timing: { handMs: 0, coinMs: 0 }, error: null, topIssue: null, tilt: { rawDeg: null, smoothedDeg: null }, exposureEv: null, liveMm: null, handedness: null }),
+    );
+
+  it("config can switch it off: no stage is mounted and the controller draws the 2D hand", () => {
+    const { container } = mountScan(withOverlay({ enabled: false }));
+    expect(container.querySelector(".scan-overlay3d")).toBeNull();
+    expect(stages.some((p) => p.mode === "overlay")).toBe(false);
+    expect(controllers.at(-1)!.opts.overlay3d).toBe(false);
+  });
+
+  it("passes the drawing budget from config to the scene", () => {
+    mountScan(withOverlay({ max_frame_ms: 33, min_fps: 15 }));
+    const overlay = stages.find((p) => p.mode === "overlay")!;
+    expect(overlay.budget).toEqual({ maxFrameMs: 33, minFps: 15 });
+  });
+
+  it("when the scene gives up, the 2D hand takes over mid-scan: no restart, and it stays that way", () => {
+    const { container } = mountScan();
+    const ctrl = controllers.at(-1)!;
+    const overlay = stages.find((p) => p.mode === "overlay")!;
+    act(() => (overlay.onDegrade as (r: string) => void)("lighter")); // not a give-up: nothing changes
+    expect(ctrl.setOverlay3d).not.toHaveBeenCalled();
+    expect(container.querySelector(".scan-overlay3d")).not.toBeNull();
+    act(() => (overlay.onDegrade as (r: string) => void)("disabled"));
+    expect(ctrl.setOverlay3d).toHaveBeenCalledWith(false);
+    expect(container.querySelector(".scan-overlay3d")).toBeNull();
+    expect(controllers).toHaveLength(1); // the scan was not restarted
+    status(24); // later status updates do not bring it back
+    expect(container.querySelector(".scan-overlay3d")).toBeNull();
+  });
+
+  it("drops the 3D layer when the scan loop itself runs slow for long enough", () => {
+    const cfg = withOverlay({ min_fps: 12, fallback_after_slow_s: 3 });
+    const now = vi.spyOn(performance, "now");
+    try {
+      now.mockReturnValue(1000);
+      const { container } = mountScan(cfg);
+      status(20); // fast: fine
+      status(6); // slow starts at t = 1000
+      now.mockReturnValue(3000);
+      status(6.5);
+      expect(container.querySelector(".scan-overlay3d")).not.toBeNull(); // 2 s: not yet
+      now.mockReturnValue(1000);
+      status(20); // a good moment resets the clock
+      now.mockReturnValue(5000);
+      status(6);
+      now.mockReturnValue(8100);
+      status(6);
+      expect(controllers.at(-1)!.setOverlay3d).toHaveBeenCalledWith(false);
+      expect(container.querySelector(".scan-overlay3d")).toBeNull();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("a scene that throws while rendering falls back to 2D instead of a white screen", () => {
+    webgl.throwInStage = true;
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { container } = mountScan();
+      expect(container.querySelector(".scan")).not.toBeNull(); // the scan screen is still there
+      expect(container.querySelector(".scan-overlay3d")).toBeNull();
+      expect(controllers.at(-1)!.setOverlay3d).toHaveBeenCalledWith(false);
+    } finally {
+      err.mockRestore();
+      warn.mockRestore();
+    }
   });
 });
 

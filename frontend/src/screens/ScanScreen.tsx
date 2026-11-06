@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, submitScan, warmupService } from "../api/client";
 import type { CaptureView, FrameObservation, PublicConfig, ReferenceSelection, ScanRequest, ScanResponse } from "../api/types";
 import { isMobileDevice, type Facing } from "../camera/camera";
 import type { Landmark } from "../hand3d/handModel";
 import { HandStage, webglAvailable } from "../hand3d/HandStage";
+import { overlayTags } from "../scan/overlayTags";
+import { OverlayBoundary } from "./OverlayBoundary";
 import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
 import {
   canSkipRemaining,
@@ -72,8 +74,23 @@ export function ScanScreen<R = ScanResponse>({
   const [cameraAllowed, setCameraAllowed] = useState(guide !== "intro" && !confirming);
   const mirroredRef = useRef(false);
   mirroredRef.current = status?.mirrored ?? false;
-  // The tracked hand of every camera frame, for the small live 3D hand (read by the scene, no re-render).
+  // The tracked hand of every camera frame and the video's pixel size, for the 3D overlay on the camera
+  // picture (read by the scene every frame, no re-render).
   const poseRef = useRef<readonly Landmark[] | null>(null);
+  const frameRef = useRef<{ width: number; height: number } | null>(null);
+  // The measuring is drawn in 3D over the camera picture wherever WebGL works and config allows it
+  // (live_scan.overlay_3d); otherwise, or once the 3D layer fails or runs too slowly, the 2D outline is drawn.
+  const overlayCfg = config.live_scan.overlay_3d;
+  const canUse3d = useMemo(() => overlayCfg.enabled && webglAvailable(), [overlayCfg.enabled]);
+  const [degraded, setDegraded] = useState(false);
+  const degradedRef = useRef(false); // for the rest of the scan session, rescans included
+  const overlay3d = canUse3d && !degraded;
+  const degrade = useCallback((reason: string) => {
+    console.warn(`[scan] 3D overlay off: ${reason}`);
+    degradedRef.current = true;
+    setDegraded(true);
+    controllerRef.current?.setOverlay3d(false); // the 2D drawing resumes on the next frame, nothing restarts
+  }, []);
   const startClickTimeRef = useRef<number>(0);
 
   // Guided angles. With more than one, a view that completes is kept (tagged) and the customer chooses
@@ -141,8 +158,10 @@ export function ScanScreen<R = ScanResponse>({
       referenceDiameterMm: ref.diameter,
       view: viewList[viewIdxRef.current],
       onStatus: setStatus,
-      onPose: (landmarks) => {
+      overlay3d: canUse3d && !degradedRef.current,
+      onPose: (landmarks, frame) => {
         poseRef.current = landmarks;
+        frameRef.current = frame;
       },
       onComplete: (frames, timing) => {
         const current = viewList[viewIdxRef.current];
@@ -227,6 +246,18 @@ export function ScanScreen<R = ScanResponse>({
   }, [message, status?.phase]);
 
   const phase = status?.phase ?? "starting";
+  // The scan loop itself slowing down is the other reason to drop the 3D layer: the measuring comes first.
+  const slowSince = useRef<number | null>(null);
+  const loopFps = status?.fps;
+  useEffect(() => {
+    if (!overlay3d || phase !== "running" || !(loopFps !== undefined && loopFps > 0) || loopFps >= overlayCfg.min_fps) {
+      slowSince.current = null;
+      return;
+    }
+    const now = performance.now();
+    slowSince.current ??= now;
+    if (now - slowSince.current >= overlayCfg.fallback_after_slow_s * 1000) degrade(`scan loop at ${loopFps.toFixed(0)} fps`);
+  }, [overlay3d, phase, status, loopFps, overlayCfg.min_fps, overlayCfg.fallback_after_slow_s, degrade]);
   // ?debug=1 shows what the scanner sees, for diagnosing a scan on a real phone.
   const debug = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
   const progress = phase === "complete" ? 1 : status ? Math.min(1, status.collected / status.target) : 0;
@@ -322,9 +353,21 @@ export function ScanScreen<R = ScanResponse>({
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className={status?.mirrored ? "mirrored" : ""} aria-hidden="true" />
         {phase === "running" && !handSeen && <Guide />}
-        {phase === "running" && !between && !submitting && !submitError && (
-          <div className="scan-hand3d" aria-hidden="true">
-            <HandStage mode="live" poseRef={poseRef} mirror={status?.mirrored ?? false} className="hand-stage-tile" label="Your hand, followed live in 3D" />
+        {overlay3d && phase === "running" && !between && !submitting && !submitError && (
+          <div className="scan-overlay3d" aria-hidden="true">
+            <OverlayBoundary onError={(err) => degrade(`error: ${String(err)}`)}>
+              <HandStage
+                mode="overlay"
+                poseRef={poseRef}
+                frameRef={frameRef}
+                mirror={status?.mirrored ?? false}
+                tags={overlayTags(status?.liveMm ?? null)}
+                budget={{ maxFrameMs: overlayCfg.max_frame_ms, minFps: overlayCfg.min_fps }}
+                onDegrade={(reason) => reason === "disabled" && degrade(reason)}
+                className="hand-stage-overlay"
+                label="Your hand, measured live in 3D"
+              />
+            </OverlayBoundary>
           </div>
         )}
         {phase === "running" && status?.live && (

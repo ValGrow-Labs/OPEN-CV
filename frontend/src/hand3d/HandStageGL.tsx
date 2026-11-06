@@ -1,5 +1,18 @@
-// The three.js scene of the glowing hand: a luminous particle hand with a wireframe outline over a
-// sonar-wave grid. Loaded lazily (HandStage.tsx), so three.js is not part of the main bundle.
+// The three.js scene of the glowing hand. Loaded lazily (HandStage.tsx), so three.js is not part of the main bundle.
+//
+// Modes (see docs/HAND_3D.md):
+//   scan, static, live  a luminous particle hand with a wireframe outline over a sonar-wave grid, in a dark
+//                       stage (ClassicScene below): the calculating screen, the result page, a small live tile.
+//   overlay             the camera view itself (HandOverlayGL.tsx): a transparent layer drawn exactly over the
+//                       real hand, with measuring rails along the fingers and a scanning sweep. It uses only the
+//                       tracked landmarks (no video pixels are read), takes no input and is aria-hidden.
+//
+// The overlay protects scan speed (perfGuard.ts): when its own cost or the page's frame rate is over budget for
+// about 1.5 s it takes itself down a step (half the points, no wireframe or twinkle, 20 fps) and finally
+// switches itself off, calling onDegrade("disabled") so the screen goes back to its 2D drawing. It never steps
+// back up. A lost WebGL context or a scene that cannot start also switches it off: never a blank, frozen canvas.
+//
+// It is an illustration drawn from 21 landmarks, not a 3D scan.
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -22,6 +35,7 @@ import {
 } from "three";
 import { useEffect, useRef, useState } from "react";
 import type { HandStageProps } from "./HandStage";
+import HandOverlayGL from "./HandOverlayGL";
 import { genericHand, handWire, normalizePose, poseSamples, sampleHand, type Landmark, type SampledHand, type Vec3 } from "./handModel";
 
 const FOV = 36;
@@ -185,7 +199,12 @@ function pointMaterial(size: number, alpha: number, drift: number): ShaderMateri
 
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** The camera overlay or the stage scenes, by mode. */
 export default function HandStageGL(props: HandStageProps) {
+  return props.mode === "overlay" ? <HandOverlayGL {...props} /> : <ClassicScene {...props} />;
+}
+
+function ClassicScene(props: HandStageProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const tagEls = useRef<(HTMLSpanElement | null)[]>([]);
   const propsRef = useRef(props);
@@ -433,7 +452,7 @@ export default function HandStageGL(props: HandStageProps) {
         });
         if (moved > 1e-4) repose();
         const stale = (now - lastLive) / 1000;
-        dim += ((stale > 1.5 ? 0.35 : 1) - dim) * (1 - Math.exp(-dt * 2));
+        dim += ((stale > 1.5 ? 0.55 : 1) - dim) * (1 - Math.exp(-dt * 2));
       } else {
         dim = 1;
       }
@@ -579,7 +598,7 @@ export default function HandStageGL(props: HandStageProps) {
       {props.tags && props.tags.length > 0 && (
         <div className="hand-stage-tags" aria-hidden="true">
           {props.tags.map((tag, i) => (
-            <span key={`${tag.joint}-${tag.label}`} ref={(el) => void (tagEls.current[i] = el)} className="hand-stage-tag">
+            <span key={`${tag.joint}-${tag.between ? tag.between.join("_") : ""}`} ref={(el) => void (tagEls.current[i] = el)} className="hand-stage-tag">
               {tag.label}
             </span>
           ))}

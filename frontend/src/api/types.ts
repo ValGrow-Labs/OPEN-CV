@@ -288,6 +288,14 @@ export interface CaptureParams {
 }
 
 /** The browser's scan loop (config/measurement.json "live_scan"). */
+/** The 3D hand over the camera picture (config live_scan.overlay_3d): a kill switch and a drawing budget. */
+export interface Overlay3DParams {
+  enabled: boolean;
+  max_frame_ms: number;
+  min_fps: number;
+  fallback_after_slow_s: number;
+}
+
 export interface LiveScanParams {
   min_frame_interval_ms: number;
   full_coin_search_every: number;
@@ -314,6 +322,7 @@ export interface LiveScanParams {
   exposure_max_ev: number;
   exposure_hold_ms: number;
   exposure_min_share: number;
+  overlay_3d: Overlay3DParams;
 }
 
 export interface CalibrationParams {

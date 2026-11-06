@@ -231,6 +231,19 @@ class CaptureParams(_Strict):
         return self
 
 
+class Overlay3DParams(_Strict):
+    """The 3D hand drawn over the camera picture while scanning (frontend/src/hand3d). It only draws; it
+    never touches a measurement. The phone drops back to the plain 2D outline when ``enabled`` is false
+    (a kill switch), when its drawing runs over budget, or when the scan loop itself slows down."""
+
+    enabled: bool = True
+    # The scene's own drawing budget: an average frame slower than this, or fewer frames per second than
+    # min_fps, for fallback_after_slow_s seconds, switches the 3D layer off for the rest of the scan.
+    max_frame_ms: float = Field(gt=0)
+    min_fps: float = Field(gt=0)
+    fallback_after_slow_s: float = Field(gt=0)
+
+
 class LiveScanParams(_Strict):
     """The browser's scan loop (frontend/src/scan/scanController.ts). These only decide which frames
     the phone collects and how quickly a scan finishes; the server re-checks every frame."""
@@ -266,6 +279,7 @@ class LiveScanParams(_Strict):
     exposure_max_ev: float
     exposure_hold_ms: float = Field(ge=0)
     exposure_min_share: float = Field(gt=0, le=1)
+    overlay_3d: Overlay3DParams
 
 
 class UncertaintyParams(_Strict):
