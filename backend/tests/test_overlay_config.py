@@ -59,9 +59,9 @@ def test_the_mask_canvas_size_is_a_whole_number_of_pixels_in_range(bad):
         Overlay3DParams.model_validate({**GOOD, "focus_mask_max_px": bad})
 
 
-def test_the_shipped_focus_mask_is_on_with_sensible_numbers():
+def test_the_shipped_focus_mask_is_off_but_ready_with_sensible_numbers():
     o = load_measurement_config().live_scan.overlay_3d
-    assert o.focus_mask is True
+    assert o.focus_mask is False  # the live picture stays whole; the black is an opt-in display setting
     assert o.focus_mask_max_px == 480
     assert (o.focus_margin, o.focus_feather) == (0.02, 0.04)
     assert (o.focus_fade_in_ms, o.focus_fade_out_ms) == (350, 200)

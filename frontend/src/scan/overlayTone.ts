@@ -1,4 +1,4 @@
-// The colour of the 3D hand: calm when nothing is tracked, green when the pose is fine, amber when it needs
+// The colour of the 3D hand: calm when nothing is tracked, green when the pose is fine, pale blue when it needs
 // fixing. A tone is held for a minimum time before it changes (config live_scan.overlay_3d.tone_hold_ms), so
 // the colour does not flicker while the live checks flip between frames.
 export type OverlayTone = "ok" | "warn" | "idle";

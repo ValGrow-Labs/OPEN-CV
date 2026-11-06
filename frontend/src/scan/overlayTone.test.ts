@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { holdTone, INITIAL_TONE, rawTone, type ToneState } from "./overlayTone";
 
 describe("the tone the 3D hand asks for", () => {
-  it("is calm with no hand, green with a good pose and amber when the pose needs fixing", () => {
+  it("is calm with no hand, green with a good pose and pale blue when the pose needs fixing", () => {
     expect(rawTone(false, undefined)).toBe("idle");
     expect(rawTone(false, true)).toBe("idle"); // nothing tracked: whatever the last live result said
     expect(rawTone(true, true)).toBe("ok");

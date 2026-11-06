@@ -230,7 +230,7 @@ test.describe("the way out of the 3D layer", () => {
   test("a layer that runs too slowly gives the drawing back to 2D, and the scan carries on", async ({ page }) => {
     test.setTimeout(300_000);
     // Impossible budget: the scan loop can never reach 1000 fps, so after half a second it must fall back.
-    await overlayConfig(page, { enabled: true, max_frame_ms: 100_000, min_fps: 1000, fallback_after_slow_s: 0.5 });
+    await overlayConfig(page, { enabled: true, max_frame_ms: 100_000, min_fps: 1000, fallback_after_slow_s: 0.5, focus_mask: true });
     await startCustomerScan(page);
     await expect(page.locator(".live-pill")).toBeVisible({ timeout: 120_000 });
     await expect(page.locator(".scan-overlay3d")).toHaveCount(0, { timeout: 60_000 });
@@ -252,7 +252,7 @@ for (const vp of [VIEWPORTS[0], VIEWPORTS[3]]) {
 
     test("the room goes black around the hand and the coin", async ({ page }) => {
       test.setTimeout(300_000);
-      await overlayConfig(page, GENEROUS);
+      await overlayConfig(page, { ...GENEROUS, focus_mask: true }); // the black is opt-in (shipped off)
       await startCustomerScan(page);
       await expect(page.locator(".scan-overlay3d canvas")).toBeVisible({ timeout: 120_000 });
       // The black fades in once a hand is tracked; the picture is the sheet's white until then.
@@ -281,7 +281,7 @@ for (const vp of [VIEWPORTS[0], VIEWPORTS[3]]) {
       expect(shot.dark).toBeLessThan(0.97); // and the hand and the coin are still there to be seen
     });
 
-    test("with focus_mask off the 3D hand sits over the normal picture", async ({ page }) => {
+    test("with focus_mask off (the shipped setting) the 3D hand sits over the normal picture", async ({ page }) => {
       test.setTimeout(300_000);
       await overlayConfig(page, { ...GENEROUS, focus_mask: false });
       await startCustomerScan(page);

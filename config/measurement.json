@@ -168,7 +168,7 @@
       "max_frame_ms": 40,
       "min_fps": 12,
       "fallback_after_slow_s": 3,
-      "focus_mask": true,
+      "focus_mask": false,
       "focus_mask_max_px": 480,
       "focus_margin": 0.02,
       "focus_feather": 0.04,

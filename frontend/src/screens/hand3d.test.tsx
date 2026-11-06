@@ -139,9 +139,10 @@ describe("the live 3D measuring over the camera picture", () => {
 });
 
 describe("the 3D hand's black background and colour", () => {
+  // The black is opt-in (shipped off): these tests are about the black, so they switch it on unless told otherwise.
   const withOverlay = (patch: object) => {
     const cfg = publicConfig();
-    return { ...cfg, live_scan: { ...cfg.live_scan, overlay_3d: { ...cfg.live_scan.overlay_3d, ...patch } } };
+    return { ...cfg, live_scan: { ...cfg.live_scan, overlay_3d: { ...cfg.live_scan.overlay_3d, focus_mask: true, ...patch } } };
   };
   const live = (ok: boolean, codes: string[] = []) =>
     act(() =>
@@ -150,7 +151,7 @@ describe("the 3D hand's black background and colour", () => {
   const overlay = () => stages.filter((p) => p.mode === "overlay").at(-1)!;
 
   it("gives the black a small canvas of its own between the video and the 2D drawing, with the video's CSS", () => {
-    const { container } = mountScan();
+    const { container } = mountScan(withOverlay({}) as never);
     const mask = container.querySelector<HTMLCanvasElement>(".stage canvas.focus-mask-canvas")!;
     expect(mask).not.toBeNull();
     expect(mask.getAttribute("aria-hidden")).toBe("true");
@@ -179,8 +180,16 @@ describe("the 3D hand's black background and colour", () => {
     }
   });
 
+  it("ships with the black off: the 3D hand sits over the whole picture", () => {
+    const { container } = mountScan();
+    expect(container.querySelector(".focus-mask-canvas")).toBeNull();
+    expect(overlay().onBlack).toBe(false);
+  });
+
   it("tells the scene the picture is blacked out, as config says", () => {
-    mountScan();
+    cleanup();
+    stages.length = 0;
+    mountScan(withOverlay({}) as never);
     expect(overlay().onBlack).toBe(true);
     cleanup();
     stages.length = 0;
@@ -188,7 +197,7 @@ describe("the 3D hand's black background and colour", () => {
     expect(overlay().onBlack).toBe(false); // the 3D hand over the normal picture
   });
 
-  it("is calm until a hand is tracked, amber while the pose needs fixing and green once it is fine", () => {
+  it("is calm until a hand is tracked, pale blue while the pose needs fixing and green once it is fine", () => {
     mountScan(withOverlay({ tone_hold_ms: 0 }) as never);
     expect(overlay().tone).toBe("idle");
     live(false, ["no_hand"]); // nothing tracked

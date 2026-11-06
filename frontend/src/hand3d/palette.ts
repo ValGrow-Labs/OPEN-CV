@@ -1,7 +1,8 @@
 // Colours and timing of the camera-view overlay (pure: no DOM, no three.js, so it is tested without WebGL).
 //
-// The hologram has three tones: "idle" (cyan and blue: nothing to judge yet), "ok" (the pose is right: a cool
-// green-cyan that still reads as the same hologram) and "warn" (the pose needs fixing: amber). Every colour the
+// The hologram has three tones, all in the same blue family as the result page: "idle" (brand blue: nothing to
+// judge yet), "ok" (the pose is right: a cool green-cyan) and "warn" (the pose needs fixing: a paler, softer
+// blue that also scans more slowly and dimmer, see toneMotion; the guidance line says what to fix). Every colour the
 // layer draws comes from this one table; the layer eases from one tone to another instead of jumping.
 
 export type Tone = "ok" | "warn" | "idle";
@@ -12,9 +13,9 @@ export type Role = (typeof ROLES)[number];
 export const PALETTE_SIZE = ROLES.length * 3;
 
 const HEX: Record<Tone, Record<Role, string>> = {
-  idle: { deep: "#0a3a8c", mid: "#2b8cff", glow: "#19e6e6", spark: "#dcfeff", wire: "#1fb4ff", rail: "#19e6e6", pale: "#d4fbff" },
+  idle: { deep: "#0a3a8c", mid: "#2b7cff", glow: "#25a8ff", spark: "#e4f4ff", wire: "#1fb4ff", rail: "#3fc0ff", pale: "#d8efff" },
   ok: { deep: "#0b5f5a", mid: "#1fc7a8", glow: "#3ddc97", spark: "#e4fff1", wire: "#2fd6b0", rail: "#5bf0b0", pale: "#e4fff1" },
-  warn: { deep: "#7a3f06", mid: "#ff9a1f", glow: "#ffb020", spark: "#fff0d0", wire: "#ffa31a", rail: "#ffc04d", pale: "#fff0d0" },
+  warn: { deep: "#1b3a8f", mid: "#5b86f2", glow: "#88a9ff", spark: "#eef3ff", wire: "#6f98ff", rail: "#a8c0ff", pale: "#eef3ff" },
 };
 
 const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));

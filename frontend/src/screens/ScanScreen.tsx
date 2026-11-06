@@ -315,7 +315,7 @@ export function ScanScreen<R = ScanResponse>({
   const liveCodes = status?.live?.codes ?? [];
   const handSeen = status?.live ? !liveCodes.includes("no_hand") : false;
   const stage = phase === "complete" ? 3 : liveStage(liveCodes);
-  // The 3D hand's colour: green when the pose is fine, amber when it needs fixing, held so it does not flicker.
+  // The 3D hand's colour: green when the pose is fine, pale blue when it needs fixing, held so it does not flicker.
   const toneRef = useRef<ToneState>(INITIAL_TONE);
   toneRef.current = holdTone(toneRef.current, rawTone(handSeen, status?.live?.ok), performance.now(), overlayCfg.tone_hold_ms);
 

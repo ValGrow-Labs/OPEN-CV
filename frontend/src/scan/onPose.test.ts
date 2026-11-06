@@ -161,9 +161,10 @@ function fakeMaskCanvas() {
   return { canvas, ...rec };
 }
 
+// The black is opt-in (shipped off): these tests are about the black, so they switch it on unless told otherwise.
 const withOverlay = (patch: object) => {
   const cfg = publicConfig();
-  return { ...cfg, live_scan: { ...cfg.live_scan, overlay_3d: { ...cfg.live_scan.overlay_3d, ...patch } } };
+  return { ...cfg, live_scan: { ...cfg.live_scan, overlay_3d: { ...cfg.live_scan.overlay_3d, focus_mask: true, ...patch } } };
 };
 
 describe("ScanController focus mask", () => {
@@ -173,7 +174,7 @@ describe("ScanController focus mask", () => {
 
   /** Run frames 100 ms apart (the clock stands still within a frame); ``tracked`` says for each frame whether
    *  the tracker finds the hand. The mask has its own canvas; ``main`` is the 2D drawing canvas. */
-  function run(extra: object, cfg = publicConfig(), tracked: boolean[] = [true, true, true, true], withMask = true) {
+  function run(extra: object, cfg = withOverlay({}), tracked: boolean[] = [true, true, true, true], withMask = true) {
     let t = 0;
     const clock = vi.spyOn(performance, "now").mockImplementation(() => t);
     const main = recordingCtx();
@@ -215,7 +216,7 @@ describe("ScanController focus mask", () => {
     const clock = vi.spyOn(performance, "now").mockImplementation(() => t);
     const mask = fakeMaskCanvas();
     const hand2 = { landmarks: base.landmarks, world: null, handedness: "Right", handednessScore: 0.9 };
-    const { frame, priv } = setup(() => hand2, undefined, { overlay3d: true, maskCanvas: mask.canvas }, recordingCtx().ctx);
+    const { frame, priv } = setup(() => hand2, undefined, { overlay3d: true, maskCanvas: mask.canvas }, recordingCtx().ctx, withOverlay({}));
     priv.prepareCanvas = () => ({ ctx: recordingCtx().ctx, w: 1080, h: 1920, scale: 1 });
     priv.lastCoin = coin;
     for (let i = 0; i < 3; i++) {
@@ -251,7 +252,7 @@ describe("ScanController focus mask", () => {
   });
 
   it("is simply off without a mask canvas, and nothing else changes", () => {
-    const { main, perFrame } = run({ overlay3d: true }, publicConfig(), [true, true, true], false);
+    const { main, perFrame } = run({ overlay3d: true }, withOverlay({}), [true, true, true], false);
     expect(perFrame).toEqual([0, 0, 0]);
     expect(main.count("ellipse")).toBeGreaterThanOrEqual(2); // the coin ring and the pulse are still drawn
   });
@@ -271,7 +272,7 @@ describe("ScanController focus mask", () => {
 
   it("fades out when the hand is lost, so the customer can find their hand, then wipes the canvas and stops drawing", () => {
     // fade in 350 ms, out 200 ms, frames 100 ms apart: black for one frame after the hand goes, then gone.
-    const { mask, perFrame, priv } = run({ overlay3d: true }, publicConfig(), [true, true, true, true, true, false, false, false, false]);
+    const { mask, perFrame, priv } = run({ overlay3d: true }, withOverlay({}), [true, true, true, true, true, false, false, false, false]);
     expect(perFrame.slice(5)).toEqual([1, 0, 0, 0]); // the first lost frame still has some black (fading), then none
     expect(priv.focusAlpha).toBe(0);
     expect(priv.focusShape).toBeNull();
@@ -280,7 +281,7 @@ describe("ScanController focus mask", () => {
   });
 
   it("shows the full picture while no hand has been found", () => {
-    const { perFrame } = run({ overlay3d: true }, publicConfig(), [false, false, false]);
+    const { perFrame } = run({ overlay3d: true }, withOverlay({}), [false, false, false]);
     expect(perFrame).toEqual([0, 0, 0]);
   });
 
@@ -301,7 +302,7 @@ describe("ScanController focus mask", () => {
       return { frames: priv.frames, statuses, drawn: mask.count("fillRect") };
     };
     const off = frames(withOverlay({ focus_mask: false }) as never, { overlay3d: true });
-    const on = frames(publicConfig(), { overlay3d: true });
+    const on = frames(withOverlay({}), { overlay3d: true });
     expect(off.drawn).toBe(0);
     expect(on.drawn).toBeGreaterThan(0); // the mask really was drawn in one run and not in the other
     expect((off.frames as unknown[]).length).toBeGreaterThan(0); // the test really collects frames

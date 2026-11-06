@@ -5,7 +5,7 @@
 // Two looks, eased between (``onBlack``): over the live picture the points keep a dark rim and normal blending so
 // they read on a bright table; over a picture blacked out round the hand they glow additively, like a hologram,
 // with a bright rim, a halo of dust, glowing joints, soft rails and a luminous sweep. Three tones (``tone``) recolour
-// it: idle (cyan and blue), ok (cool green-cyan) and amber when the pose needs fixing (palette.ts).
+// it: idle (cyan and blue), ok (cool green-cyan) and a paler blue when the pose needs fixing (palette.ts).
 //
 // It runs on top of live hand tracking on phones, so the budget is tight: pixel ratio at most 1.25, 30 frames a
 // second, a few thousand points, and nothing allocated per frame in the pose loop.

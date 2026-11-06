@@ -18,16 +18,17 @@ describe("tone palettes", () => {
     }
   });
 
-  it("idle is cyan-blue, ok a cool green-cyan, warn amber (by the glow colour)", () => {
+  it("idle is the brand blue, ok a cool green-cyan, warn a paler soft blue (by the glow colour)", () => {
     const [ir, ig, ib] = glow(toneTarget("idle"));
     const [or, og, ob] = glow(toneTarget("ok"));
     const [wr, wg, wb] = glow(toneTarget("warn"));
-    expect(ib).toBeGreaterThan(ir); // cyan: blue and green high, red low
+    expect(ib).toBeGreaterThan(ig); // blue: blue highest, red lowest
     expect(ig).toBeGreaterThan(ir);
     expect(og).toBeGreaterThan(or); // green-led
     expect(og).toBeGreaterThan(ob);
-    expect(wr).toBeGreaterThan(wg); // amber: red highest, blue lowest
-    expect(wg).toBeGreaterThan(wb);
+    expect(wb).toBeGreaterThan(wg); // soft blue: still blue-led, never orange
+    expect(wb).toBeGreaterThan(wr);
+    expect(wr).toBeGreaterThan(ir); // but paler than idle
   });
 
   it("the three tones are different and an unknown tone is idle", () => {
@@ -48,8 +49,8 @@ describe("tone palettes", () => {
   });
 
   it("gives the labels an accent as r g b", () => {
-    expect(toneAccentRgb("idle")).toBe("25 230 230");
-    expect(toneAccentRgb("warn")).toMatch(/^255 \d+ \d+$/);
+    expect(toneAccentRgb("idle")).toBe("37 168 255");
+    expect(toneAccentRgb("warn")).toBe("136 169 255");
     expect(toneAccentRgb(undefined)).toBe(toneAccentRgb("idle"));
   });
 });
@@ -161,8 +162,8 @@ describe("light theme colours", () => {
     expect(lightRgb("glow").split(" ").map(Number).every((n) => n >= 0 && n <= 255)).toBe(true);
   });
 
-  it("the dark tones are untouched by the light table", () => {
+  it("the live tones are not read from the light table", () => {
     expect(toneTarget("idle").length).toBe(PALETTE_SIZE);
-    expect(toneAccentRgb("idle")).toBe("25 230 230");
+    expect(toneAccentRgb("idle")).toBe("37 168 255");
   });
 });
