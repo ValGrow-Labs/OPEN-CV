@@ -325,9 +325,12 @@ export function ScanScreen<R = ScanResponse>({
         <button className="icon-btn" onClick={onCancel} aria-label="Cancel scan">
           {Icon.close}
         </button>
-        <span className="scan-ref small">
-          {ref.label} · {ref.diameter.toFixed(2)} mm
-        </span>
+        <div className="scan-head">
+          <span className="scan-title">Hand measurement scan</span>
+          <span className="scan-ref small">
+            Calibration: {ref.label} ({ref.diameter.toFixed(2)} mm)
+          </span>
+        </div>
         <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
           <button className="icon-btn" onClick={() => setGuide("help")} aria-label="Show scan tips" disabled={guide !== null}>
             {Icon.help}
@@ -428,12 +431,12 @@ export function ScanScreen<R = ScanResponse>({
         )}
 
         {(submitting || submitError) && (
-          <div className="stage-message" style={{ background: "rgba(14,16,19,0.7)" }}>
+          <div className="stage-message stage-message-veil">
             {submitting ? (
               <div className="stack" style={{ alignItems: "center", maxWidth: 340, textAlign: "center" }}>
                 {webglAvailable() ? (
                   <div className="calc-hand3d">
-                    <HandStage mode="scan" label="A glowing 3D hand while your measurements are calculated" />
+                    <HandStage mode="scan" theme="light" label="A glowing 3D hand while your measurements are calculated" />
                   </div>
                 ) : (
                   <div className="spinner" />
@@ -512,9 +515,9 @@ export function ScanScreen<R = ScanResponse>({
           <>
             <div className={`live-meter ${status?.liveMm ? "" : "is-idle"}`} aria-live="off" aria-hidden={!status?.liveMm}>
               <span className="live-meter-label">Hand length, live</span>
-              <span className="live-meter-value num">{status?.liveMm ? Math.round(status.liveMm.handMm) : 0} mm</span>
+              <span className="live-meter-value num">{status?.liveMm ? `${Math.round(status.liveMm.handMm)} mm` : "—"}</span>
               <span className="live-meter-sub num">
-                {((status?.liveMm?.handMm ?? 0) / 25.4).toFixed(2)} in · final value after the scan
+                {status?.liveMm ? `${(status.liveMm.handMm / 25.4).toFixed(2)} in · final value after the scan` : "Waiting for your hand and coin"}
               </span>
             </div>
             <div className={`scan-hint ${showHint ? "" : "is-idle"}`} role="status" aria-hidden={!showHint}>

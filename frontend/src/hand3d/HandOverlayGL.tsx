@@ -7,6 +7,11 @@
 // with a bright rim, a halo of dust, glowing joints, soft rails and a luminous sweep. Three tones (``tone``) recolour
 // it: idle (cyan and blue), ok (cool green-cyan) and a paler blue when the pose needs fixing (palette.ts).
 //
+// Round the hand, like the reference picture: two thin luminous rings that tilt gently round it (one wide, one
+// with a touch of gold; each split so its back half is drawn behind the hand and its front half over it), a bright
+// bead running round each ring, and a light sprinkle of sparkles outside the silhouette. They are the first thing the
+// performance guard drops (perfGuard.ts, plan.rings) and they only exist while a hand is tracked.
+//
 // It runs on top of live hand tracking on phones, so the budget is tight: pixel ratio at most 1.25, 30 frames a
 // second, a few thousand points, and nothing allocated per frame in the pose loop.
 import {
@@ -20,9 +25,11 @@ import {
   LineBasicMaterial,
   LineSegments,
   Mesh,
+  MeshBasicMaterial,
   NormalBlending,
   OrthographicCamera,
   Points,
+  RingGeometry,
   Scene,
   ShaderMaterial,
   WebGLRenderer,
@@ -43,15 +50,25 @@ import {
   mapToElement,
   nodeGlow,
   normalizeInto,
+  orbitBead,
+  orbitFrameOf,
+  orbitPose,
   poseBounds,
   railSide,
+  RING_A,
+  RING_B,
+  ringRadius,
   rimWeights,
+  easeFrame,
+  sparkleShell,
   triangle,
   type Bounds,
   type HandFrame,
+  type OrbitFrame,
+  type OrbitPose,
   type RailInfo,
 } from "./overlayMath";
-import { approach, assemble, roleAt, stepPalette, toneAccentRgb, toneMotion, toneTarget } from "./palette";
+import { approach, assemble, LIGHT_HEX, roleAt, stepPalette, toneAccentRgb, toneMotion, toneTarget } from "./palette";
 import { DEFAULT_BUDGET, PerfGuard, type Budget, type Plan } from "./perfGuard";
 
 const NAVY = new Color("#031a33"); // the dark edge that keeps the layer readable on a bright picture
@@ -65,6 +82,22 @@ const HALO_SHARE = 0.22; // dust round the hand, as a share of the points on it
 const Z_GAIN = 1.35; // the relief is exaggerated a little so a tilted hand reads as 3D
 const COUNT_PHONE = 3000;
 const COUNT_LARGE = 5000;
+const SPARKLES_PHONE = 70; // the sprinkle outside the silhouette (a few dozen read as dust, more as noise)
+const SPARKLES_LARGE = 120;
+const RING_SEGMENTS = 64; // per half ring
+const RING_SETTLE_MS = 220; // the rings follow the hand a little behind its tracking jitter
+/** The layers of an orbit ring, from the one underneath to the top: width (a share of the ring's radius), opacity and
+ *  which colour. ``rim`` is a navy edge that keeps the ring readable on a bright picture; ``halo`` is the tone's
+ *  glow (the gold of the second ring), ``body`` the tone's blue, ``core`` white-hot. */
+const RING_LAYERS: readonly (readonly [number, number, "rim" | "halo" | "body" | "core"])[] = [
+  [0.046, 0.4, "rim"],
+  [0.17, 0.1, "halo"],
+  [0.08, 0.22, "halo"],
+  [0.032, 0.8, "body"],
+  [0.014, 1, "core"],
+];
+const BEAD_SPEED = [0.075, -0.06] as const; // turns a second, the two rings running opposite ways
+const BEAD_PHASE = [0.2, 0.65] as const;
 
 const VERT = /* glsl */ `
   attribute float aGlow;
@@ -76,6 +109,7 @@ const VERT = /* glsl */ `
   uniform float uTwinkle;
   uniform float uAssemble;
   uniform float uBlack;
+  uniform float uDrift;
   varying float vGlow;
   varying float vBeam;
   varying float vTw;
@@ -84,6 +118,8 @@ const VERT = /* glsl */ `
   void main() {
     float s = aSeed * 6.2831;
     vec3 p = position;
+    // sparkles drift a little where they are (the hand's own points have uDrift 0)
+    p.xy += uDrift * vec2(sin(uTime * 0.6 + s * 3.0), cos(uTime * 0.5 + s * 2.0));
     // a hand that has just appeared: the points start a little way out and converge on it
     if (uAssemble > 0.001) {
       vec3 dir = p - vec3(0.0, 0.45, 0.0) + 0.4 * vec3(cos(s * 3.1), sin(s * 2.3), cos(s * 1.7));
@@ -198,6 +234,7 @@ function pointMaterial(alpha: number): ShaderMaterial {
       uTwinkle: { value: 1 },
       uAssemble: { value: 0 },
       uBlack: { value: 0 },
+      uDrift: { value: 0 },
       uDeep: PAL.uDeep,
       uMid: PAL.uMid,
       uGlow: PAL.uGlow,
@@ -210,6 +247,55 @@ function pointMaterial(alpha: number): ShaderMaterial {
 
 function lineMaterial(color: Color, opacity: number): LineBasicMaterial {
   return new LineBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false });
+}
+
+interface RingLayerMat {
+  mat: MeshBasicMaterial;
+  kind: "rim" | "halo" | "body" | "core";
+  gold: boolean;
+  opacity: number;
+}
+
+/** One luminous orbit ring at unit radius in its own XY plane: every layer is two half rings, so that the half on
+ *  the near side (y > 0, which the tilt turns towards the viewer) can be drawn over the hand and the other behind it. */
+function orbitRing(gold: boolean): { group: Group; layers: RingLayerMat[]; geos: RingGeometry[] } {
+  const group = new Group();
+  group.rotation.order = "ZXY"; // tilt about x first, then turn in the screen plane
+  const layers: RingLayerMat[] = [];
+  const geos: RingGeometry[] = [];
+  RING_LAYERS.forEach(([w, opacity, kind], i) => {
+    const mat = new MeshBasicMaterial({ color: kind === "core" ? "#ffffff" : NAVY, transparent: true, opacity: 0, depthTest: false, depthWrite: false, side: DoubleSide });
+    layers.push({ mat, kind, gold, opacity });
+    for (const front of [false, true]) {
+      const geo = new RingGeometry(1 - w / 2, 1 + w / 2, RING_SEGMENTS, 1, front ? 0 : Math.PI, Math.PI);
+      geos.push(geo);
+      const m = new Mesh(geo, mat);
+      m.renderOrder = front ? 3 + i * 0.01 : -2 + i * 0.01;
+      m.frustumCulled = false;
+      group.add(m);
+    }
+  });
+  return { group, layers, geos };
+}
+
+/** A single point that runs round a ring (the bright bead): a one-vertex Points with the layer's point shader. */
+function beadPoints(): { points: Points; pos: Float32Array; posAttr: BufferAttribute; glow: Float32Array; glowAttr: BufferAttribute; mat: ShaderMaterial; geo: BufferGeometry } {
+  const pos = new Float32Array(3);
+  const posAttr = new BufferAttribute(pos, 3);
+  posAttr.setUsage(35048);
+  const glow = new Float32Array([1]);
+  const glowAttr = new BufferAttribute(glow, 1);
+  glowAttr.setUsage(35048);
+  const geo = new BufferGeometry();
+  geo.setAttribute("position", posAttr);
+  geo.setAttribute("aGlow", glowAttr);
+  geo.setAttribute("aSeed", new BufferAttribute(new Float32Array([0.5]), 1));
+  geo.setAttribute("aRim", new BufferAttribute(new Float32Array(1), 1));
+  const mat = pointMaterial(1.1);
+  const points = new Points(geo, mat);
+  points.frustumCulled = false;
+  points.renderOrder = 4;
+  return { points, pos, posAttr, glow, glowAttr, mat, geo };
 }
 
 function rng(seed: number) {
@@ -396,6 +482,48 @@ export default function HandOverlayGL(props: HandStageProps) {
     });
     const band = new Mesh(bandGeo, bandMat);
 
+    // ---- the orbit rings, their beads and the sparkles: all in hand space, centred on the hand's box
+    const orbits = new Group();
+    orbits.visible = false;
+    const ringA = orbitRing(false);
+    const ringB = orbitRing(true);
+    const rings = [ringA, ringB] as const;
+    const beads2 = [beadPoints(), beadPoints()] as const;
+    rings.forEach((r, k) => r.group.add(beads2[k].points));
+    orbits.add(ringA.group, ringB.group);
+    const sparkCount = phone || lowEnd ? SPARKLES_PHONE : SPARKLES_LARGE;
+    const sparkPos = new Float32Array(sparkCount * 3);
+    const sparkGlow = new Float32Array(sparkCount);
+    const sparkSeed = new Float32Array(sparkCount);
+    sparkleShell(sparkCount, rng(41), sparkPos, sparkGlow, sparkSeed);
+    const sparkGeo = new BufferGeometry();
+    sparkGeo.setAttribute("position", new BufferAttribute(sparkPos, 3));
+    sparkGeo.setAttribute("aGlow", new BufferAttribute(sparkGlow, 1));
+    sparkGeo.setAttribute("aSeed", new BufferAttribute(sparkSeed, 1));
+    sparkGeo.setAttribute("aRim", new BufferAttribute(new Float32Array(sparkCount), 1));
+    const sparkMat = pointMaterial(0.8);
+    const sparkles = new Points(sparkGeo, sparkMat);
+    sparkles.frustumCulled = false;
+    sparkles.renderOrder = 1;
+    orbits.add(sparkles);
+    const ringMats = [ringA, ringB].flatMap((r) => r.layers);
+    const orbitPoints = [sparkMat, beads2[0].mat, beads2[1].mat];
+    const ringFrame: OrbitFrame = { cx: 0, cy: 0.5, hw: 0.35, hh: 0.55 };
+    const ringTarget: OrbitFrame = { cx: 0, cy: 0.5, hw: 0.35, hh: 0.55 };
+    const ringPose: OrbitPose = { tilt: 0, turn: 0 };
+    const beadTmp = { x: 0, y: 0, glow: 1 };
+    let ringsShown = false; // the rings were drawn last frame (a hand that has just appeared starts them in place)
+    let ringBlendBlack = false;
+    const GOLD = new Color(LIGHT_HEX.ringGold);
+    const recolorRings = () => {
+      for (const l of ringMats) {
+        if (l.kind === "halo") l.mat.color.copy(l.gold ? GOLD : PAL.uGlow.value);
+        else if (l.kind === "body") l.mat.color.copy(PAL.uMid.value);
+        else if (l.kind === "rim") l.mat.color.copy(NAVY);
+      }
+    };
+    recolorRings();
+
     // The hand space (wrist at the origin, y up, wrist to middle fingertip = 1) is placed on the screen by this
     // one transform; y is flipped because the screen's y runs down.
     // Every line is drawn twice: a dark copy a hair down and to the side first (a drop shadow), so the lines
@@ -407,7 +535,7 @@ export default function HandOverlayGL(props: HandStageProps) {
       return l;
     });
     const hand = new Group();
-    for (const o of [...shadows, haloPoints, handPoints, band, wire, fingerRails, handRail, beadHalos, beads, nodeHalos, nodes, beam]) {
+    for (const o of [...shadows, haloPoints, handPoints, band, wire, fingerRails, handRail, beadHalos, beads, nodeHalos, nodes, beam, orbits]) {
       o.frustumCulled = false;
       hand.add(o);
     }
@@ -449,6 +577,7 @@ export default function HandOverlayGL(props: HandStageProps) {
       active = next.pointFraction >= 1 ? sampled : { ...sampled, count: Math.floor(count * next.pointFraction) };
       handGeo.setDrawRange(0, active.count);
       haloPoints.visible = next.halo;
+      if (!next.rings) orbits.visible = false;
       wire.visible = next.wire;
       shadows[0].visible = next.wire;
       nodes.visible = next.nodes;
@@ -509,6 +638,7 @@ export default function HandOverlayGL(props: HandStageProps) {
         fingerMat.color.copy(LINE.rail);
         handRailMat.color.copy(LINE.pale);
         beamMat.color.copy(LINE.pale);
+        recolorRings();
         paletteDirty = false;
       }
       blackMix = approach(blackMix, p.onBlack ? 1 : 0, dt * 1000, BLACK_SETTLE_MS);
@@ -519,6 +649,13 @@ export default function HandOverlayGL(props: HandStageProps) {
         for (const m of [wireMat, fingerMat, handRailMat, beamMat]) {
           m.blending = mode;
           m.needsUpdate = true;
+        }
+      }
+      if (additive !== ringBlendBlack) {
+        ringBlendBlack = additive; // the ring layers glow additively on black, and are drawn normally (with their navy rim) otherwise
+        for (const l of ringMats) {
+          l.mat.blending = additive ? AdditiveBlending : NormalBlending;
+          l.mat.needsUpdate = true;
         }
       }
       const motion = toneMotion(p.tone);
@@ -596,6 +733,44 @@ export default function HandOverlayGL(props: HandStageProps) {
             m.uniforms.uBlack.value = blackMix;
             m.uniforms.uAssemble.value = m === handMat || m === haloMat ? swept : 0;
           }
+          // ---- the orbit rings: round the hand's box, eased, tilting gently; beads run round them; sparkles drift
+          const ringsOn = plan.rings;
+          orbits.visible = ringsOn;
+          if (ringsOn) {
+            orbitFrameOf(bounds, ringTarget);
+            easeFrame(ringFrame, ringTarget, dt * 1000, RING_SETTLE_MS, !ringsShown);
+            orbits.position.set(ringFrame.cx, ringFrame.cy, 0);
+            // a pose that needs fixing is dimmer and slower, like the sweep
+            const gain = fade * (0.55 + 0.45 * motion.sweepGain);
+            for (let k = 0; k < 2; k++) {
+              const g = rings[k].group;
+              g.scale.setScalar(ringRadius(ringFrame, k === 0 ? RING_A : RING_B));
+              orbitPose(t, k as 0 | 1, ringPose);
+              g.rotation.set(ringPose.tilt, 0, ringPose.turn);
+              orbitBead(t, BEAD_SPEED[k], BEAD_PHASE[k], beadTmp);
+              const bd = beads2[k];
+              bd.pos[0] = beadTmp.x;
+              bd.pos[1] = beadTmp.y;
+              bd.glow[0] = beadTmp.glow;
+              bd.posAttr.needsUpdate = true;
+              bd.glowAttr.needsUpdate = true;
+            }
+            for (const l of ringMats) l.mat.opacity = l.opacity * gain * (l.kind === "rim" ? 1 - blackMix : 1);
+            sparkles.scale.set(ringFrame.hw, ringFrame.hh, 0.5);
+            const beadPx = px * 4;
+            beads2[0].mat.uniforms.uPx.value = beadPx;
+            beads2[1].mat.uniforms.uPx.value = beadPx;
+            sparkMat.uniforms.uPx.value = px * 0.9;
+            for (const m of orbitPoints) {
+              m.uniforms.uTime.value = t;
+              m.uniforms.uBeam.value = -99;
+              m.uniforms.uTwinkle.value = reduce ? 0 : 1;
+              m.uniforms.uFade.value = gain;
+              m.uniforms.uBlack.value = blackMix;
+            }
+            sparkMat.uniforms.uDrift.value = reduce ? 0 : 0.05;
+          }
+          ringsShown = ringsOn;
           // the soft glow layers and the wireframe's lower alpha belong to the black look
           const glowOn = plan.nodes && blackMix > 0.02;
           beadHalos.visible = glowOn;
@@ -617,6 +792,7 @@ export default function HandOverlayGL(props: HandStageProps) {
         if (stats) stats.poseMs += performance.now() - p0;
       }
       hand.visible = show;
+      if (!show) ringsShown = false;
 
       if (show || drawn) {
         renderer.render(scene, camera); // also clears the canvas once the hand has faded out
@@ -741,8 +917,8 @@ export default function HandOverlayGL(props: HandStageProps) {
       io.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       canvas.removeEventListener("webglcontextlost", onLost);
-      for (const g of [handGeo, haloGeo, nodeGeo, wireGeo, fingerGeo, handRailGeo, beadGeo, beamGeo, bandGeo]) g.dispose();
-      for (const m of [handMat, haloMat, nodeMat, nodeGlowMat, beadMat, beadGlowMat, wireMat, fingerMat, handRailMat, beamMat, bandMat, shadowMat]) m.dispose();
+      for (const g of [handGeo, haloGeo, nodeGeo, wireGeo, fingerGeo, handRailGeo, beadGeo, beamGeo, bandGeo, sparkGeo, beads2[0].geo, beads2[1].geo, ...ringA.geos, ...ringB.geos]) g.dispose();
+      for (const m of [handMat, haloMat, nodeMat, nodeGlowMat, beadMat, beadGlowMat, wireMat, fingerMat, handRailMat, beamMat, bandMat, shadowMat, sparkMat, beads2[0].mat, beads2[1].mat, ...ringMats.map((l) => l.mat)]) m.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();

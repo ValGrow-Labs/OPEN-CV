@@ -4,8 +4,8 @@
 // picture. The guard watches a rolling average of the layer's own cost per frame and of the page's frame
 // interval; when either is over budget for about a second and a half it takes the layer one step down, in this
 // order, and never back up (a flickering quality is worse than a steady lower one):
-//   1. no halo of dust, no scanning sweep or twinkle   2. no wireframe, no joint nodes   3. half the points
-//   4. 20 frames a second   5. switched off (the 2D drawing)
+//   1. no orbit rings or sparkles, no halo of dust, no scanning sweep or twinkle   2. no wireframe, no joint nodes
+//   3. half the points   4. 20 frames a second   5. switched off (the 2D drawing)
 
 export interface Budget {
   /** The most the layer may cost per frame (JS time to re-pose and draw), in ms. */
@@ -22,6 +22,8 @@ export interface Plan {
   level: Level;
   /** Share of the points that are posed and drawn. */
   pointFraction: number;
+  /** The two luminous orbit rings and the sparkles round the hand (the first thing a slow phone loses). */
+  rings: boolean;
   /** The soft halo of dust round the hand. */
   halo: boolean;
   /** The scanning sweep and the twinkle of the points. */
@@ -36,12 +38,12 @@ export interface Plan {
 }
 
 const PLANS: readonly Plan[] = [
-  { level: 0, pointFraction: 1, halo: true, sweep: true, wire: true, nodes: true, fps: 30, disabled: false },
-  { level: 1, pointFraction: 1, halo: false, sweep: false, wire: true, nodes: true, fps: 30, disabled: false },
-  { level: 2, pointFraction: 1, halo: false, sweep: false, wire: false, nodes: false, fps: 30, disabled: false },
-  { level: 3, pointFraction: 0.5, halo: false, sweep: false, wire: false, nodes: false, fps: 30, disabled: false },
-  { level: 4, pointFraction: 0.5, halo: false, sweep: false, wire: false, nodes: false, fps: 20, disabled: false },
-  { level: 5, pointFraction: 0, halo: false, sweep: false, wire: false, nodes: false, fps: 20, disabled: true },
+  { level: 0, pointFraction: 1, rings: true, halo: true, sweep: true, wire: true, nodes: true, fps: 30, disabled: false },
+  { level: 1, pointFraction: 1, rings: false, halo: false, sweep: false, wire: true, nodes: true, fps: 30, disabled: false },
+  { level: 2, pointFraction: 1, rings: false, halo: false, sweep: false, wire: false, nodes: false, fps: 30, disabled: false },
+  { level: 3, pointFraction: 0.5, rings: false, halo: false, sweep: false, wire: false, nodes: false, fps: 30, disabled: false },
+  { level: 4, pointFraction: 0.5, rings: false, halo: false, sweep: false, wire: false, nodes: false, fps: 20, disabled: false },
+  { level: 5, pointFraction: 0, rings: false, halo: false, sweep: false, wire: false, nodes: false, fps: 20, disabled: true },
 ];
 
 const EMA = 0.1; // weight of the newest frame in the rolling averages

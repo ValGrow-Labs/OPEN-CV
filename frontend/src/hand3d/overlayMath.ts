@@ -328,3 +328,88 @@ export function nodeGlow(): Float32Array {
   for (let i = 0; i < 21; i++) g[i] = i === 0 || i % 4 === 0 ? 1.15 : i % 4 === 1 ? 0.7 : 0.5;
   return g;
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// The orbit rings and the sparkles round the hand (the reference look: two thin luminous rings that tilt gently
+// round a glowing hand). Pure maths; the layer owns the buffers.
+
+export interface OrbitFrame {
+  /** The middle of the hand, in hand space, and the half-extents of its box (so the rings and sparkles hug it). */
+  cx: number;
+  cy: number;
+  hw: number;
+  hh: number;
+}
+
+/** The orbit frame of a pose's bounds: the centre of the box and half its width and height. A frame with no
+ *  extent (a hand not yet placed) is the unit hand. */
+export function orbitFrameOf(b: Bounds, out: OrbitFrame): void {
+  const w = b.maxX - b.minX;
+  const h = b.maxY - b.minY;
+  const ok = Number.isFinite(w) && Number.isFinite(h) && w > 1e-4 && h > 1e-4;
+  out.cx = ok ? (b.minX + b.maxX) / 2 : 0;
+  out.cy = ok ? (b.minY + b.maxY) / 2 : 0.5;
+  out.hw = ok ? w / 2 : 0.35;
+  out.hh = ok ? h / 2 : 0.55;
+}
+
+/** The radius of an orbit ring round a hand: a share of its larger half-extent, so a ring always clears the hand
+ *  (A is the wide ring, B the inner one). */
+export const RING_A = 1.32;
+export const RING_B = 1.08;
+export function ringRadius(f: OrbitFrame, share: number): number {
+  return Math.max(f.hw, f.hh) * share;
+}
+
+/** Ease a frame towards a target, ``settleMs`` to about 95% of the way (the same exponential as the palette), so
+ *  the rings follow the hand without the jitter of the tracking. A frame that has just appeared jumps. */
+export function easeFrame(cur: OrbitFrame, tgt: OrbitFrame, dtMs: number, settleMs: number, jump: boolean): void {
+  const k = jump || !(settleMs > 0) ? 1 : 1 - Math.exp((-3 * Math.max(0, dtMs)) / settleMs);
+  cur.cx += (tgt.cx - cur.cx) * k;
+  cur.cy += (tgt.cy - cur.cy) * k;
+  cur.hw += (tgt.hw - cur.hw) * k;
+  cur.hh += (tgt.hh - cur.hh) * k;
+}
+
+export interface OrbitPose {
+  /** Tilt of the ring's plane away from the screen (radians): near pi/2 is an edge-on, flat ellipse. */
+  tilt: number;
+  /** Turn of the ellipse in the screen plane (radians). */
+  turn: number;
+}
+
+/** A ring's gentle breathing at time ``t`` seconds: ``which`` 0 is the wide ring, 1 the inner one. With reduced
+ *  motion (``t`` fixed by the caller) the same function gives a steady pose. */
+export function orbitPose(t: number, which: 0 | 1, out: OrbitPose): void {
+  if (which === 0) {
+    out.tilt = 1.22 + 0.06 * Math.sin(t * 0.5);
+    out.turn = -0.34 + 0.06 * Math.sin(t * 0.37 + 1);
+  } else {
+    out.tilt = 0.98 + 0.06 * Math.sin(t * 0.43 + 2);
+    out.turn = 0.42 + 0.06 * Math.sin(t * 0.31);
+  }
+}
+
+/** The bright bead that runs round a ring: its place on the unit circle at ``t`` seconds (``speed`` turns per
+ *  second, a little different on every ring), and how much of the ring's glow it gets (full on the half nearest
+ *  the viewer, dimmer behind the hand). The ring's plane is tilted so that y > 0 is the near side. */
+export function orbitBead(t: number, speed: number, phase: number, out: { x: number; y: number; glow: number }): void {
+  const a = (t * speed + phase) * Math.PI * 2;
+  out.x = Math.cos(a);
+  out.y = Math.sin(a);
+  out.glow = out.y > 0 ? 1 : 0.45;
+}
+
+/** Sparkle positions on a loose shell round the hand: ``n`` points as (x, y, z) in a unit ellipse space (scale
+ *  by the hand's half-extents), none inside the silhouette (radius 1.0 and out), thinning towards the edge. */
+export function sparkleShell(n: number, rand: () => number, out: Float32Array, glow: Float32Array, seed: Float32Array): void {
+  for (let i = 0; i < n; i++) {
+    const a = rand() * Math.PI * 2;
+    const rho = 1.02 + 0.8 * rand() * rand(); // most close to the outline, a few far
+    out[i * 3] = Math.cos(a) * rho;
+    out[i * 3 + 1] = Math.sin(a) * rho;
+    out[i * 3 + 2] = (rand() - 0.5) * 0.5;
+    glow[i] = 0.15 + 0.6 * rand();
+    seed[i] = rand();
+  }
+}

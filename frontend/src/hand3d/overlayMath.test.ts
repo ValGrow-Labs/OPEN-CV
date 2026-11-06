@@ -14,9 +14,17 @@ import {
   mapToElement,
   nodeGlow,
   normalizeInto,
+  orbitBead,
+  orbitFrameOf,
+  orbitPose,
   poseBounds,
   railSide,
+  RING_A,
+  RING_B,
+  ringRadius,
   rimWeights,
+  easeFrame,
+  sparkleShell,
   triangle,
   type Bounds,
   type HandFrame,
@@ -358,5 +366,119 @@ describe("glowing nodes at the joints", () => {
     expect(g.length).toBe(21);
     for (const tip of [0, 4, 8, 12, 16, 20]) expect(g[tip]).toBeGreaterThan(1);
     for (const mid of [2, 3, 6, 7, 10, 11]) expect(g[mid]).toBeLessThan(g[8]);
+  });
+});
+
+describe("the orbit rings and sparkles", () => {
+  const frame = () => ({ cx: 0, cy: 0, hw: 0, hh: 0 });
+
+  it("takes the centre and half-extents of a hand's box, and the unit hand when there is none", () => {
+    const f = frame();
+    orbitFrameOf({ minX: -0.3, maxX: 0.4, minY: 0, maxY: 1.1 }, f);
+    expect(f.cx).toBeCloseTo(0.05, 6);
+    expect(f.cy).toBeCloseTo(0.55, 6);
+    expect(f.hw).toBeCloseTo(0.35, 6);
+    expect(f.hh).toBeCloseTo(0.55, 6);
+    for (const bad of [
+      { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity },
+      { minX: 0, maxX: 0, minY: 0, maxY: 1 },
+      { minX: 0, maxX: NaN, minY: 0, maxY: 1 },
+    ]) {
+      orbitFrameOf(bad, f);
+      expect(f).toEqual({ cx: 0, cy: 0.5, hw: 0.35, hh: 0.55 });
+    }
+  });
+
+  it("sizes each ring from the larger half-extent, so the wide ring always clears the hand and the inner one is smaller", () => {
+    const f = { cx: 0, cy: 0.5, hw: 0.35, hh: 0.55 };
+    expect(ringRadius(f, RING_A)).toBeCloseTo(0.55 * RING_A, 9);
+    expect(ringRadius(f, RING_B)).toBeLessThan(ringRadius(f, RING_A));
+    expect(ringRadius(f, RING_B)).toBeGreaterThan(f.hh); // clears the box
+    // a hand that is wider than tall (turned on its side) is sized by its width
+    expect(ringRadius({ cx: 0, cy: 0, hw: 0.8, hh: 0.3 }, 1)).toBe(0.8);
+  });
+
+  it("eases a frame towards its target without overshooting, jumps for a hand that has just appeared, and never lags forever", () => {
+    const cur = { cx: 0, cy: 0, hw: 0.2, hh: 0.2 };
+    const tgt = { cx: 1, cy: -1, hw: 0.6, hh: 0.8 };
+    easeFrame(cur, tgt, 16, 250, false);
+    expect(cur.cx).toBeGreaterThan(0);
+    expect(cur.cx).toBeLessThan(1);
+    expect(cur.cy).toBeLessThan(0);
+    expect(cur.cy).toBeGreaterThan(-1);
+    for (let i = 0; i < 80; i++) easeFrame(cur, tgt, 16, 250, false);
+    expect(cur.cx).toBeCloseTo(1, 3);
+    expect(cur.hh).toBeCloseTo(0.8, 3);
+    const j = { cx: 5, cy: 5, hw: 1, hh: 1 };
+    easeFrame(j, tgt, 16, 250, true);
+    expect(j).toEqual(tgt);
+    const z = { cx: 5, cy: 5, hw: 1, hh: 1 };
+    easeFrame(z, tgt, 0, 250, false); // no time passed: nothing moves
+    expect(z).toEqual({ cx: 5, cy: 5, hw: 1, hh: 1 });
+  });
+
+  it("tilts the rings gently round a steady pose: two different tilts, each within a few percent of its rest", () => {
+    const a = { tilt: 0, turn: 0 };
+    const b = { tilt: 0, turn: 0 };
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let t = 0; t < 120; t += 0.5) {
+      orbitPose(t, 0, a);
+      orbitPose(t, 1, b);
+      expect(Math.abs(a.tilt - 1.22)).toBeLessThanOrEqual(0.06 + 1e-9);
+      expect(Math.abs(b.tilt - 0.98)).toBeLessThanOrEqual(0.06 + 1e-9);
+      expect(a.tilt).toBeGreaterThan(b.tilt); // the wide ring lies flatter
+      expect(Math.sign(a.turn)).toBe(-1); // turned opposite ways, so they cross
+      expect(Math.sign(b.turn)).toBe(1);
+      lo = Math.min(lo, a.tilt);
+      hi = Math.max(hi, a.tilt);
+    }
+    expect(hi - lo).toBeGreaterThan(0.05); // it does move
+    orbitPose(1.2, 0, a); // the reduced-motion time
+    const again = { tilt: 0, turn: 0 };
+    orbitPose(1.2, 0, again);
+    expect(again).toEqual(a);
+  });
+
+  it("runs a bead round the ring: on the unit circle, bright on the near half, dim behind", () => {
+    const o = { x: 0, y: 0, glow: 0 };
+    let near = 0;
+    let far = 0;
+    for (let i = 0; i < 100; i++) {
+      orbitBead(i * 0.05, 0.2, 0.1, o);
+      expect(Math.hypot(o.x, o.y)).toBeCloseTo(1, 9);
+      expect(o.glow).toBe(o.y > 0 ? 1 : 0.45);
+      if (o.y > 0) near++;
+      else far++;
+    }
+    expect(near).toBeGreaterThan(30);
+    expect(far).toBeGreaterThan(30);
+    orbitBead(0, 0.2, 0, o); // phase 0 starts on the x axis
+    expect(o.x).toBeCloseTo(1, 9);
+    expect(o.y).toBeCloseTo(0, 9);
+  });
+
+  it("scatters sparkles outside the silhouette, thinning towards the edge, deterministically and without NaN", () => {
+    let s = 7;
+    const rand = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+    const n = 120;
+    const pos = new Float32Array(n * 3);
+    const glow = new Float32Array(n);
+    const seed = new Float32Array(n);
+    sparkleShell(n, rand, pos, glow, seed);
+    let near = 0;
+    for (let i = 0; i < n; i++) {
+      const r = Math.hypot(pos[i * 3], pos[i * 3 + 1]);
+      expect(r).toBeGreaterThanOrEqual(1.02 - 1e-6);
+      expect(r).toBeLessThanOrEqual(1.82 + 1e-6);
+      expect(Math.abs(pos[i * 3 + 2])).toBeLessThanOrEqual(0.25 + 1e-6);
+      expect(glow[i]).toBeGreaterThan(0.1);
+      expect(glow[i]).toBeLessThan(0.8);
+      expect(seed[i]).toBeGreaterThanOrEqual(0);
+      expect(seed[i]).toBeLessThan(1);
+      if (r < 1.3) near++;
+    }
+    expect(near).toBeGreaterThan(n / 2); // denser close to the outline
+    expect(pos.every(Number.isFinite)).toBe(true);
   });
 });
