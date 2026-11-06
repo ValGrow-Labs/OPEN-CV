@@ -4,6 +4,7 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/fraunces/opsz.css";
 import { App } from "./App";
 import "./styles.css";
+import "./theme-blue.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

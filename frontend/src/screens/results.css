@@ -1,44 +1,5 @@
-/* The results page: a light, cool "instrument" look (white and pale blue, navy ink, one blue accent).
-   Scoped to .results-v2, so the rest of the app keeps its own theme. The tokens are set on the page and,
-   where the browser supports :has(), on the body too, so the top bar and the background match. */
-
-body:has(.results-v2),
-.results-v2 {
-  --paper: #eef4fb;
-  --surface: #ffffff;
-  --surface-2: #f3f7fc;
-  --surface-3: #e3ebf6;
-  --ink: #0b1f4a;
-  --ink-2: #2b3d63;
-  --muted: #5f7091;
-  --line: rgba(11, 31, 74, 0.08);
-  --line-strong: rgba(11, 31, 74, 0.16);
-  --accent: #1f5eea;
-  --accent-hover: #174ecb;
-  --accent-ink: #ffffff;
-  --accent-text: #1a4fd0;
-  --accent-soft: rgba(31, 94, 234, 0.09);
-  --accent-line: rgba(31, 94, 234, 0.3);
-  --glow: rgba(31, 94, 234, 0.12);
-  --lift: 0 30px 60px -38px rgba(20, 60, 140, 0.36), 0 2px 8px rgba(20, 60, 140, 0.05);
-  --focus: 0 0 0 3px rgba(31, 94, 234, 0.35);
-  --ring: 0 0 0 1px rgba(11, 31, 74, 0.07);
-  --tint: rgba(11, 31, 74, 0.04);
-  --shell: rgba(11, 31, 74, 0.04);
-  --shell-line: rgba(11, 31, 74, 0.08);
-  --hover-line: #b4c3dc;
-  --btn-bg: #1f5eea;
-  --btn-bg-hover: #174ecb;
-  --btn-ink: #ffffff;
-  --display: var(--font);
-}
-
-body:has(.results-v2) {
-  background:
-    radial-gradient(900px 520px at 50% 18%, rgba(255, 255, 255, 0.95), transparent 70%),
-    radial-gradient(1100px 600px at 12% -10%, rgba(120, 170, 255, 0.16), transparent 62%),
-    var(--paper);
-}
+/* The results page hero and details. The light, cool theme itself (white and pale blue, navy ink, one blue
+   accent) is the whole app's: see ../theme-blue.css. */
 
 .results-v2 {
   position: relative;

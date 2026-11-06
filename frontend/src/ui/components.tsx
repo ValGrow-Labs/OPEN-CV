@@ -58,7 +58,7 @@ export function HandDiagram({
           fontSize={13 * s}
           fill={color}
           fontWeight={650}
-          stroke="#1a1d22"
+          stroke="#ffffff"
           strokeWidth={4 * s}
           paintOrder="stroke"
           transform={mirrored ? `translate(${2 * (mx + offset * s)} 0) scale(-1 1)` : undefined}
@@ -76,8 +76,8 @@ export function HandDiagram({
         {outline.length > 2 && (
           <path
             d={outlineSvgPath(outline)}
-            fill="rgba(61, 220, 151, 0.08)"
-            stroke="#3ddc97"
+            fill="rgba(26, 122, 82, 0.07)"
+            stroke="#1a9a68"
             strokeWidth={2.5 * s}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -93,8 +93,8 @@ export function HandDiagram({
               rx={coin.major_axis_px / 2}
               ry={coin.minor_axis_px / 2}
               transform={`rotate(${coin.angle_deg} ${coin.center_x} ${coin.center_y})`}
-              fill="rgba(127,176,227,0.12)"
-              stroke="#7fb0e3"
+              fill="rgba(43,124,255,0.12)"
+              stroke="#2b7cff"
               strokeWidth={2 * s}
             />
           </g>
@@ -109,16 +109,16 @@ export function HandDiagram({
             y1={landmarks[a].y}
             x2={landmarks[b].x}
             y2={landmarks[b].y}
-            stroke="#c3c7ce"
+            stroke="#7aa2f5"
             strokeWidth={4 * s}
             strokeLinecap="round"
           />
         ))}
         {landmarks.map((p, i) => (
-          <circle key={i} className="dg-joint" style={{ ["--i" as string]: i }} cx={p.x} cy={p.y} r={4.5 * s} fill="#eceef1" stroke="#0c0d10" strokeWidth={1.5 * s} />
+          <circle key={i} className="dg-joint" style={{ ["--i" as string]: i }} cx={p.x} cy={p.y} r={4.5 * s} fill="#ffffff" stroke="#1f5eea" strokeWidth={1.5 * s} />
         ))}
-        {showLines && line(landmarks[0], landmarks[12], "Hand length", "#f4874b", 10)}
-        {showLines && line(landmarks[5], landmarks[17], "Palm width", "#4cc38a", -40)}
+        {showLines && line(landmarks[0], landmarks[12], "Hand length", "#1f5eea", 10)}
+        {showLines && line(landmarks[5], landmarks[17], "Palm width", "#12805a", -40)}
       </g>
     </svg>
   );

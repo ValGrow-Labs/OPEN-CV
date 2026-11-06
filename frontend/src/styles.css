@@ -66,11 +66,7 @@
 }
 
 /* Camera surfaces keep a dark palette, warmed to match. */
-.theme-dark,
-.scan,
-.preview-frame,
-.diagram,
-.calib-stage {
+.theme-dark {
   --paper: #11100d;
   --surface: #191611;
   --surface-2: #211d17;

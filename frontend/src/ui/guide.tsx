@@ -131,11 +131,11 @@ export function HandScene({ stage, className = "" }: { stage: GuideStage; classN
       <svg viewBox="0 0 240 300" fill="none">
         <defs>
           <pattern id={dots} width="12" height="12" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="0.7" fill="rgba(255,255,255,0.14)" />
+            <circle cx="1" cy="1" r="0.7" fill="rgba(11,31,74,0.16)" />
           </pattern>
           <linearGradient id={skin} x1="0" y1="50" x2="0" y2="290" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#2a2e35" />
-            <stop offset="1" stopColor="#17191e" />
+            <stop offset="0" stopColor="#f4f8ff" />
+            <stop offset="1" stopColor="#cfe0fb" />
           </linearGradient>
           <linearGradient id={fade} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0.82" stopColor="#fff" />
@@ -145,35 +145,35 @@ export function HandScene({ stage, className = "" }: { stage: GuideStage; classN
             <rect width="240" height="300" fill={`url(#${fade})`} />
           </mask>
           <linearGradient id={beam} x1="0" x2="1">
-            <stop offset="0" stopColor="#f08a4b" stopOpacity="0" />
-            <stop offset="0.5" stopColor="#f08a4b" stopOpacity="0.9" />
-            <stop offset="1" stopColor="#f08a4b" stopOpacity="0" />
+            <stop offset="0" stopColor="#2b7cff" stopOpacity="0" />
+            <stop offset="0.5" stopColor="#2b7cff" stopOpacity="0.9" />
+            <stop offset="1" stopColor="#2b7cff" stopOpacity="0" />
           </linearGradient>
         </defs>
         <rect x="0" y="0" width="240" height="300" fill={`url(#${dots})`} />
-        <path className="sc-frame" d="M22 44V24h20M218 44V24h-20M22 256v20h20M218 256v20h-20" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" />
+        <path className="sc-frame" d="M22 44V24h20M218 44V24h-20M22 256v20h20M218 256v20h-20" stroke="rgba(31,94,234,0.5)" strokeWidth="2" strokeLinecap="round" />
 
         <g className="sc-hand" mask={`url(#${fade}-m)`}>
-          <path d={HAND_SILHOUETTE} fill={`url(#${skin})`} stroke="rgba(255,255,255,0.86)" strokeWidth={OUTLINE} strokeLinejoin="round" />
+          <path d={HAND_SILHOUETTE} fill={`url(#${skin})`} stroke="#1f5eea" strokeWidth={OUTLINE} strokeLinejoin="round" />
         </g>
 
-        <g className="sc-bones" stroke="rgba(255,255,255,0.32)" strokeWidth="1.2" strokeLinecap="round">
+        <g className="sc-bones" stroke="rgba(31,94,234,0.4)" strokeWidth="1.2" strokeLinecap="round">
           {HAND_CONNECTIONS.map(([a, b], i) => (
             <line key={`${a}-${b}`} pathLength={1} x1={JOINTS[a][0]} y1={JOINTS[a][1]} x2={JOINTS[b][0]} y2={JOINTS[b][1]} style={stagger(i)} />
           ))}
         </g>
-        <line className="sc-length" pathLength={1} x1={JOINTS[0][0]} y1={JOINTS[0][1]} x2={JOINTS[12][0]} y2={JOINTS[12][1] - 8} stroke="#f08a4b" strokeWidth="1.6" />
+        <line className="sc-length" pathLength={1} x1={JOINTS[0][0]} y1={JOINTS[0][1]} x2={JOINTS[12][0]} y2={JOINTS[12][1] - 8} stroke="#1f5eea" strokeWidth="1.6" />
         {JOINTS.map(([x, y], i) => (
-          <circle key={i} className="sc-dot" cx={x} cy={y} r="2.5" fill="#ffffff" style={stagger(i)} />
+          <circle key={i} className="sc-dot" cx={x} cy={y} r="2.5" fill="#1f5eea" style={stagger(i)} />
         ))}
-        <circle className="sc-ring" cx={COIN.x} cy={COIN.y} r={COIN.r} stroke="#f08a4b" strokeWidth="1.5" />
+        <circle className="sc-ring" cx={COIN.x} cy={COIN.y} r={COIN.r} stroke="#1f5eea" strokeWidth="1.5" />
         <g className="sc-coin">
           <circle cx={COIN.x} cy={COIN.y} r={COIN.r} fill="#9ea3a8" stroke="#d9dde0" strokeWidth="2" />
-          <circle cx={COIN.x} cy={COIN.y} r={COIN.r - 5} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1" />
+          <circle cx={COIN.x} cy={COIN.y} r={COIN.r - 5} fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1" />
         </g>
         <rect className="sc-beam" x="22" y="24" width="196" height="2" fill={`url(#${beam})`} />
-        <rect x="40" y="286" width="160" height="4" rx="2" fill="rgba(255,255,255,0.12)" />
-        <rect className="sc-progress" x="40" y="286" width="160" height="4" rx="2" fill="#f08a4b" />
+        <rect x="40" y="286" width="160" height="4" rx="2" fill="rgba(11,31,74,0.1)" />
+        <rect className="sc-progress" x="40" y="286" width="160" height="4" rx="2" fill="#1f5eea" />
       </svg>
     </div>
   );

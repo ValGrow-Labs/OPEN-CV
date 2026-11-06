@@ -1,0 +1,207 @@
+/* The app's light, cool theme: white and pale blue, navy ink, one blue accent (the look of the result page).
+   Loaded after styles.css, so these tokens replace the earlier cream-and-terracotta ones everywhere, and the
+   scan screen, which used to be dark, is light too. The only dark things left are the camera picture itself and
+   the calibration stage (a live camera view). */
+
+:root {
+  --paper: #eef4fb;
+  --surface: #ffffff;
+  --surface-2: #f3f7fc;
+  --surface-3: #e3ebf6;
+  --ink: #0b1f4a;
+  --ink-2: #2b3d63;
+  --muted: #5f7091;
+  --line: rgba(11, 31, 74, 0.08);
+  --line-strong: rgba(11, 31, 74, 0.16);
+  --accent: #1f5eea;
+  --accent-hover: #174ecb;
+  --accent-ink: #ffffff;
+  --accent-text: #1a4fd0;
+  --accent-soft: rgba(31, 94, 234, 0.09);
+  --accent-line: rgba(31, 94, 234, 0.3);
+  --glow: rgba(31, 94, 234, 0.12);
+  --good: #1a7a52;
+  --good-soft: rgba(26, 122, 82, 0.1);
+  --info: #1f5eea;
+  --info-soft: rgba(31, 94, 234, 0.09);
+  --info-ink: #173f9e;
+  --info-line: rgba(31, 94, 234, 0.28);
+  --stage: #dde7f4;
+  --lift: 0 30px 60px -38px rgba(20, 60, 140, 0.36), 0 2px 8px rgba(20, 60, 140, 0.05);
+  --focus: 0 0 0 3px rgba(31, 94, 234, 0.35);
+  --ring: 0 0 0 1px rgba(11, 31, 74, 0.07);
+  --tint: rgba(11, 31, 74, 0.04);
+  --shell: rgba(11, 31, 74, 0.04);
+  --shell-line: rgba(11, 31, 74, 0.08);
+  --hover-line: #b4c3dc;
+  --btn-bg: #1f5eea;
+  --btn-bg-hover: #174ecb;
+  --btn-ink: #ffffff;
+  --display: var(--font);
+}
+
+body {
+  background:
+    radial-gradient(900px 520px at 50% 18%, rgba(255, 255, 255, 0.95), transparent 70%),
+    radial-gradient(1100px 600px at 12% -10%, rgba(120, 170, 255, 0.16), transparent 62%),
+    var(--paper);
+  background-repeat: no-repeat;
+}
+
+/* Primary buttons: the glossy blue of the result page. */
+.btn-primary {
+  background: linear-gradient(180deg, #4d8dff 0%, #1f5eea 52%, #1747cf 100%);
+  border-color: #1747cf;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 14px 26px -14px rgba(31, 94, 234, 0.65);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(180deg, #5b97ff 0%, #2a68f0 52%, #1b4fd9 100%);
+  border-color: #1b4fd9;
+}
+
+/* ------------------------------------------------------------------ the scan screen, light */
+
+.scan {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.scan-bar {
+  color: var(--ink);
+}
+
+.scan-ref {
+  opacity: 1;
+  color: var(--ink-2);
+}
+
+.icon-btn {
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 8px 20px -14px rgba(20, 60, 140, 0.5);
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+}
+
+/* The camera picture sits in a rounded white-edged frame. */
+.scan .stage {
+  margin: 0 12px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--stage);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 26px 50px -34px rgba(20, 60, 140, 0.5);
+}
+
+.live-pill {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 12px 30px -16px rgba(20, 60, 140, 0.5);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.live-pill.ok {
+  border-color: rgba(26, 122, 82, 0.55);
+}
+
+.scan-panel {
+  background: #fff;
+  color: var(--ink);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -16px 40px -30px rgba(20, 60, 140, 0.4);
+}
+
+.progress {
+  background: rgba(11, 31, 74, 0.08);
+}
+
+.progress > span {
+  background: linear-gradient(90deg, #4d8dff, #1f5eea);
+}
+
+.scan-step {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.scan-step-num {
+  background: rgba(11, 31, 74, 0.08);
+  color: var(--ink-2);
+}
+
+.scan-step.is-current {
+  color: var(--ink);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.scan-step.is-current .scan-step-num {
+  background: var(--accent);
+  color: #fff;
+}
+
+.scan-step.is-done {
+  color: var(--good);
+  border-color: rgba(26, 122, 82, 0.35);
+}
+
+.scan-step.is-done .scan-step-num {
+  background: var(--good);
+  color: #fff;
+}
+
+.stage-card {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--lift);
+}
+
+.spinner {
+  border: 3px solid rgba(31, 94, 234, 0.2);
+  border-top-color: var(--accent);
+}
+
+.guide-overlay {
+  background: rgba(238, 244, 251, 0.86);
+}
+
+.guide-card {
+  box-shadow: 0 0 0 1px var(--line-strong), 0 40px 80px -34px rgba(20, 60, 140, 0.45);
+}
+
+.guide-dot {
+  background: rgba(11, 31, 74, 0.18);
+}
+
+.view-sheet {
+  box-shadow: 0 -1px 0 var(--line-strong), 0 -24px 48px -24px rgba(20, 60, 140, 0.35);
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .view-sheet {
+    box-shadow: -1px 0 0 var(--line-strong), -24px 0 48px -24px rgba(20, 60, 140, 0.35);
+  }
+}
+
+/* ------------------------------------------------------------------ the welcome preview, light */
+
+.preview-frame {
+  background:
+    radial-gradient(70% 55% at 50% 62%, rgba(31, 94, 234, 0.14), transparent 70%),
+    linear-gradient(180deg, #ffffff 0%, #e8f0fb 100%);
+  box-shadow: 0 0 0 1px var(--line-strong), var(--lift);
+}
+
+.guide-scene {
+  background: radial-gradient(120% 90% at 50% 30%, #ffffff 0%, #dbe8fb 80%);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}

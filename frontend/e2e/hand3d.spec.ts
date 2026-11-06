@@ -35,10 +35,23 @@ async function overlayConfig(page: Page, overlay3d: Record<string, unknown>) {
 
 const box = async (page: Page, selector: string) => (await page.locator(selector).first().boundingBox())!;
 
-/** What the camera pane looks like: the share of its pixels that are bright (the white room behind the hand) and
- *  the share that are dark, from a screenshot decoded in the page. */
+/** The picture itself inside the camera pane: the video drawn with `object-fit: contain`, without the bars the
+ *  pane shows around it (light blue in the app's theme). */
+async function pictureBox(page: Page) {
+  return page.evaluate(() => {
+    const v = document.querySelector<HTMLVideoElement>(".scan .stage video")!;
+    const r = v.getBoundingClientRect();
+    const scale = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+    const w = v.videoWidth * scale;
+    const h = v.videoHeight * scale;
+    return { x: r.x + (r.width - w) / 2, y: r.y + (r.height - h) / 2, width: w, height: h };
+  });
+}
+
+/** What the camera picture looks like: the share of its pixels that are bright (the white room behind the hand)
+ *  and the share that are dark, from a screenshot decoded in the page. */
 async function paneLight(page: Page, path?: string) {
-  const clip = await box(page, ".scan .stage");
+  const clip = await pictureBox(page);
   const png = await page.screenshot({ clip, path });
   return page.evaluate(async (b64) => {
     const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
