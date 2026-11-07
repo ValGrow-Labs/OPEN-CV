@@ -413,3 +413,137 @@ export function sparkleShell(n: number, rand: () => number, out: Float32Array, g
     seed[i] = rand();
   }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Labels round the hand (the live scan): two columns in the margins of the visible picture, each label joined by a
+// thin leader line to the exact point it measures. Pure: nothing here touches the DOM.
+//
+// Rules (also the documentation of the layout):
+//  * Side. Every label PREFERS a column as drawn for an unmirrored picture (the overlay's tags say left for the
+//    index, thumb and palm width, right for the middle, ring and pinky fingers). A mirrored picture (front camera)
+//    swaps the preference. The preference gives way to geometry: when the measured point lies clearly on the
+//    other side of the hand's middle (more than 15% of the hand's width), the leader would cross the hand, so the
+//    nearer margin is used. That also covers left and right hands. The hand-length label follows its bracket: it
+//    sits on whichever side the bracket was drawn.
+//  * Columns. The labels of a side line up with their inner edge a fixed lead away from the hand's outer edge (or
+//    the bracket's, whichever sticks out more), and are stacked top to bottom in the order of their measured points,
+//    pushed apart by a minimum gap, kept inside the picture and under a reserve at the top (the guidance pill).
+//  * Not enough room. A label that is wider than its margin is dropped; if a column is too tall for the picture the
+//    labels with the highest priority number go first. Nothing ever overflows the picture.
+// ---------------------------------------------------------------------------------------------------------------
+
+export type LabelSide = "left" | "right";
+
+/** The gap between the picture's edge and a label, between stacked labels, and the length of a leader's first leg. */
+export const LABEL_EDGE = 4;
+export const LABEL_GAP = 6;
+export const LABEL_LEAD = 16;
+/** A point further than this share of the hand's width from the hand's middle belongs to the nearer margin. */
+export const LABEL_CROSS = 0.15;
+
+/** The side a label goes to: its preference (swapped when mirrored), unless the measured point is clearly on the other half. */
+export function sideFor(preferred: LabelSide, mirrored: boolean, x: number, handMinX: number, handMaxX: number): LabelSide {
+  const pref: LabelSide = mirrored ? (preferred === "left" ? "right" : "left") : preferred;
+  const mid = (handMinX + handMaxX) / 2;
+  const reach = LABEL_CROSS * (handMaxX - handMinX);
+  if (pref === "left" && x > mid + reach) return "right";
+  if (pref === "right" && x < mid - reach) return "left";
+  return pref;
+}
+
+export interface LabelIn {
+  /** The measured point on the picture (where the leader ends). */
+  x: number;
+  y: number;
+  /** The label's size. */
+  w: number;
+  h: number;
+  side: LabelSide;
+  /** Lower is kept first when there is no room for everyone. */
+  priority: number;
+}
+
+export interface LabelOut {
+  visible: boolean;
+  /** Top-left corner of the label. */
+  left: number;
+  top: number;
+  /** Where the leader leaves the label (the middle of its inner edge). */
+  x1: number;
+  y1: number;
+}
+
+export interface LabelFrame {
+  /** The visible picture, in element pixels. */
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  /** The hand's outer edges on the picture; ``lo`` / ``hi`` also cover a bracket drawn beside the hand. */
+  loX: number;
+  hiX: number;
+  /** Room kept free at the top of the picture (the guidance pill). */
+  topReserve: number;
+}
+
+/** The room kept free at the top of a picture ``h`` pixels tall (the guidance pill sits there). */
+export function topReserveFor(h: number): number {
+  return Math.min(76, Math.max(0, h * 0.34));
+}
+
+const byPriority = (a: number, b: number, ins: readonly LabelIn[]) => ins[a].priority - ins[b].priority || a - b;
+
+/** Place the labels. ``out`` must have one entry per input; returns how many are visible. Allocation-free apart from two small index arrays. */
+export function layoutLabels(ins: readonly LabelIn[], frame: LabelFrame, out: LabelOut[]): number {
+  const roomL = frame.loX - LABEL_LEAD - (frame.left + LABEL_EDGE);
+  const roomR = frame.right - LABEL_EDGE - (frame.hiX + LABEL_LEAD);
+  const top0 = frame.top + frame.topReserve;
+  const avail = frame.bottom - LABEL_EDGE - top0;
+  let shown = 0;
+  for (let i = 0; i < ins.length; i++) out[i].visible = false;
+  for (const side of ["left", "right"] as const) {
+    const room = side === "left" ? roomL : roomR;
+    // who is on this side and fits across, best priority first
+    const idx: number[] = [];
+    for (let i = 0; i < ins.length; i++) {
+      if (ins[i].side === side && ins[i].w <= room && ins[i].h <= avail) idx.push(i);
+    }
+    idx.sort((a, b) => byPriority(a, b, ins));
+    // keep the best ones that fit the column's height
+    let used = 0;
+    const kept: number[] = [];
+    for (const i of idx) {
+      const need = ins[i].h + (kept.length ? LABEL_GAP : 0);
+      if (used + need > avail) continue;
+      used += need;
+      kept.push(i);
+    }
+    // top to bottom in the order of the measured points
+    kept.sort((a, b) => ins[a].y - ins[b].y || a - b);
+    const tops: number[] = [];
+    let prevBottom = top0 - LABEL_GAP;
+    for (const i of kept) {
+      const t = Math.max(prevBottom + LABEL_GAP, Math.min(frame.bottom - LABEL_EDGE - ins[i].h, ins[i].y - ins[i].h / 2), top0);
+      tops.push(t);
+      prevBottom = t + ins[i].h;
+    }
+    // if the column ran past the bottom, lift it back up
+    let nextTop = frame.bottom - LABEL_EDGE + LABEL_GAP;
+    for (let k = kept.length - 1; k >= 0; k--) {
+      const i = kept[k];
+      tops[k] = Math.min(tops[k], nextTop - LABEL_GAP - ins[i].h);
+      nextTop = tops[k];
+    }
+    kept.forEach((i, k) => {
+      const o = out[i];
+      const inner = side === "left" ? frame.loX - LABEL_LEAD : frame.hiX + LABEL_LEAD;
+      o.visible = true;
+      o.left = side === "left" ? inner - ins[i].w : inner;
+      o.top = tops[k];
+      o.x1 = inner;
+      o.y1 = tops[k] + ins[i].h / 2;
+      shown++;
+    });
+  }
+  return shown;
+}

@@ -4,6 +4,7 @@ import type { CaptureView, FrameObservation, PublicConfig, ReferenceSelection, S
 import { isMobileDevice, type Facing } from "../camera/camera";
 import type { Landmark } from "../hand3d/handModel";
 import { HandStage, webglAvailable } from "../hand3d/HandStage";
+import { LandmarkViewer, type WorldHand } from "../hand3d/LandmarkViewer";
 import { overlayTags } from "../scan/overlayTags";
 import { holdTone, INITIAL_TONE, rawTone, type ToneState } from "../scan/overlayTone";
 import { OverlayBoundary } from "./OverlayBoundary";
@@ -81,6 +82,10 @@ export function ScanScreen<R = ScanResponse>({
   // picture (read by the scene every frame, no re-render).
   const poseRef = useRef<readonly Landmark[] | null>(null);
   const frameRef = useRef<{ width: number; height: number } | null>(null);
+  // MediaPipe's world landmarks (relative depth) of the tracked hand, for the 3D landmark card.
+  const worldRef = useRef<WorldHand | null>(null);
+  // The camera picture's own shape (width / height), so its frame has exactly that shape and no empty bars.
+  const [videoAr, setVideoAr] = useState(0.75);
   // The measuring is drawn in 3D over the camera picture wherever WebGL works and config allows it
   // (live_scan.overlay_3d); otherwise, or once the 3D layer fails or runs too slowly, the 2D outline is drawn.
   const overlayCfg = config.live_scan.overlay_3d;
@@ -88,9 +93,11 @@ export function ScanScreen<R = ScanResponse>({
   const [degraded, setDegraded] = useState(false);
   const degradedRef = useRef(false); // for the rest of the scan session, rescans included
   const overlay3d = canUse3d && !degraded;
-  const degrade = useCallback((reason: string) => {
-    console.warn(`[scan] 3D overlay off: ${reason}`);
+  const [degradeNote, setDegradeNote] = useState<string | null>(null);
+  const degrade = useCallback((reason: string, detail?: string) => {
+    console.warn(`[scan] 3D overlay off: ${reason}${detail ? ` (${detail})` : ""}`);
     degradedRef.current = true;
+    setDegradeNote(degradeMessage(reason, detail));
     setDegraded(true);
     controllerRef.current?.setOverlay3d(false); // the 2D drawing resumes on the next frame, nothing restarts
   }, []);
@@ -163,9 +170,10 @@ export function ScanScreen<R = ScanResponse>({
       onStatus: setStatus,
       overlay3d: canUse3d && !degradedRef.current,
       maskCanvas: canUse3d && overlayCfg.focus_mask ? maskRef.current : null,
-      onPose: (landmarks, frame) => {
+      onPose: (landmarks, frame, world) => {
         poseRef.current = landmarks;
         frameRef.current = frame;
+        worldRef.current = world ?? null;
       },
       onComplete: (frames, timing) => {
         const current = viewList[viewIdxRef.current];
@@ -250,18 +258,9 @@ export function ScanScreen<R = ScanResponse>({
   }, [message, status?.phase]);
 
   const phase = status?.phase ?? "starting";
-  // The scan loop itself slowing down is the other reason to drop the 3D layer: the measuring comes first.
-  const slowSince = useRef<number | null>(null);
-  const loopFps = status?.fps;
-  useEffect(() => {
-    if (!overlay3d || phase !== "running" || !(loopFps !== undefined && loopFps > 0) || loopFps >= overlayCfg.min_fps) {
-      slowSince.current = null;
-      return;
-    }
-    const now = performance.now();
-    slowSince.current ??= now;
-    if (now - slowSince.current >= overlayCfg.fallback_after_slow_s * 1000) degrade(`scan loop at ${loopFps.toFixed(0)} fps`);
-  }, [overlay3d, phase, status, loopFps, overlayCfg.min_fps, overlayCfg.fallback_after_slow_s, degrade]);
+  // A busy phone (hand tracking and the coin search take most of each frame) must not lose the 3D hand for that
+  // reason alone: the layer's own speed guard (hand3d/perfGuard.ts) judges the layer by what IT costs, steps
+  // it down to something cheap but visible, and switches it off only if it is itself too heavy, or WebGL fails.
   // ?debug=1 shows what the scanner sees, for diagnosing a scan on a real phone.
   const debug = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
   const progress = phase === "complete" ? 1 : status ? Math.min(1, status.collected / status.target) : 0;
@@ -308,6 +307,22 @@ export function ScanScreen<R = ScanResponse>({
     };
   }, [between]);
 
+  // The camera frame takes the shape of the real video stream (no empty bars at the sides, nothing cropped).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const read = () => {
+      if (v.videoWidth > 0 && v.videoHeight > 0) setVideoAr(v.videoWidth / v.videoHeight);
+    };
+    read();
+    v.addEventListener("loadedmetadata", read);
+    v.addEventListener("resize", read);
+    return () => {
+      v.removeEventListener("loadedmetadata", read);
+      v.removeEventListener("resize", read);
+    };
+  }, [status?.phase]);
+
   const showHint =
     runningSec >= config.live_scan.hint_after_s &&
     (status?.collected ?? 0) < config.live_scan.mobile_frames_min &&
@@ -318,6 +333,19 @@ export function ScanScreen<R = ScanResponse>({
   // The 3D hand's colour: green when the pose is fine, pale blue when it needs fixing, held so it does not flicker.
   const toneRef = useRef<ToneState>(INITIAL_TONE);
   toneRef.current = holdTone(toneRef.current, rawTone(handSeen, status?.live?.ok), performance.now(), overlayCfg.tone_hold_ms);
+
+  // What the engine has found right now, hand and coin apart.
+  const coin = status?.coin ?? null;
+  const handChip = handSeen ? { cls: "is-ok", text: "Hand found" } : { cls: "", text: "No hand yet" };
+  const coinChip = coin?.found
+    ? coin.accepted
+      ? { cls: "is-ok", text: "Coin accepted" }
+      : { cls: "is-wait", text: "Coin found, checking" }
+    : { cls: "", text: "Coin not found" };
+  const live = status?.liveMm ?? null;
+  const mm = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? `${Math.round(v)} mm` : "\u2014");
+  const scale = coin?.found && coin.accepted && ref.diameter > 0 ? coin.major_axis_px / ref.diameter : null;
+  const overlayNote = degradeNote ?? (overlayCfg.enabled && !canUse3d ? degradeMessage("no_webgl") : null);
 
   return (
     <div className="scan" role="dialog" aria-modal="true" aria-label="Hand scan">
@@ -346,7 +374,9 @@ export function ScanScreen<R = ScanResponse>({
         </div>
       </div>
 
-      <div className="stage">
+      <div className="scan-body">
+      <div className="scan-cam">
+      <div className="stage" style={{ ["--ar" as string]: String(videoAr) }}>
         {debug && status && (
           <pre className="scan-debug" aria-hidden="true">
             {[
@@ -356,6 +386,7 @@ export function ScanScreen<R = ScanResponse>({
               `checks ${status.live?.codes.join(",") || "ok"}`,
               `main ${status.topIssue ? `${status.topIssue.code} ${Math.round(status.topIssue.share * 100)}%` : "-"}`,
               `tilt ${status.tilt.rawDeg?.toFixed(1) ?? "-"} -> ${status.tilt.smoothedDeg?.toFixed(1) ?? "-"} deg  glare ${status.coin?.found ? `${Math.round(status.coin.glare_fraction * 100)}%` : "-"}  ev ${status.exposureEv ?? "n/a"}`,
+              `3d overlay ${overlay3d ? "on" : `off${overlayNote ? ` (${overlayNote.slice(0, 48)}...)` : ""}`} ${JSON.stringify((window as unknown as { __OVERLAY_STATS__?: unknown }).__OVERLAY_STATS__ ?? {})}`,
               `coin ${ref.diameter.toFixed(1)} mm selected, hand ${status.liveMm ? `${Math.round(status.liveMm.handMm)} mm` : "-"} (accepted ${config.hand_length_plausible_mm[0]}-${config.hand_length_plausible_mm[1]})`,
             ].join("\n")}
           </pre>
@@ -368,7 +399,7 @@ export function ScanScreen<R = ScanResponse>({
         {phase === "running" && !handSeen && <Guide />}
         {overlay3d && phase === "running" && !between && !submitting && !submitError && (
           <div className="scan-overlay3d" aria-hidden="true">
-            <OverlayBoundary onError={(err) => degrade(`error: ${String(err)}`)}>
+            <OverlayBoundary onError={(err) => degrade("error", String(err))}>
               <HandStage
                 mode="overlay"
                 poseRef={poseRef}
@@ -378,7 +409,7 @@ export function ScanScreen<R = ScanResponse>({
                 budget={{ maxFrameMs: overlayCfg.max_frame_ms, minFps: overlayCfg.min_fps }}
                 tone={toneRef.current.tone}
                 onBlack={overlayCfg.focus_mask}
-                onDegrade={(reason) => reason === "disabled" && degrade(reason)}
+                onDegrade={(reason, detail) => degrade(reason, detail)}
                 className="hand-stage-overlay"
                 label="Your hand, measured live in 3D"
               />
@@ -474,6 +505,12 @@ export function ScanScreen<R = ScanResponse>({
         )}
       </div>
 
+      {overlayNote && (
+        <p className="scan-note small" role="note">
+          {overlayNote}
+        </p>
+      )}
+
       <div className="scan-panel">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <strong>
@@ -497,6 +534,16 @@ export function ScanScreen<R = ScanResponse>({
         >
           <span style={{ transform: `scaleX(${progress})` }} />
         </div>
+        <div className="scan-chips" aria-label="Detection status">
+          <span className={`scan-chip ${handChip.cls}`}>
+            <i aria-hidden="true" />
+            {handChip.text}
+          </span>
+          <span className={`scan-chip ${coinChip.cls}`}>
+            <i aria-hidden="true" />
+            {coinChip.text}
+          </span>
+        </div>
         <ol className="scan-steps" aria-label="Scan steps">
           {GUIDE_STEPS.map((st, i) => {
             const state = i < stage ? "done" : i === stage && phase === "running" ? "current" : "todo";
@@ -509,34 +556,65 @@ export function ScanScreen<R = ScanResponse>({
             );
           })}
         </ol>
-        {/* Both rows keep their space whether or not they have anything to say, so the camera
-            picture above never changes size while the scan runs. */}
+        {/* The reason frames are not counted, and the way to start the count again. It always has its row, so
+            the page never jumps while the scan runs. */}
         {phase !== "error" && (
-          <>
-            <div className={`live-meter ${status?.liveMm ? "" : "is-idle"}`} aria-live="off" aria-hidden={!status?.liveMm}>
-              <span className="live-meter-label">Hand length, live</span>
-              <span className="live-meter-value num">{status?.liveMm ? `${Math.round(status.liveMm.handMm)} mm` : "—"}</span>
-              <span className="live-meter-sub num">
-                {status?.liveMm ? `${(status.liveMm.handMm / 25.4).toFixed(2)} in · final value after the scan` : "Waiting for your hand and coin"}
-              </span>
-            </div>
-            <div className={`scan-hint ${showHint ? "" : "is-idle"}`} role="status" aria-hidden={!showHint}>
-              <span className="small">
-                Main problem: <strong>{status?.topIssue?.message ?? ""}</strong>
-              </span>
-              <button
-                className="btn btn-quiet scan-hint-btn"
-                tabIndex={showHint ? 0 : -1}
-                onClick={() => {
-                  controllerRef.current?.resetCollection();
-                  setRunningSec(0);
-                }}
-              >
-                Reset
-              </button>
-            </div>
-          </>
+          <div className="scan-hint" role="status">
+            <span className="small">
+              {showHint && status?.topIssue ? (
+                <>
+                  Main problem: <strong>{status.topIssue.message}</strong>
+                </>
+              ) : (
+                "Frames count only when the hand and the coin both pass the checks."
+              )}
+            </span>
+            <button
+              className="btn btn-quiet scan-hint-btn"
+              onClick={() => {
+                controllerRef.current?.resetCollection();
+                setRunningSec(0);
+              }}
+            >
+              Reset
+            </button>
+          </div>
         )}
+      </div>
+      </div>
+
+      <div className="scan-side">
+        <section className="scan-card scan-hand" aria-label="Your hand in 3D and live measurements">
+          <h2 className="scan-card-title">Your hand in 3D</h2>
+          <div className="scan-3d">
+            <div className="scan-3d-box">
+              <LandmarkViewer worldRef={worldRef} mirrored={status?.mirrored ?? false} onUnavailable={(m) => console.warn(`[scan] 3D landmark card unavailable: ${m}`)} />
+            </div>
+          </div>
+          <h2 className="scan-card-title scan-card-title-2">Live measurements</h2>
+          <div className="scan-measure">
+          <div className="mcols">
+            <dl className="mcol">
+              <MeasureRow label="Hand length" value={mm(live?.handMm)} />
+              <MeasureRow label="Middle finger" value={mm(live?.fingersMm.middle)} />
+              <MeasureRow label="Index finger" value={mm(live?.fingersMm.index)} />
+              <MeasureRow label="Ring finger" value={mm(live?.fingersMm.ring)} />
+            </dl>
+            <dl className="mcol">
+              <MeasureRow label="Palm width" value={mm(live?.palmWidthMm)} />
+              <MeasureRow label="Thumb" value={mm(live?.fingersMm.thumb)} />
+              <MeasureRow label="Pinky finger" value={mm(live?.fingersMm.little)} />
+              <MeasureRow label="Coin scale" value={scale !== null ? `${scale.toFixed(2)} px/mm` : "—"} state={coinChip.text} />
+            </dl>
+          </div>
+          <p className="scan-card-note small">
+            {live
+              ? "Live estimates from this frame, scaled by the coin. The final values, with their uncertainty, are worked out from all counted frames."
+              : "Lengths appear once your hand and the coin are both found. Nothing is shown before then."}
+          </p>
+          </div>
+        </section>
+      </div>
       </div>
 
       {between && !submitting && !submitError && (
@@ -587,4 +665,34 @@ function Guide() {
       </svg>
     </div>
   );
+}
+
+function MeasureRow({ label, value, state }: { label: string; value: string; state?: string }) {
+  const na = value === "—";
+  return (
+    <div className={`mrow2 ${na ? "is-na" : ""}`}>
+      <dt>{label}</dt>
+      <dd className="num">
+        {value}
+        {state && <small>{state}</small>}
+      </dd>
+    </div>
+  );
+}
+
+/** Why the 3D layer on the camera picture is off, in words for the customer. The scan itself carries on. */
+function degradeMessage(reason: string, detail?: string): string {
+  const tail = " The flat outline is drawn instead; measuring is not affected.";
+  switch (reason) {
+    case "no_webgl":
+      return `3D drawing needs WebGL, which this browser does not provide.${tail}`;
+    case "context_lost":
+      return `The browser took back the graphics memory used for the 3D hand.${tail}`;
+    case "too_slow":
+      return `This device is too busy to draw the 3D hand smoothly.${tail}`;
+    case "disabled":
+      return `The 3D hand was switched off to keep the scan fast.${tail}`;
+    default:
+      return `The 3D hand could not start${detail ? ` (${detail.slice(0, 80)})` : ""}.${tail}`;
+  }
 }

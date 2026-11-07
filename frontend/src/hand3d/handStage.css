@@ -289,3 +289,81 @@
   border-color: rgb(25 160 255 / 0.5);
   box-shadow: 0 0 18px rgb(25 182 255 / 0.3);
 }
+
+/* ---- The labels round the hand on the live picture: white pills in two columns in the margins, each joined to the
+   point it measures by a thin leader line (placement: layoutLabels in overlayMath.ts). Legible on any picture. */
+.hand-stage-overlay .hand-stage-tag--named {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #0b1f4a;
+  background: rgb(255 255 255 / 0.92);
+  border: 1px solid rgb(var(--tag-rgb, 37 168 255) / 0.6);
+  box-shadow: 0 6px 16px -8px rgb(11 31 74 / 0.5);
+  font: 650 12px/1.15 var(--font, ui-sans-serif, system-ui, sans-serif);
+  letter-spacing: 0;
+}
+
+.hand-stage-overlay .hand-stage-tag--named::before,
+.hand-stage-overlay .hand-stage-tag--named::after {
+  display: none;
+}
+
+.hand-stage-tag-name {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #3a5384;
+}
+
+.hand-stage-tag-value {
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.hand-stage-overlay .hand-stage-tag--named.hand-stage-tag--em {
+  border-color: #0b1f4a;
+  color: #0b1f4a;
+}
+
+.hand-stage-overlay .hand-stage-tag--named.hand-stage-tag--em .hand-stage-tag-value {
+  font-weight: 850;
+}
+
+/* A narrow picture: name over value, so a pill fits the margin beside the hand. */
+@media (max-width: 520px) {
+  .hand-stage-overlay .hand-stage-tag--named {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 3px 8px;
+    border-radius: 12px;
+  }
+  .hand-stage-tag-name {
+    font-size: 9.5px;
+  }
+}
+
+.hand-stage-leaders {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / 0.9));
+}
+
+.hand-stage-leaders line {
+  stroke: rgb(var(--tag-rgb, 37 168 255) / 0.85);
+  stroke-width: 1;
+}
+
+.hand-stage-leaders circle {
+  fill: #fff;
+  stroke: rgb(var(--tag-rgb, 37 168 255));
+  stroke-width: 1.5;
+}

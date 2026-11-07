@@ -1,0 +1,202 @@
+/* The estimated 3D landmark card: light (white and pale blue, navy ink, one blue accent) like the rest of the app. */
+.lv {
+  --lv-ink: #0b1f4a;
+  --lv-muted: #5f7091;
+  --lv-line: rgba(11, 31, 74, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  color: var(--lv-ink);
+}
+
+.lv-stage {
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  height: 100%;
+  flex: 1 1 auto;
+  border-radius: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(70% 55% at 50% 45%, rgba(31, 94, 234, 0.1), rgba(31, 94, 234, 0) 72%),
+    linear-gradient(180deg, #ffffff 0%, #e8f0fb 100%);
+  box-shadow: 0 0 0 1px var(--lv-line), 0 30px 60px -40px rgba(20, 60, 140, 0.45);
+}
+
+.lv-gl {
+  position: absolute;
+  inset: 0;
+}
+
+.lv-gl canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Vertical drags still scroll the page; sideways drags turn the hand; two fingers zoom. */
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.lv-gl canvas:active {
+  cursor: grabbing;
+}
+
+.lv-note {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--lv-ink);
+  pointer-events: none;
+}
+
+.lv-loading,
+.lv-empty {
+  color: var(--lv-muted);
+}
+
+.lv-error {
+  font-weight: 500;
+  max-width: 34ch;
+  margin: 0 auto;
+}
+
+.lv-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(31, 94, 234, 0.2);
+  border-top-color: #1f5eea;
+  animation: lv-spin 0.9s linear infinite;
+}
+
+@keyframes lv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.lv-chip {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem; /* 12.5px */
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--lv-line);
+  color: var(--lv-ink);
+  pointer-events: none;
+}
+
+.lv-hand {
+  left: 10px;
+}
+
+.lv-axes {
+  right: 10px;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.lv-ax {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.lv-ax-x {
+  color: #e03131;
+}
+
+.lv-ax-y {
+  color: #2f9e44;
+}
+
+.lv-ax-z {
+  color: #1f5eea;
+}
+
+.lv-controls {
+  position: absolute;
+  z-index: 2;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.lv-btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid #c9d6ea;
+  background: #fff;
+  color: var(--lv-ink);
+  font: 650 0.8rem/1 inherit;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.lv-btn:hover:not(:disabled) {
+  background: #f3f7fc;
+}
+
+.lv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.lv-help {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  bottom: 14px;
+  font-size: 0.75rem; /* 12px */
+  color: var(--lv-muted);
+  max-width: calc(100% - 200px);
+  pointer-events: none;
+}
+
+.lv-caption {
+  margin: 0;
+  padding: 0 6px;
+  font-size: 0.75rem; /* 12px */
+  line-height: 1.35;
+  color: var(--lv-muted);
+  text-align: center;
+}
+
+.lv-2d {
+  color: #b35c00;
+}
+
+@container (max-width: 520px) {
+  .lv-help {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .lv-help {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-spinner {
+    animation: none;
+  }
+}

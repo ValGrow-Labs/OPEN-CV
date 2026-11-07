@@ -90,15 +90,6 @@ body {
   background: var(--surface-2);
 }
 
-/* The camera picture sits in a rounded white-edged frame. */
-.scan .stage {
-  margin: 0 12px;
-  border-radius: 24px;
-  overflow: hidden;
-  background: var(--stage);
-  box-shadow: 0 0 0 1px var(--line-strong), 0 26px 50px -34px rgba(20, 60, 140, 0.5);
-}
-
 .live-pill {
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
@@ -206,69 +197,114 @@ body {
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
-/* ------------------------------------------------ the measuring screen, in the reference's layout */
+/* ------------------------------------------------ the measuring screen: a page of cards under the camera */
 
+/* The screen scrolls: the camera picture first (as wide as the screen allows, in the shape of the real video
+   stream), then the status, the 3D hand and the live measurements. On a wide screen or a phone held sideways the
+   camera sits on the left and the cards on the right. */
 .scan {
-  align-items: center;
-  overflow: hidden;
-}
-
-.scan-bar,
-.scan .stage,
-.scan-panel {
-  width: min(100%, 560px);
-  flex-shrink: 0;
-}
-
-.scan .stage {
-  flex: 1 1 auto;
-  width: min(calc(100% - 24px), 536px);
-  border-radius: 28px;
-  box-shadow: 0 0 0 1px var(--line-strong), 0 36px 70px -40px rgba(20, 60, 140, 0.55);
+  align-items: stretch;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .scan-bar {
+  flex: none;
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
   align-items: center;
   gap: 10px;
 }
 
-.scan-head {
-  flex: 1;
+.scan-body {
+  --cam-max-h: 70dvh;
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.scan-cam,
+.scan-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-width: 0;
-  display: grid;
-  gap: 2px;
-  text-align: center;
 }
 
-.scan-title {
-  font-size: clamp(0.95rem, 3.8vw, 1.15rem);
-  font-weight: 750;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink);
-  white-space: nowrap;
+/* The camera frame has exactly the shape of the video (--ar = width / height), so the picture fills it: no bars,
+   no stretching, nothing cropped. On a phone it runs edge to edge. */
+.scan .stage {
+  flex: none;
+  position: relative;
+  width: min(100%, calc(var(--cam-max-h) * var(--ar, 0.75)));
+  aspect-ratio: var(--ar, 0.75);
+  min-height: 0;
+  margin-inline: auto;
+  border-radius: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--stage);
+  box-shadow: 0 26px 50px -36px rgba(20, 60, 140, 0.5);
 }
 
-.scan-ref {
-  font-size: 0.78rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.scan-panel,
+.scan-card,
+.scan-note {
+  margin-inline: 12px;
 }
 
-/* The panel is a floating white card, like the size card of the result page. */
+/* The status card: frames, progress, hand and coin status, steps, the main problem and Reset. */
 .scan-panel {
-  width: min(calc(100% - 24px), 536px);
-  margin: 12px 0 max(12px, env(safe-area-inset-bottom));
+  width: auto;
+  margin-bottom: 0;
   padding: 16px 16px 14px;
-  border-radius: 28px;
+  border-radius: 24px;
   border-top: 0;
+  background: #fff;
   box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -36px rgba(20, 60, 140, 0.5);
 }
 
-/* "Reset" and the other quiet buttons in the panel: the outlined pill of the reference. */
+.scan-card {
+  padding: 14px 16px 16px;
+  border-radius: 24px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -36px rgba(20, 60, 140, 0.5);
+}
+
+.scan-card-title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.scan-card-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.scan-note {
+  margin-block: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+
+/* The two buttons in the card: the outlined pill of the reference. */
 .scan-panel .btn {
   border-radius: 999px;
   background: #fff;
@@ -281,80 +317,156 @@ body {
 .scan-hint {
   background: var(--surface-2);
   border: 1px solid var(--line);
+  height: auto;
+  min-height: 4.2rem;
 }
 
-.live-meter-value {
-  color: var(--ink);
+.scan-hint-btn {
+  flex: none;
+}
+
+/* Hand and coin status, apart. */
+.scan-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.scan-chip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #a3b2cc;
+}
+
+.scan-chip.is-ok {
+  color: var(--good);
+  background: var(--good-soft);
+  border-color: rgba(26, 122, 82, 0.3);
+}
+
+.scan-chip.is-ok i {
+  background: var(--good);
+}
+
+.scan-chip.is-wait {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.scan-chip.is-wait i {
+  background: var(--accent);
+}
+
+/* The 3D hand: a dedicated card, never a panel over the hand. */
+.scan-3d-box {
+  position: relative;
+  height: clamp(300px, 52vw, 380px);
+  border-radius: 18px;
+  overflow: hidden;
+  background: radial-gradient(90% 80% at 50% 38%, #ffffff 0%, #e3edfc 100%);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* Live measurements: two compact columns, labels and values always visible. */
+.mcols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 18px;
+}
+
+.mcol {
+  margin: 0;
+  display: grid;
+  align-content: start;
+}
+
+.mrow2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mrow2 dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.mrow2 dd {
+  margin: 0;
+  font-size: 1.02rem;
   font-weight: 750;
+  color: var(--ink);
+  white-space: nowrap;
+  text-align: right;
 }
 
-/* Wide screens: a glass disc and fine circuit traces behind the column, as in the reference. */
-@media (min-width: 900px) {
-  .scan::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    left: 50%;
-    top: 50%;
-    width: min(92vh, 860px);
-    aspect-ratio: 1;
-    transform: translate(-50%, -50%);
-    border-radius: 50%;
-    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.95) 62%, rgba(214, 228, 247, 0.55) 100%);
-    box-shadow:
-      0 0 0 1px rgba(170, 195, 230, 0.45),
-      0 0 0 22px rgba(255, 255, 255, 0.4),
-      0 0 0 23px rgba(170, 195, 230, 0.28);
-    pointer-events: none;
-  }
-  .scan::after {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    inset: 0;
-    pointer-events: none;
-    background-repeat: no-repeat;
-    background-position: left 40px top 34%, right 40px top 34%;
-    background-size: 340px 220px, 340px 220px;
-    background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='220' fill='none' stroke='%23bccbe1' stroke-width='1.2'%3E%3Cpath d='M0 150H90L130 110H230'/%3E%3Cpath d='M0 176H70L120 126H200'/%3E%3Cpath d='M0 124H56L88 94H170'/%3E%3Cpath d='M0 96H40L64 72H120'/%3E%3Ccircle cx='234' cy='110' r='3.5'/%3E%3Ccircle cx='204' cy='126' r='3.5'/%3E%3Ccircle cx='174' cy='94' r='3.5'/%3E%3Ccircle cx='124' cy='72' r='3.5'/%3E%3C/svg%3E"),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='220' fill='none' stroke='%23bccbe1' stroke-width='1.2'%3E%3Cpath d='M340 150H250L210 110H110'/%3E%3Cpath d='M340 176H270L220 126H140'/%3E%3Cpath d='M340 124H284L252 94H170'/%3E%3Cpath d='M340 96H300L276 72H220'/%3E%3Ccircle cx='106' cy='110' r='3.5'/%3E%3Ccircle cx='136' cy='126' r='3.5'/%3E%3Ccircle cx='166' cy='94' r='3.5'/%3E%3Ccircle cx='216' cy='72' r='3.5'/%3E%3C/svg%3E");
-  }
-}
-
-/* The live length is a white card like the "Suggested size" card of the result page; before a hand is
-   found it shows a dash instead of leaving a hole in the panel. */
-.scan-panel .live-meter {
-  margin-top: 2px;
-  padding: 12px 16px;
-  border: 1px solid #dde6f2;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 10px 26px -18px rgba(20, 60, 140, 0.4);
-  align-content: center;
-}
-
-.scan-panel .live-meter.is-idle {
-  opacity: 0.7;
-  visibility: visible;
-}
-
-.live-meter-label {
-  font-size: 0.72rem;
+.mrow2 dd small {
+  display: block;
+  font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted);
 }
 
-.live-meter-value {
-  font-size: 2rem;
-  line-height: 1.05;
+.mrow2.is-na dd {
+  color: var(--muted);
+  font-weight: 500;
 }
 
-/* A small phone: the title and the calibration line keep their room. */
+@media (max-width: 360px) {
+  .mcols {
+    gap: 0 12px;
+  }
+  .mrow2 dt {
+    font-size: 0.74rem;
+  }
+  .mrow2 dd {
+    font-size: 0.95rem;
+  }
+}
+
+/* The sheets and the guide cover the whole screen, whatever the scroll position. */
+.view-sheet,
+.guide-overlay {
+  position: fixed;
+}
+
+/* The header: title and the coin used for scale. */
+.scan-head {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
 .scan-title {
   font-size: clamp(0.8rem, 3.4vw, 1.15rem);
+  font-weight: 750;
   letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .scan-ref {
@@ -374,22 +486,6 @@ body {
   }
 }
 
-/* The two lines of the live length never wrap, so the panel (and with it the camera picture) keeps its size. */
-.live-meter-value,
-.live-meter-sub {
-  white-space: nowrap;
-}
-
-.live-meter-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.scan-panel .live-meter {
-  min-height: 5.6rem;
-}
-
 /* While the measurements are calculated: a pale veil over the frozen picture, with the glowing hand on it. */
 .stage-message-veil {
   background: rgba(238, 244, 251, 0.92);
@@ -402,44 +498,68 @@ body {
   color: var(--muted);
 }
 
-/* A phone held sideways: the camera takes the left, the panel a column on the right, so the picture keeps its height. */
-@media (orientation: landscape) and (max-height: 560px) {
-  .scan {
+/* A wide screen, or a phone held sideways: the camera on the left, the cards on the right. */
+@media (min-width: 900px), (orientation: landscape) and (max-height: 560px) {
+  .scan-body {
+    --cam-max-h: calc(100dvh - 120px);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) min(21rem, 42vw);
-    grid-template-rows: auto minmax(0, 1fr);
-    align-items: stretch;
-    justify-items: stretch;
-  }
-  .scan-bar {
-    grid-column: 1 / -1;
-    width: 100%;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    padding-inline: 16px;
   }
   .scan .stage {
-    grid-column: 1;
-    grid-row: 2;
-    width: auto;
-    margin: 0 0 12px 12px;
+    border-radius: 24px;
+    box-shadow: 0 0 0 1px var(--line-strong), 0 36px 70px -40px rgba(20, 60, 140, 0.55);
   }
-  .scan-panel {
-    grid-column: 2;
-    grid-row: 2;
-    width: auto;
-    min-height: 0;
-    margin: 0 12px 12px;
-    overflow-y: auto;
-    gap: 8px;
+  .scan-panel,
+  .scan-card,
+  .scan-note {
+    margin-inline: 0;
   }
-  .scan-steps {
-    grid-template-columns: minmax(0, 1fr);
+  .scan-3d-box {
+    height: clamp(260px, 38vh, 380px);
   }
-  .scan-panel .live-meter {
-    min-height: 4.4rem;
-    padding: 8px 12px;
-    flex: none;
+}
+
+@media (max-width: 899px) {
+  .scan .stage {
+    width: min(100%, calc(var(--cam-max-h) * var(--ar, 0.75)));
   }
-  .scan-hint {
-    height: auto;
-    min-height: 0;
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .scan .stage {
+    border-radius: 24px;
   }
+}
+
+/* Wide screens: a glass disc and fine circuit traces behind the cards, as in the reference. */
+@media (min-width: 900px) {
+  .scan::before {
+    content: "";
+    position: fixed;
+    z-index: -1;
+    left: 50%;
+    top: 50%;
+    width: min(92vh, 860px);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.95) 62%, rgba(214, 228, 247, 0.55) 100%);
+    box-shadow:
+      0 0 0 1px rgba(170, 195, 230, 0.45),
+      0 0 0 22px rgba(255, 255, 255, 0.4),
+      0 0 0 23px rgba(170, 195, 230, 0.28);
+    pointer-events: none;
+  }
+}
+
+/* One card holds the 3D hand and the live measurements (fewer separate cards). */
+.scan-card-title-2 {
+  margin-top: 16px;
+}
+
+.scan-hand .scan-3d-box {
+  height: clamp(300px, 56vw, 400px);
 }

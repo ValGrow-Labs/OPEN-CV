@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BUDGET, PerfGuard, type Plan } from "./perfGuard";
+import { DEFAULT_BUDGET, LAST_VISIBLE_LEVEL, OWN_SHARE, PAGE_SLOW_FLOOR, PerfGuard, type Plan } from "./perfGuard";
 
 /** Run the guard for ``seconds`` of simulated animation frames. */
 function run(guard: PerfGuard, startMs: number, seconds: number, intervalMs: number, costMs: number | ((i: number) => number)): number {
@@ -115,10 +115,61 @@ describe("PerfGuard", () => {
     expect(g.plan.level).toBe(level);
   });
 
-  it("a slow page (frame interval over 1 / minFps) also steps it down, even when its own cost is small", () => {
+  it("a slow page (frame interval over 1 / minFps) steps it down, even when its own cost is small, but only to the floor", () => {
     const g = new PerfGuard({ maxFrameMs: 9, minFps: 24 });
     run(g, 0, 10, 60, 1); // about 16 frames a second
-    expect(g.plan.level).toBeGreaterThan(0);
+    expect(g.plan.level).toBe(PAGE_SLOW_FLOOR);
+    expect(g.plan).toMatchObject({ rings: false, halo: false, sweep: false, wire: true, nodes: true, pointFraction: 1, disabled: false });
+  });
+
+  it("a page that stays busy for minutes (a slow tracker, a cheap layer) never switches the layer off", () => {
+    // The real phone: the hand tracker and the coin search set the page's frame rate (a frame every 150 ms, 6 fps),
+    // the layer itself costs a few ms. It must stay a visible 3D hand, not hand back to the 2D drawing.
+    for (const interval of [90, 150, 240]) {
+      const g = new PerfGuard({ maxFrameMs: 40, minFps: 12 }); // the shipped config
+      run(g, 0, 300, interval, 4);
+      expect(g.plan.level).toBe(PAGE_SLOW_FLOOR);
+      expect(g.plan.disabled).toBe(false);
+      expect(g.disabledReason).toBeNull();
+    }
+  });
+
+  it("a busy page with a layer that takes a big share of every frame steps all the way down", () => {
+    const g = new PerfGuard({ maxFrameMs: 40, minFps: 12 });
+    // page frame every 120 ms (8 fps) and the layer costs 60% of it: the layer is a big part of the problem
+    run(g, 0, 120, 120, 0.6 * 120 * 0.8);
+    expect(g.plan.level).toBeGreaterThan(PAGE_SLOW_FLOOR);
+    expect(OWN_SHARE).toBeLessThan(0.6 * 0.8);
+  });
+
+  it("is switched off only when its own cost is over budget even at the last visible level, with the reason", () => {
+    const g = new PerfGuard({ maxFrameMs: 9, minFps: 18 });
+    const levels: number[] = [];
+    let now = 0;
+    for (let i = 0; i < 8000 && !g.plan.disabled; i++) {
+      now += 16.7;
+      levels.push(g.tick(now).level);
+      g.frame(25);
+    }
+    expect(new Set(levels).has(LAST_VISIBLE_LEVEL)).toBe(true);
+    expect(g.plan.disabled).toBe(true);
+    expect(g.disabledReason).toBe("too_slow");
+  });
+
+  it("a cheap layer is never switched off by a slow page, however slow the page gets", () => {
+    const g = new PerfGuard({ maxFrameMs: 9, minFps: 18 });
+    run(g, 0, 120, 200, 1); // 5 fps, 1 ms of its own
+    expect(g.plan.disabled).toBe(false);
+    expect(g.disabledReason).toBeNull();
+  });
+
+  it("exposes its rolling numbers for diagnostics", () => {
+    const g = new PerfGuard();
+    expect(g.costMs).toBe(-1);
+    expect(g.intervalMs).toBe(-1);
+    run(g, 0, 3, 20, 3);
+    expect(g.costMs).toBeGreaterThan(0);
+    expect(g.intervalMs).toBeCloseTo(20, 0);
   });
 
   it("a frame interval just inside the budget is fine", () => {

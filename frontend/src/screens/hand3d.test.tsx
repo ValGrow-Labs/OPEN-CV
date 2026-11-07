@@ -255,40 +255,52 @@ describe("the 3D overlay never costs the customer the scan", () => {
     expect(overlay.budget).toEqual({ maxFrameMs: 33, minFps: 15 });
   });
 
-  it("when the scene gives up, the 2D hand takes over mid-scan: no restart, and it stays that way", () => {
+  it("when the scene gives up, the 2D hand takes over mid-scan: no restart, it stays that way, and the customer is told why", () => {
     const { container } = mountScan();
     const ctrl = controllers.at(-1)!;
     const overlay = stages.find((p) => p.mode === "overlay")!;
-    act(() => (overlay.onDegrade as (r: string) => void)("lighter")); // not a give-up: nothing changes
-    expect(ctrl.setOverlay3d).not.toHaveBeenCalled();
     expect(container.querySelector(".scan-overlay3d")).not.toBeNull();
-    act(() => (overlay.onDegrade as (r: string) => void)("disabled"));
+    expect(container.querySelector(".scan-note")).toBeNull();
+    act(() => (overlay.onDegrade as (r: string, d?: string) => void)("too_slow"));
     expect(ctrl.setOverlay3d).toHaveBeenCalledWith(false);
     expect(container.querySelector(".scan-overlay3d")).toBeNull();
+    expect(container.querySelector(".scan-note")!.textContent).toMatch(/too busy to draw the 3D hand/);
+    expect(container.querySelector(".scan-note")!.textContent).toMatch(/measuring is not affected/);
     expect(controllers).toHaveLength(1); // the scan was not restarted
     status(24); // later status updates do not bring it back
     expect(container.querySelector(".scan-overlay3d")).toBeNull();
   });
 
-  it("drops the 3D layer when the scan loop itself runs slow for long enough", () => {
+  it("says why in words for every reason the scene can give", () => {
+    for (const [reason, detail, text] of [
+      ["no_webgl", undefined, /needs WebGL/],
+      ["context_lost", undefined, /graphics memory/],
+      ["disabled", undefined, /switched off to keep the scan fast/],
+      ["error", "shader compile failed", /could not start \(shader compile failed\)/],
+    ] as const) {
+      const { container } = mountScan();
+      const overlay = stages.filter((p) => p.mode === "overlay").at(-1)!;
+      act(() => (overlay.onDegrade as (r: string, d?: string) => void)(reason, detail));
+      expect(container.querySelector(".scan-note")!.textContent).toMatch(text);
+      cleanup();
+      stages.length = 0;
+    }
+  });
+
+  it("keeps the 3D layer while the scan loop itself runs slow: a busy phone is not the layer's fault", () => {
     const cfg = withOverlay({ min_fps: 12, fallback_after_slow_s: 3 });
     const now = vi.spyOn(performance, "now");
     try {
       now.mockReturnValue(1000);
       const { container } = mountScan(cfg);
-      status(20); // fast: fine
-      status(6); // slow starts at t = 1000
-      now.mockReturnValue(3000);
-      status(6.5);
-      expect(container.querySelector(".scan-overlay3d")).not.toBeNull(); // 2 s: not yet
-      now.mockReturnValue(1000);
-      status(20); // a good moment resets the clock
-      now.mockReturnValue(5000);
-      status(6);
-      now.mockReturnValue(8100);
-      status(6);
-      expect(controllers.at(-1)!.setOverlay3d).toHaveBeenCalledWith(false);
-      expect(container.querySelector(".scan-overlay3d")).toBeNull();
+      status(6); // slow from the start
+      now.mockReturnValue(20_000);
+      status(5);
+      now.mockReturnValue(60_000);
+      status(4);
+      expect(controllers.at(-1)!.setOverlay3d).not.toHaveBeenCalledWith(false);
+      expect(container.querySelector(".scan-overlay3d")).not.toBeNull();
+      expect(container.querySelector(".scan-note")).toBeNull();
     } finally {
       now.mockRestore();
     }
@@ -442,7 +454,7 @@ describe("the customer's hand on the result page", () => {
 
   it("says which coin set the scale, and never claims more than a size estimate", () => {
     results(response({ landmarks_px_median: goodFrame().landmarks }));
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Hand measurement scan");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Hand measurement complete");
     expect(screen.getByText(/an estimate from a camera/i)).toBeTruthy();
     expect(screen.queryByText(/calibration: complete/i)).toBeNull();
   });

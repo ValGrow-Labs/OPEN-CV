@@ -14,7 +14,21 @@ export interface HandStageTag {
   label: string;
   /** Drawn larger and brighter (the hand length). */
   emphasis?: boolean;
+  /** Overlay mode: the name shown with the value ("Index"), so a label in the margin says what it measures. */
+  name?: string;
+  /** Overlay mode: the column this label prefers on the picture as it is drawn when not mirrored; the layout
+   *  swaps it for a mirrored picture and moves a label to the nearer margin when its point is on the far half
+   *  of the hand (see layoutLabels in overlayMath.ts). Without it the nearer margin is used. */
+  side?: "left" | "right";
+  /** Overlay mode: lower is kept first when there is no room for every label. */
+  priority?: number;
 }
+
+/** Why the camera-view overlay switched itself off (it then draws nothing and the screen goes back to its 2D
+ *  drawing): "disabled" (config or an explicit switch-off), "no_webgl" (no usable WebGL here), "context_lost" (the
+ *  GPU took the context away), "too_slow" (the layer's OWN cost stayed over budget even at its cheapest visible
+ *  level; a page that is merely busy never switches it off, perfGuard.ts) or "error" (the scene could not start). */
+export type OverlayDegradeReason = "disabled" | "no_webgl" | "context_lost" | "too_slow" | "error";
 
 export interface HandStageProps {
   /** "scan": generic hand, slow rotation and a sonar sweep. "static": the hand of ``landmarks``.
@@ -40,8 +54,9 @@ export interface HandStageProps {
   /** Accessible description of the picture. */
   label?: string;
   /** Overlay mode: called once when the layer has switched itself off (no WebGL, it could not start, the
-   *  context was lost, or it was too heavy for this phone). It then draws nothing: use the 2D drawing. */
-  onDegrade?: (reason: "disabled") => void;
+   *  context was lost, or its own cost was too heavy for this phone), with the reason and, for an error, its text.
+   *  It then draws nothing: use the 2D drawing. */
+  onDegrade?: (reason: OverlayDegradeReason, detail?: string) => void;
   /** Overlay mode: what the layer may cost before it steps itself down (perfGuard.ts). */
   budget?: Budget;
   /** "dark" (default): the glowing hand on a dark stage. "light": a blue hologram on a transparent background
@@ -76,13 +91,13 @@ export function resetWebglCheck(): void {
 }
 
 /** The scene is a lazily loaded chunk and a GPU program: if either fails the page carries on without it. */
-class SceneBoundary extends Component<{ fallback: ReactNode; onError: () => void; children: ReactNode }, { failed: boolean }> {
+class SceneBoundary extends Component<{ fallback: ReactNode; onError: (err: unknown) => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
-  componentDidCatch() {
-    this.props.onError();
+  componentDidCatch(err: unknown) {
+    this.props.onError(err);
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
@@ -96,7 +111,7 @@ export function HandStage(props: HandStageProps) {
 
   // An overlay that cannot run tells the screen once, so it keeps its 2D drawing.
   useEffect(() => {
-    if (overlay && !available) onDegrade?.("disabled");
+    if (overlay && !available) onDegrade?.("no_webgl");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overlay, available]);
 
@@ -105,7 +120,7 @@ export function HandStage(props: HandStageProps) {
     if (!available) return null;
     return (
       <div className={`hand-stage hand-stage-overlay ${className}`} aria-hidden="true">
-        <SceneBoundary fallback={null} onError={() => onDegrade?.("disabled")}>
+        <SceneBoundary fallback={null} onError={(err) => onDegrade?.("error", err instanceof Error ? err.message : String(err))}>
           <Suspense fallback={null}>
             <Scene {...props} />
           </Suspense>

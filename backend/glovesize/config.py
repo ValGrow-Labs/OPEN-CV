@@ -234,11 +234,14 @@ class CaptureParams(_Strict):
 class Overlay3DParams(_Strict):
     """The 3D hand drawn over the camera picture while scanning (frontend/src/hand3d). It only draws; it
     never touches a measurement. The phone drops back to the plain 2D outline when ``enabled`` is false
-    (a kill switch), when its drawing runs over budget, or when the scan loop itself slows down."""
+    (a kill switch), when WebGL fails, or when its own drawing is too heavy even at its cheapest visible level.
+A busy phone (slow scan loop caused by tracking, not by the layer) only lowers its quality."""
 
     enabled: bool = True
-    # The scene's own drawing budget: an average frame slower than this, or fewer frames per second than
-    # min_fps, for fallback_after_slow_s seconds, switches the 3D layer off for the rest of the scan.
+    # The scene's own drawing budget: its own average cost per frame above max_frame_ms, or (while the page runs
+    # slower than min_fps) a large share of every frame, steps the layer down; it is switched off for the rest of
+    # the scan only if it is still too heavy at its cheapest visible level. fallback_after_slow_s is kept for
+    # configuration compatibility (the speed guard judges over a fixed ~1.5 s window).
     max_frame_ms: float = Field(gt=0)
     min_fps: float = Field(gt=0)
     fallback_after_slow_s: float = Field(gt=0)

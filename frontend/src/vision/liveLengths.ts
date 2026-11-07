@@ -4,6 +4,9 @@
 import type { Point } from "../api/types";
 import { dist, MIDDLE_TIP, WRIST } from "./geometry";
 
+const INDEX_MCP = 5;
+const LITTLE_MCP = 17;
+
 export type FingerName = "thumb" | "index" | "middle" | "ring" | "little";
 
 /** Knuckle (MCP) and tip landmark of each finger. */
@@ -18,6 +21,8 @@ export const FINGER_TIPS: Record<FingerName, [number, number]> = {
 export interface LiveLengths {
   handMm: number;
   fingersMm: Record<FingerName, number>;
+  /** Straight line between the index and little knuckle centres (the palm width, as on the result page). */
+  palmWidthMm: number;
 }
 
 export function liveLengths(landmarks: Point[], coinMajorPx: number, coinDiameterMm: number): LiveLengths | null {
@@ -29,7 +34,11 @@ export function liveLengths(landmarks: Point[], coinMajorPx: number, coinDiamete
       return [f, dist(landmarks[a], landmarks[b]) / pxPerMm];
     }),
   ) as Record<FingerName, number>;
-  return { handMm: dist(landmarks[WRIST], landmarks[MIDDLE_TIP]) / pxPerMm, fingersMm };
+  return {
+    handMm: dist(landmarks[WRIST], landmarks[MIDDLE_TIP]) / pxPerMm,
+    fingersMm,
+    palmWidthMm: dist(landmarks[INDEX_MCP], landmarks[LITTLE_MCP]) / pxPerMm,
+  };
 }
 
 /** Where to put a finger's label: just beyond the tip, along the finger's direction. */

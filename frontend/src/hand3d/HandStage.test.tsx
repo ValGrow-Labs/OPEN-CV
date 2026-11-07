@@ -103,7 +103,7 @@ describe("overlay mode (the camera view as a 3D measuring display)", () => {
     expect(container.firstChild).toBeNull();
     rerender(<HandStage mode="overlay" onDegrade={onDegrade} tags={[{ joint: 8, label: "71" }]} />);
     expect(onDegrade).toHaveBeenCalledTimes(1);
-    expect(onDegrade).toHaveBeenCalledWith("disabled");
+    expect(onDegrade).toHaveBeenCalledWith("no_webgl"); // a typed reason, so the screen can say why there is no 3D
   });
 
   it("is decorative and inert: aria-hidden, no role, nothing to click, when it can run", async () => {
@@ -120,7 +120,9 @@ describe("overlay mode (the camera view as a 3D measuring display)", () => {
     // the stand-in context is not a GPU: the scene cannot start, so the layer switches itself off
     // (never a blank, frozen canvas) and tells the screen exactly once
     await waitFor(() => expect(onDegrade).toHaveBeenCalledTimes(1), { timeout: 8000 });
-    expect(onDegrade).toHaveBeenCalledWith("disabled");
+    // the stand-in context is not a WebGL one, so the scene reports it could not start (never a bare "disabled")
+    expect(["no_webgl", "error"]).toContain(onDegrade.mock.calls[0][0]);
+    expect(typeof onDegrade.mock.calls[0][1]).toBe("string");
     await waitFor(() => expect(container.querySelector("canvas")).toBeNull());
   }, 20000);
 

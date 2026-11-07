@@ -35,7 +35,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { useEffect, useRef, useState } from "react";
-import type { HandStageProps } from "./HandStage";
+import type { HandStageProps, OverlayDegradeReason } from "./HandStage";
 import { genericHand, handWire, poseSamples, sampleHand, type Landmark, type SampledHand, type Vec3 } from "./handModel";
 import {
   BEAD_COUNT,
@@ -43,6 +43,11 @@ import {
   HAND_RAIL_VERTS,
   beadGlow,
   containRect,
+  layoutLabels,
+  sideFor,
+  topReserveFor,
+  type LabelIn,
+  type LabelOut,
   fillNodes,
   fillRails,
   haloOf,
@@ -328,6 +333,8 @@ interface FrameStats {
 export default function HandOverlayGL(props: HandStageProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const tagEls = useRef<(HTMLSpanElement | null)[]>([]);
+  const leadEls = useRef<(SVGLineElement | null)[]>([]);
+  const dotEls = useRef<(SVGCircleElement | null)[]>([]);
   const propsRef = useRef(props);
   propsRef.current = props;
   const [failed, setFailed] = useState(false);
@@ -338,11 +345,13 @@ export default function HandOverlayGL(props: HandStageProps) {
     let degraded = false;
     // Switched off (no WebGL, the scene could not start, the context was lost, or it was too heavy for this
     // phone): render nothing and tell the screen, which goes back to its 2D drawing.
-    const disable = () => {
+    const disable = (reason: OverlayDegradeReason, detail?: string) => {
       if (degraded) return;
       degraded = true;
+      const prev = (globalThis as { __OVERLAY_STATS__?: object }).__OVERLAY_STATS__ ?? {};
+      (globalThis as { __OVERLAY_STATS__?: unknown }).__OVERLAY_STATS__ = { ...prev, reason: detail ? `${reason}: ${detail}` : reason };
       setFailed(true);
-      propsRef.current.onDegrade?.("disabled");
+      propsRef.current.onDegrade?.(reason, detail);
     };
 
     const build = (): (() => void) => {
@@ -571,6 +580,19 @@ export default function HandOverlayGL(props: HandStageProps) {
     const budget: Budget = b && b.maxFrameMs > 0 && b.minFps > 0 ? b : DEFAULT_BUDGET;
     const guard = new PerfGuard(budget);
     let plan: Plan = guard.plan;
+    // Read-only diagnostics for a real phone (open the page with ?debug and read window.__OVERLAY_STATS__) and for
+    // the tests: the guard's level, the layer's own cost, the page's frame rate and why the layer went off.
+    let statsAt = 0;
+    const publishStats = (now: number, reason: string | null = null) => {
+      if (reason === null && now - statsAt < 500) return;
+      statsAt = now;
+      (globalThis as { __OVERLAY_STATS__?: unknown }).__OVERLAY_STATS__ = {
+        level: guard.plan.level,
+        costMs: guard.costMs < 0 ? null : Math.round(guard.costMs * 100) / 100,
+        pageFps: guard.intervalMs <= 0 ? null : Math.round(10000 / guard.intervalMs) / 10,
+        reason,
+      };
+    };
     // A step down of the guard: no halo or sweep, no wireframe or nodes, half the points, a lower frame rate, or off.
     const applyPlan = (next: Plan) => {
       plan = next;
@@ -807,56 +829,110 @@ export default function HandOverlayGL(props: HandStageProps) {
       }
     };
 
-    // Labels: finger lengths above the fingertips (each rises until it clears the ones already placed), the hand
-    // length beside its rail. Every label stays inside the element.
+    // Labels round the hand: two columns in the margins of the visible picture, a thin leader line from each to
+    // the point it measures (the rules are in layoutLabels, overlayMath.ts). Positions are written straight to the
+    // DOM and the SVG leaders; nothing here re-renders React.
+    let labelIn: LabelIn[] = [];
+    let labelOut: LabelOut[] = [];
+    const labelFrame = { left: 0, top: 0, right: 0, bottom: 0, loX: 0, hiX: 0, topReserve: 0 };
     const updateTags = (show: boolean) => {
       const tags = propsRef.current.tags;
       if (!tags || tags.length === 0) return;
       const visible = show && fade > 0.35;
-      const placed: { x: number; y: number; w: number }[] = [];
-      const GAP = 3;
-      const tops: { i: number; x: number; y: number }[] = [];
+      if (labelIn.length !== tags.length) {
+        labelIn = tags.map(() => ({ x: 0, y: 0, w: 0, h: 0, side: "left", priority: 0 }));
+        labelOut = tags.map(() => ({ visible: false, left: 0, top: 0, x1: 0, y1: 0 }));
+      }
+      if (!visible) {
+        tags.forEach((_, i) => {
+          const el = tagEls.current[i];
+          if (el) el.style.opacity = "0";
+          leadEls.current[i]?.setAttribute("opacity", "0");
+          dotEls.current[i]?.setAttribute("opacity", "0");
+        });
+        return;
+      }
+      // the hand's box on the picture, and the bracket's side
+      let minX = 1e9;
+      let maxX = -1e9;
+      for (let k = 0; k < 21; k++) {
+        const x = cur[k * 3];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+      const railX = hf.x0 + info.mx * hf.len;
+      const railY = hf.y0 - info.my * hf.len;
+      let lo = minX;
+      let hi = maxX;
+      if (tags.some((t) => t.between && ((t.between[0] === 0 && t.between[1] === 12) || (t.between[0] === 12 && t.between[1] === 0)))) {
+        if (info.side > 0) hi = Math.max(hi, railX);
+        else lo = Math.min(lo, railX);
+      }
+      // the visible picture: the part of the element the video fills
+      const fs = propsRef.current.frameRef?.current;
+      const pic = fs && fs.width > 0 && fs.height > 0 ? containRect(width, height, fs.width, fs.height) : { s: 1, ox: 0, oy: 0 };
+      const picW = fs && fs.width > 0 ? fs.width * pic.s : width;
+      const picH = fs && fs.height > 0 ? fs.height * pic.s : height;
+      labelFrame.left = pic.ox;
+      labelFrame.top = pic.oy;
+      labelFrame.right = pic.ox + picW;
+      labelFrame.bottom = pic.oy + picH;
+      labelFrame.loX = lo;
+      labelFrame.hiX = hi;
+      labelFrame.topReserve = topReserveFor(picH);
+      const mirrored = !!propsRef.current.mirror;
       tags.forEach((tag, i) => {
         const el = tagEls.current[i];
-        if (!el) return;
-        el.style.opacity = visible ? "1" : "0";
-        if (!visible) return;
-        const w = el.offsetWidth || 70;
-        const h = el.offsetHeight || 22;
-        if (tag.between) {
-          const [a, b] = tag.between;
-          const railed = (a === 0 && b === 12) || (a === 12 && b === 0);
-          const ex = railed ? hf.x0 + info.mx * hf.len : (cur[a * 3] + cur[b * 3]) / 2;
-          const ey = railed ? hf.y0 - info.my * hf.len : (cur[a * 3 + 1] + cur[b * 3 + 1]) / 2;
-          const side = railed ? info.side : 1;
-          let left = side > 0 ? ex + 12 : ex - w - 12;
-          left = Math.min(width - w - 4, Math.max(4, left));
-          const top = Math.min(height - h - 4, Math.max(4, ey - h / 2));
-          el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
-          placed.push({ x: left + w / 2, y: top, w });
+        const inn = labelIn[i];
+        if (!el) {
+          inn.w = 1e6; // no element: nothing to place
+          return;
+        }
+        const railed = !!tag.between && ((tag.between[0] === 0 && tag.between[1] === 12) || (tag.between[0] === 12 && tag.between[1] === 0));
+        if (railed) {
+          inn.x = railX;
+          inn.y = railY;
+          inn.side = info.side > 0 ? "right" : "left"; // the length label follows its bracket
         } else {
-          tops.push({ i, x: cur[tag.joint * 3], y: cur[tag.joint * 3 + 1] });
+          if (tag.between) {
+            inn.x = (cur[tag.between[0] * 3] + cur[tag.between[1] * 3]) / 2;
+            inn.y = (cur[tag.between[0] * 3 + 1] + cur[tag.between[1] * 3 + 1]) / 2;
+          } else {
+            inn.x = cur[tag.joint * 3];
+            inn.y = cur[tag.joint * 3 + 1];
+          }
+          inn.side = sideFor(tag.side ?? (inn.x < (minX + maxX) / 2 ? "left" : "right"), tag.side ? mirrored : false, inn.x, minX, maxX);
+        }
+        inn.w = el.offsetWidth || 70;
+        inn.h = el.offsetHeight || 24;
+        inn.priority = tag.priority ?? i;
+      });
+      layoutLabels(labelIn, labelFrame, labelOut);
+      tags.forEach((_, i) => {
+        const el = tagEls.current[i];
+        const o = labelOut[i];
+        const line = leadEls.current[i];
+        const dot = dotEls.current[i];
+        if (!el) return;
+        const on = o.visible;
+        el.style.opacity = on ? "1" : "0";
+        el.style.visibility = on ? "visible" : "hidden";
+        line?.setAttribute("opacity", on ? "1" : "0");
+        dot?.setAttribute("opacity", on ? "1" : "0");
+        if (!on) return;
+        el.style.transform = `translate(${o.left.toFixed(1)}px, ${o.top.toFixed(1)}px)`;
+        const inn = labelIn[i];
+        if (line) {
+          line.setAttribute("x1", o.x1.toFixed(1));
+          line.setAttribute("y1", o.y1.toFixed(1));
+          line.setAttribute("x2", inn.x.toFixed(1));
+          line.setAttribute("y2", inn.y.toFixed(1));
+        }
+        if (dot) {
+          dot.setAttribute("cx", inn.x.toFixed(1));
+          dot.setAttribute("cy", inn.y.toFixed(1));
         }
       });
-      if (!visible) return;
-      tops.sort((u, v) => u.x - v.x);
-      for (const s of tops) {
-        const el = tagEls.current[s.i];
-        if (!el) continue;
-        const w = el.offsetWidth || 50;
-        const h = el.offsetHeight || 22;
-        let top = s.y - 10 - h;
-        const cx = Math.min(width - w / 2 - 4, Math.max(w / 2 + 4, s.x));
-        for (let guard = 0; guard < 8; guard++) {
-          const hit = placed.find((q) => Math.abs(q.x - cx) < (q.w + w) / 2 + GAP && Math.abs(q.y - top) < h + GAP);
-          if (!hit) break;
-          top = hit.y - h - GAP;
-        }
-        top = Math.max(4, top);
-        placed.push({ x: cx, y: top, w });
-        el.style.setProperty("--lead", `${Math.max(8, s.y - top - h)}px`);
-        el.style.transform = `translate(${cx.toFixed(1)}px, ${top.toFixed(1)}px) translateX(-50%)`;
-      }
     };
 
     // ---- the loop: while the layer is on screen and the page is in front
@@ -872,11 +948,12 @@ export default function HandOverlayGL(props: HandStageProps) {
         return;
       }
       const next = guard.tick(now);
+      publishStats(now);
       if (next.level !== plan.level) {
         applyPlan(next);
         if (next.disabled) {
           looping = false;
-          disable();
+          disable(guard.disabledReason ?? "too_slow");
           return;
         }
       }
@@ -903,7 +980,7 @@ export default function HandOverlayGL(props: HandStageProps) {
     const onLost = (e: Event) => {
       e.preventDefault();
       lost = true;
-      disable();
+      disable("context_lost");
     };
     canvas.addEventListener("webglcontextlost", onLost);
 
@@ -936,7 +1013,8 @@ export default function HandOverlayGL(props: HandStageProps) {
       teardown = build();
     } catch (err) {
       console.warn("3D hand overlay: could not start", err);
-      disable();
+      const text = err instanceof Error ? err.message : String(err);
+      disable(/webgl/i.test(text) ? "no_webgl" : "error", text);
     }
     return () => teardown?.();
   }, []);
@@ -946,14 +1024,29 @@ export default function HandOverlayGL(props: HandStageProps) {
     <>
       <div ref={mountRef} className="hand-stage-gl" />
       {props.tags && props.tags.length > 0 && (
-        <div className="hand-stage-tags" aria-hidden="true" style={{ ["--tag-rgb" as string]: toneAccentRgb(props.tone) }}>
+        <div className="hand-stage-tags hand-stage-tags--around" aria-hidden="true" style={{ ["--tag-rgb" as string]: toneAccentRgb(props.tone) }}>
+          <svg className="hand-stage-leaders" width="100%" height="100%">
+            {props.tags.map((tag, i) => (
+              <g key={`lead-${tag.joint}-${tag.between ? tag.between.join("_") : ""}`}>
+                <line ref={(el) => void (leadEls.current[i] = el)} opacity="0" />
+                <circle ref={(el) => void (dotEls.current[i] = el)} r="3.2" opacity="0" />
+              </g>
+            ))}
+          </svg>
           {props.tags.map((tag, i) => (
             <span
               key={`${tag.joint}-${tag.between ? tag.between.join("_") : ""}`}
               ref={(el) => void (tagEls.current[i] = el)}
-              className={`hand-stage-tag${tag.emphasis ? " hand-stage-tag--em" : ""}${tag.between ? " hand-stage-tag--side" : ""}`}
+              className={`hand-stage-tag${tag.emphasis ? " hand-stage-tag--em" : ""}${tag.between ? " hand-stage-tag--side" : ""}${tag.name ? " hand-stage-tag--named" : ""}`}
             >
-              {tag.label}
+              {tag.name ? (
+                <>
+                  <span className="hand-stage-tag-name">{tag.name}</span>
+                  <span className="hand-stage-tag-value">{tag.label}</span>
+                </>
+              ) : (
+                tag.label
+              )}
             </span>
           ))}
         </div>

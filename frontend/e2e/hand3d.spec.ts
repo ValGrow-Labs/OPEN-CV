@@ -191,7 +191,7 @@ async function handInTheFlow(page: Page, tag: string) {
   await page.getByLabel("Unit").selectOption("mm");
   await page.getByLabel("Hand length").fill("181");
   await page.getByRole("button", { name: "See my size" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hand measurement scan");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hand measurement complete");
 
   // The result page: one card with the customer's own hand, the suggested size and the honest caption.
   const card = page.locator(".rv2-hero");
@@ -240,13 +240,22 @@ test.describe("the way out of the 3D layer", () => {
     await page.screenshot({ path: "test-results/hand3d-kill-switch-2d.png" });
   });
 
-  test("a layer that runs too slowly gives the drawing back to 2D, and the scan carries on", async ({ page }) => {
+  test("a lost WebGL context gives the drawing back to 2D, says why, and the scan carries on", async ({ page }) => {
     test.setTimeout(300_000);
-    // Impossible budget: the scan loop can never reach 1000 fps, so after half a second it must fall back.
-    await overlayConfig(page, { enabled: true, max_frame_ms: 100_000, min_fps: 1000, fallback_after_slow_s: 0.5, focus_mask: true });
+    // The speed guard's own switch-off (too heavy at its cheapest level) is timed over many seconds and is covered by
+    // the unit tests and e2e/overlay-throttle.spec.ts; the way out itself is the same, so here the browser takes
+    // the graphics context away, as a phone short of memory does.
+    await overlayConfig(page, { ...GENEROUS, focus_mask: true });
     await startCustomerScan(page);
-    await expect(page.locator(".live-pill")).toBeVisible({ timeout: 120_000 });
+    await expect(page.locator(".scan-overlay3d canvas")).toBeVisible({ timeout: 120_000 });
+    await page.evaluate(() => {
+      const c = document.querySelector<HTMLCanvasElement>(".scan-overlay3d canvas")!;
+      const gl = (c.getContext("webgl2") || c.getContext("webgl")) as WebGLRenderingContext;
+      gl.getExtension("WEBGL_lose_context")!.loseContext();
+    });
     await expect(page.locator(".scan-overlay3d")).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.locator(".scan-note")).toContainText(/graphics memory/);
+    await expect(page.locator(".scan-note")).toContainText(/measuring is not affected/);
     await expect.poll(() => drawn2d(page), { timeout: 90_000 }).toBeGreaterThan(500); // the 2D hand took over
     // ... and the black is wiped from the mask canvas (nothing left on it).
     await expect.poll(() => maskCanvasInk(page), { timeout: 30_000 }).toBe(0);

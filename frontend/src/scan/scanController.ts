@@ -90,7 +90,12 @@ export interface ScanControllerOptions {
   /** Called every processed camera frame with the tracked hand's landmarks (in video pixels, the ones
    *  drawn on the overlay), or null when there is no hand, and the video frame's size in pixels. For the
    *  3D camera overlay: no React state is needed. */
-  onPose?: (landmarks: Landmark[] | null, frame: { width: number; height: number }) => void;
+  onPose?: (
+    landmarks: Landmark[] | null,
+    frame: { width: number; height: number },
+    /** MediaPipe's world landmarks of the tracked hand (metres, relative depth), for the 3D landmark card. */
+    world?: { points: Point[]; handedness: string | null } | null,
+  ) => void;
   /** A 3D layer draws the hand and its finger lengths: skip the 2D outline, skeleton and finger tags
    *  (the coin ring and search window stay). Can be switched off mid-scan with setOverlay3d. */
   overlay3d?: boolean;
@@ -790,7 +795,7 @@ export class ScanController {
     }
 
     try {
-      this.opts.onPose?.(smoothed, { width: w, height: h });
+      this.opts.onPose?.(smoothed, { width: w, height: h }, hand?.world ? { points: hand.world, handedness: hand.handedness } : null);
     } catch (err) {
       console.error("onPose failed", err); // a drawing consumer must never stop the scan loop
     }

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { genericHand, handWire, normalizePose, poseSamples, sampleHand, type Landmark, type Vec3 } from "./handModel";
 import {
+  LABEL_EDGE,
+  LABEL_GAP,
+  LABEL_LEAD,
+  layoutLabels,
+  sideFor,
+  topReserveFor,
+  type LabelIn,
+  type LabelOut,
   BEAD_COUNT,
   FINGER_RAIL_VERTS,
   FINGER_RAILS,
@@ -480,5 +488,135 @@ describe("the orbit rings and sparkles", () => {
     }
     expect(near).toBeGreaterThan(n / 2); // denser close to the outline
     expect(pos.every(Number.isFinite)).toBe(true);
+  });
+});
+
+describe("labels round the hand: which side", () => {
+  // a hand drawn from x = 100 to 260 (middle 180, width 160)
+  it("takes the preferred side, swapped when the picture is mirrored", () => {
+    expect(sideFor("left", false, 180, 100, 260)).toBe("left");
+    expect(sideFor("right", false, 180, 100, 260)).toBe("right");
+    expect(sideFor("left", true, 180, 100, 260)).toBe("right"); // the front camera swaps the columns
+    expect(sideFor("right", true, 180, 100, 260)).toBe("left");
+  });
+
+  it("moves a label to the nearer margin when its point is on the far half (a leader must not cross the hand)", () => {
+    expect(sideFor("left", false, 250, 100, 260)).toBe("right"); // a left-column finger that sits on the right: a left hand
+    expect(sideFor("right", false, 110, 100, 260)).toBe("left");
+    expect(sideFor("left", true, 110, 100, 260)).toBe("left"); // mirrored: the preference was right, the point is left
+  });
+
+  it("keeps the preference for points near the middle (within 15% of the hand's width)", () => {
+    expect(sideFor("left", false, 180 + 0.14 * 160, 100, 260)).toBe("left");
+    expect(sideFor("left", false, 180 + 0.16 * 160, 100, 260)).toBe("right");
+  });
+});
+
+describe("labels round the hand: the columns", () => {
+  const frame = { left: 0, top: 0, right: 390, bottom: 520, loX: 120, hiX: 270, topReserve: 60 }; // a fixed reserve: the tests below do not depend on topReserveFor
+  const mk = (n: number): LabelOut[] => Array.from({ length: n }, () => ({ visible: false, left: 0, top: 0, x1: 0, y1: 0 }));
+  const lab = (side: "left" | "right", y: number, priority: number, w = 64, h = 34): LabelIn => ({ x: side === "left" ? 140 : 250, y, w, h, side, priority });
+
+  it("lines each side up on its own edge of the hand and joins the label's inner edge to its point", () => {
+    const ins = [lab("left", 200, 1), lab("right", 220, 0)];
+    const out = mk(2);
+    expect(layoutLabels(ins, frame, out)).toBe(2);
+    expect(out[0].left + 64).toBe(frame.loX - LABEL_LEAD); // a left label ends a lead before the hand
+    expect(out[0].x1).toBe(frame.loX - LABEL_LEAD);
+    expect(out[1].left).toBe(frame.hiX + LABEL_LEAD); // a right label starts a lead after it
+    expect(out[1].x1).toBe(frame.hiX + LABEL_LEAD);
+    expect(out[0].y1).toBeCloseTo(out[0].top + 17);
+  });
+
+  it("stacks a column in the order of the measured points, never overlapping, with the minimum gap", () => {
+    const ins = [lab("right", 300, 0), lab("right", 302, 1), lab("right", 304, 2), lab("right", 150, 3)];
+    const out = mk(4);
+    layoutLabels(ins, frame, out);
+    const order = [3, 0, 1, 2]; // by the point's y
+    for (let k = 1; k < order.length; k++) {
+      expect(out[order[k]].top).toBeGreaterThanOrEqual(out[order[k - 1]].top + 34 + LABEL_GAP - 1e-9);
+    }
+    expect(out.every((o) => o.visible)).toBe(true);
+  });
+
+  it("keeps every label inside the picture and below the top reserve, even when the points are at the edges", () => {
+    const ins = [lab("left", -50, 0), lab("left", 5, 1), lab("left", 900, 2), lab("left", 1000, 3)];
+    const out = mk(4);
+    layoutLabels(ins, frame, out);
+    for (const o of out) {
+      expect(o.visible).toBe(true);
+      expect(o.top).toBeGreaterThanOrEqual(frame.topReserve - 1e-9);
+      expect(o.top + 34).toBeLessThanOrEqual(frame.bottom - LABEL_EDGE + 1e-9);
+      expect(o.left).toBeGreaterThanOrEqual(frame.left + LABEL_EDGE);
+    }
+    // and still separated
+    const tops = out.map((o) => o.top).sort((a, b) => a - b);
+    for (let k = 1; k < tops.length; k++) expect(tops[k] - tops[k - 1]).toBeGreaterThanOrEqual(34 + LABEL_GAP - 1e-9);
+  });
+
+  it("drops a label that is wider than its margin, and only on that side", () => {
+    const narrowLeft = { ...frame, loX: 60 }; // 60 - 16 - 4 = 40 px of room on the left, 100 on the right
+    const ins = [lab("left", 200, 1, 64), lab("right", 200, 0, 64)];
+    const out = mk(2);
+    expect(layoutLabels(ins, narrowLeft, out)).toBe(1);
+    expect(out[0].visible).toBe(false);
+    expect(out[1].visible).toBe(true);
+  });
+
+  it("on a narrow picture shows only the labels that fit the column's height, best priority first", () => {
+    const short = { ...frame, bottom: 60 + 34 * 3 + LABEL_GAP * 2 + LABEL_EDGE }; // room for exactly three labels
+    const ins = [lab("right", 100, 6), lab("right", 110, 0), lab("right", 120, 3), lab("right", 130, 1), lab("right", 140, 5)];
+    const out = mk(5);
+    expect(layoutLabels(ins, short, out)).toBe(3);
+    expect(out.map((o) => o.visible)).toEqual([false, true, false, true, false].map((v, i) => (i === 2 ? true : v)));
+    expect(out[2].visible && out[1].visible && out[3].visible).toBe(true); // priorities 3, 0, 1
+    expect(out[0].visible || out[4].visible).toBe(false); // 6 and 5 are the ones dropped
+  });
+
+  it("shows nothing when the hand fills the picture (no margin at all) and never invents room", () => {
+    const full = { ...frame, loX: 10, hiX: 380 };
+    const ins = [lab("left", 200, 0), lab("right", 200, 1)];
+    const out = mk(2);
+    expect(layoutLabels(ins, full, out)).toBe(0);
+    expect(out.every((o) => !o.visible)).toBe(true);
+  });
+
+  it("never produces NaN and leaves no label outside the picture over many random hands", () => {
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    for (let n = 0; n < 300; n++) {
+      const w = 240 + rand() * 400;
+      const h = 300 + rand() * 500;
+      const lo = rand() * w * 0.5;
+      const hi = lo + 40 + rand() * (w - lo - 40);
+      const f = { left: 0, top: 0, right: w, bottom: h, loX: lo, hiX: hi, topReserve: topReserveFor(h) };
+      const ins: LabelIn[] = Array.from({ length: 7 }, (_, i) => ({
+        x: lo + rand() * (hi - lo),
+        y: rand() * h,
+        w: 50 + rand() * 60,
+        h: 24 + rand() * 12,
+        side: rand() < 0.5 ? "left" : "right",
+        priority: i,
+      }));
+      const out = mk(7);
+      layoutLabels(ins, f, out);
+      out.forEach((o, i) => {
+        if (!o.visible) return;
+        expect([o.left, o.top, o.x1, o.y1].every(Number.isFinite)).toBe(true);
+        expect(o.left).toBeGreaterThanOrEqual(f.left + LABEL_EDGE - 1e-6);
+        expect(o.left + ins[i].w).toBeLessThanOrEqual(f.right - LABEL_EDGE + 1e-6);
+        expect(o.top).toBeGreaterThanOrEqual(f.topReserve - 1e-6);
+        expect(o.top + ins[i].h).toBeLessThanOrEqual(f.bottom - LABEL_EDGE + 1e-6);
+        // clear of the hand's box sideways
+        if (ins[i].side === "left") expect(o.left + ins[i].w).toBeLessThanOrEqual(f.loX - LABEL_LEAD + 1e-6);
+        else expect(o.left).toBeGreaterThanOrEqual(f.hiX + LABEL_LEAD - 1e-6);
+      });
+    }
+  });
+
+  it("reserves a pill's room at the top, less on a short picture", () => {
+    expect(topReserveFor(800)).toBe(76);
+    expect(topReserveFor(200)).toBeCloseTo(68);
+    expect(topReserveFor(0)).toBe(0);
   });
 });

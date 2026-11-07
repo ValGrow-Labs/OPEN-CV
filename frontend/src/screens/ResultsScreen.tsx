@@ -101,7 +101,7 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
       <section className="rv2-hero" aria-labelledby="rv2-title">
         <header className="rv2-head">
           <h1 id="rv2-title" className="rv2-title">
-            Hand measurement scan
+            Hand measurement complete
           </h1>
           <p className="rv2-sub">{calibration}</p>
         </header>
