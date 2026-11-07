@@ -7,6 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { routeConfig, type ScanTiming } from "./scanConfig";
 import { NEXT_VIEW_BUTTONS, scanRemainingViews, startCustomerScan } from "./views";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -23,15 +24,13 @@ const VIEWPORTS = [
 // unless a test wants it to.
 const GENEROUS = { enabled: true, max_frame_ms: 100_000, min_fps: 0.01, fallback_after_slow_s: 600 };
 
-/** Serve /api/config with live_scan.overlay_3d replaced (the server's real config is untouched). */
-async function overlayConfig(page: Page, overlay3d: Record<string, unknown>) {
-  await page.route("**/api/config", async (route) => {
-    const res = await route.fetch();
-    const body = await res.json();
-    body.live_scan.overlay_3d = { ...body.live_scan.overlay_3d, ...overlay3d };
-    await route.fulfill({ response: res, json: body });
-  });
-}
+/** The browser's copy of /api/config with the 3D layer's settings and the scan timing replaced (see scanConfig.ts). */
+const overlayConfig = (page: Page, overlay3d: Record<string, unknown>, timing?: ScanTiming) => routeConfig(page, { overlay3d, timing });
+
+/** Each view needs 40 accepted frames (a few seconds at the shipped 50 ms interval): time to look at the live layer. */
+const LONGER_VIEWS: ScanTiming = { frames: 40 };
+/** A view that stays open for as long as the test needs. */
+const HOLD_OPEN: ScanTiming = "hold";
 
 const box = async (page: Page, selector: string) => (await page.locator(selector).first().boundingBox())!;
 
@@ -49,10 +48,23 @@ async function pictureBox(page: Page) {
 }
 
 /** What the camera picture looks like: the share of its pixels that are bright (the white room behind the hand)
- *  and the share that are dark, from a screenshot decoded in the page. */
-async function paneLight(page: Page, path?: string) {
+ *  and the share that are dark, from a screenshot decoded in the page. With `withoutLayer` everything the app draws
+ *  over the picture besides the black mask is hidden for the shot (the glowing 3D layer with its white label pills,
+ *  and the white guidance pill): only the camera picture and the mask are measured, because pills and glow are bright
+ *  pixels of their own and say nothing about whether the room went black. */
+async function paneLight(page: Page, path?: string, withoutLayer = false) {
   const clip = await pictureBox(page);
-  const png = await page.screenshot({ clip, path });
+  const covers = page.locator(".scan-overlay3d, .live-pill");
+  const hide = withoutLayer && (await covers.count()) > 0;
+  // display: none, not visibility: the label pills set their own visibility, which beats a hidden parent.
+  const setDisplay = (d: string) => covers.evaluateAll((els, value) => els.forEach((el) => ((el as HTMLElement).style.display = value)), d);
+  if (hide) await setDisplay("none");
+  let png: Buffer;
+  try {
+    png = await page.screenshot({ clip, path });
+  } finally {
+    if (hide) await setDisplay("").catch(() => undefined);
+  }
   return page.evaluate(async (b64) => {
     const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
     const bmp = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
@@ -121,7 +133,7 @@ const differing = (page: Page, a: Buffer, b: Buffer) =>
 async function handInTheFlow(page: Page, tag: string) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await overlayConfig(page, GENEROUS);
+  await overlayConfig(page, GENEROUS, LONGER_VIEWS);
   // Slow the sizing request a little so the "calculating" screen can be looked at.
   await page.route("**/api/scan", async (route) => {
     await new Promise((r) => setTimeout(r, 3500));
@@ -153,22 +165,8 @@ async function handInTheFlow(page: Page, tag: string) {
     expect(z[1]).toBeGreaterThanOrEqual(z[0]); // the pill is drawn on top of it
     expect(p.height).toBeGreaterThan(0);
   }
-  // Glowing mesh over the real hand: the stage looks different with the layer than without it. The palm
-  // view can finish quickly (and the layer goes away with the camera), so look as soon as the scene draws.
   const clip = { x: stage.x, y: stage.y, width: stage.width, height: stage.height };
-  await expect
-    .poll(
-      async () => {
-        if ((await overlay.count()) === 0) return -1; // the view already finished: nothing left to look at
-        const withLayer = await page.screenshot({ clip, path: `test-results/hand3d-${tag}-live.png` });
-        await overlay.evaluate((el) => ((el as HTMLElement).style.visibility = "hidden")).catch(() => undefined);
-        const without = await page.screenshot({ clip });
-        await overlay.evaluate((el) => ((el as HTMLElement).style.visibility = "visible")).catch(() => undefined);
-        return differing(page, withLayer, without);
-      },
-      { timeout: 60_000, intervals: [100, 300, 600] },
-    )
-    .toBeGreaterThan(300);
+  await page.screenshot({ clip, path: `test-results/hand3d-${tag}-live.png` });
   // The camera pane does not change size while it runs.
   const after = await box(page, ".scan .stage");
   expect(Math.abs(after.height - stage.height)).toBeLessThanOrEqual(1.5);
@@ -212,6 +210,32 @@ async function handInTheFlow(page: Page, tag: string) {
   expect(errors).toEqual([]);
 }
 
+test.describe("the glowing layer over the real hand", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test("the picture looks different with the layer than without it", async ({ page }) => {
+    test.setTimeout(240_000);
+    await overlayConfig(page, GENEROUS, HOLD_OPEN); // the palm view stays open: nothing to race
+    await startCustomerScan(page);
+    const overlay = page.locator(".scan-overlay3d");
+    await expect(overlay.locator("canvas")).toBeVisible({ timeout: 120_000 });
+    const stage = await box(page, ".scan .stage");
+    const clip = { x: stage.x, y: stage.y, width: stage.width, height: stage.height };
+    await expect
+      .poll(
+        async () => {
+          const withLayer = await page.screenshot({ clip });
+          await overlay.evaluate((el) => ((el as HTMLElement).style.visibility = "hidden"));
+          const without = await page.screenshot({ clip });
+          await overlay.evaluate((el) => ((el as HTMLElement).style.visibility = "visible"));
+          return differing(page, withLayer, without);
+        },
+        { timeout: 90_000, intervals: [200, 500, 1000] },
+      )
+      .toBeGreaterThan(300);
+  });
+});
+
 for (const vp of VIEWPORTS) {
   test.describe(vp.name, () => {
     test.use({ viewport: { width: vp.width, height: vp.height }, hasTouch: vp.touch });
@@ -227,7 +251,7 @@ test.describe("the way out of the 3D layer", () => {
 
   test("config can switch it off: no 3D layer, the 2D hand is drawn as before", async ({ page }) => {
     test.setTimeout(240_000);
-    await overlayConfig(page, { enabled: false });
+    await overlayConfig(page, { enabled: false }, HOLD_OPEN);
     await startCustomerScan(page);
     await expect(page.locator(".scan .stage")).toBeVisible({ timeout: 120_000 });
     await expect(page.locator(".live-pill")).toBeVisible({ timeout: 120_000 }); // the scan is running
@@ -245,7 +269,7 @@ test.describe("the way out of the 3D layer", () => {
     // The speed guard's own switch-off (too heavy at its cheapest level) is timed over many seconds and is covered by
     // the unit tests and e2e/overlay-throttle.spec.ts; the way out itself is the same, so here the browser takes
     // the graphics context away, as a phone short of memory does.
-    await overlayConfig(page, { ...GENEROUS, focus_mask: true });
+    await overlayConfig(page, { ...GENEROUS, focus_mask: true }, LONGER_VIEWS);
     await startCustomerScan(page);
     await expect(page.locator(".scan-overlay3d canvas")).toBeVisible({ timeout: 120_000 });
     await page.evaluate(() => {
@@ -274,12 +298,12 @@ for (const vp of [VIEWPORTS[0], VIEWPORTS[3]]) {
 
     test("the room goes black around the hand and the coin", async ({ page }) => {
       test.setTimeout(300_000);
-      await overlayConfig(page, { ...GENEROUS, focus_mask: true }); // the black is opt-in (shipped off)
+      await overlayConfig(page, { ...GENEROUS, focus_mask: true }, HOLD_OPEN); // the black is opt-in (shipped off)
       await startCustomerScan(page);
       await expect(page.locator(".scan-overlay3d canvas")).toBeVisible({ timeout: 120_000 });
       // The black fades in once a hand is tracked; the picture is the sheet's white until then.
       await expect
-        .poll(async () => (await paneLight(page)).bright, { timeout: 120_000, intervals: [300, 600] })
+        .poll(async () => (await paneLight(page, undefined, true)).bright, { timeout: 120_000, intervals: [300, 600] })
         .toBeLessThan(0.1); // the white sheet is 40% of the picture without the black
       // The black has a small canvas of its own (not the camera's resolution), laid exactly over the 2D drawing
       // canvas and the video, so `object-fit: contain` keeps it aligned.
@@ -298,14 +322,15 @@ for (const vp of [VIEWPORTS[0], VIEWPORTS[3]]) {
         expect(Math.abs(geometry.rm[k] - geometry.rv[k])).toBeLessThanOrEqual(1);
       }
       expect(await maskCanvasInk(page)).toBeGreaterThan(1000); // the black is on the mask canvas, not on the 2D one
-      const shot = await paneLight(page, `test-results/hand3d-focus-${vp.name}.png`);
+      await page.screenshot({ clip: await pictureBox(page), path: `test-results/hand3d-focus-${vp.name}.png` }); // for looking at, with the layer
+      const shot = await paneLight(page, undefined, true);
       expect(shot.dark).toBeGreaterThan(0.5); // black around the hand
       expect(shot.dark).toBeLessThan(0.97); // and the hand and the coin are still there to be seen
     });
 
     test("with focus_mask off (the shipped setting) the 3D hand sits over the normal picture", async ({ page }) => {
       test.setTimeout(300_000);
-      await overlayConfig(page, { ...GENEROUS, focus_mask: false });
+      await overlayConfig(page, { ...GENEROUS, focus_mask: false }, HOLD_OPEN);
       await startCustomerScan(page);
       await expect(page.locator(".scan-overlay3d canvas")).toBeVisible({ timeout: 120_000 });
       await expect.poll(async () => (await paneLight(page)).bright, { timeout: 120_000 }).toBeGreaterThan(0.2);

@@ -563,3 +563,33 @@ body {
 .scan-hand .scan-3d-box {
   height: clamp(300px, 56vw, 400px);
 }
+
+/* ?debug: what the scanner and the page see, for diagnosing a scan on a real phone. Plain monospace, readable. */
+.scan-debug-panel {
+  margin-inline: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px dashed var(--line-strong);
+  color: var(--ink);
+}
+
+.scan-debug-panel strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.scan-debug-panel pre {
+  margin: 6px 0 0;
+  font: 11px/1.45 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px), (orientation: landscape) and (max-height: 560px) {
+  .scan-debug-panel {
+    margin-inline: 0;
+  }
+}

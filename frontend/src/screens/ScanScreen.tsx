@@ -24,6 +24,7 @@ import { Icon } from "../ui/components";
 import { CoachIcon, coachKind, GUIDE_STEPS, liveStage } from "../ui/guide";
 import { coinConfirmed, introSeen, markCoinConfirmed, markIntroSeen, referenceLabel } from "../ui/settings";
 import { CoinConfirm } from "./CoinConfirm";
+import { ScanDebug } from "./ScanDebug";
 import { ScanGuide } from "./ScanGuide";
 
 interface Props<R> {
@@ -84,6 +85,7 @@ export function ScanScreen<R = ScanResponse>({
   const frameRef = useRef<{ width: number; height: number } | null>(null);
   // MediaPipe's world landmarks (relative depth) of the tracked hand, for the 3D landmark card.
   const worldRef = useRef<WorldHand | null>(null);
+  const [viewerNote, setViewerNote] = useState<string | null>(null);
   // The camera picture's own shape (width / height), so its frame has exactly that shape and no empty bars.
   const [videoAr, setVideoAr] = useState(0.75);
   // The measuring is drawn in 3D over the camera picture wherever WebGL works and config allows it
@@ -377,20 +379,6 @@ export function ScanScreen<R = ScanResponse>({
       <div className="scan-body">
       <div className="scan-cam">
       <div className="stage" style={{ ["--ar" as string]: String(videoAr) }}>
-        {debug && status && (
-          <pre className="scan-debug" aria-hidden="true">
-            {[
-              `video ${videoRef.current?.videoWidth ?? 0}x${videoRef.current?.videoHeight ?? 0}  fps ${status.fps.toFixed(1)}`,
-              `hand ${Math.round(status.timing.handMs)} ms  coin ${Math.round(status.timing.coinMs)} ms`,
-              `coin ${status.coin?.found ? `${status.coin.method} d=${status.coin.major_axis_px.toFixed(1)}px conf=${status.coin.confidence.toFixed(2)} ${status.coin.accepted ? "ok" : (status.coin.reasons ?? []).join(",")}` : "not found"}`,
-              `checks ${status.live?.codes.join(",") || "ok"}`,
-              `main ${status.topIssue ? `${status.topIssue.code} ${Math.round(status.topIssue.share * 100)}%` : "-"}`,
-              `tilt ${status.tilt.rawDeg?.toFixed(1) ?? "-"} -> ${status.tilt.smoothedDeg?.toFixed(1) ?? "-"} deg  glare ${status.coin?.found ? `${Math.round(status.coin.glare_fraction * 100)}%` : "-"}  ev ${status.exposureEv ?? "n/a"}`,
-              `3d overlay ${overlay3d ? "on" : `off${overlayNote ? ` (${overlayNote.slice(0, 48)}...)` : ""}`} ${JSON.stringify((window as unknown as { __OVERLAY_STATS__?: unknown }).__OVERLAY_STATS__ ?? {})}`,
-              `coin ${ref.diameter.toFixed(1)} mm selected, hand ${status.liveMm ? `${Math.round(status.liveMm.handMm)} mm` : "-"} (accepted ${config.hand_length_plausible_mm[0]}-${config.hand_length_plausible_mm[1]})`,
-            ].join("\n")}
-          </pre>
-        )}
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         {canUse3d && overlayCfg.focus_mask && (
           <canvas ref={maskRef} className={`focus-mask-canvas ${status?.mirrored ? "mirrored" : ""}`} aria-hidden="true" />
@@ -511,6 +499,17 @@ export function ScanScreen<R = ScanResponse>({
         </p>
       )}
 
+      {debug && (
+        <ScanDebug
+          status={status}
+          video={videoRef.current}
+          overlay={{ configured: overlayCfg.enabled, webgl: webglAvailable(), on: overlay3d, note: overlayNote }}
+          viewerNote={viewerNote}
+          reference={{ label: ref.label, diameterMm: ref.diameter }}
+          plausibleHandMm={config.hand_length_plausible_mm}
+        />
+      )}
+
       <div className="scan-panel">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <strong>
@@ -588,7 +587,10 @@ export function ScanScreen<R = ScanResponse>({
           <h2 className="scan-card-title">Your hand in 3D</h2>
           <div className="scan-3d">
             <div className="scan-3d-box">
-              <LandmarkViewer worldRef={worldRef} mirrored={status?.mirrored ?? false} onUnavailable={(m) => console.warn(`[scan] 3D landmark card unavailable: ${m}`)} />
+              <LandmarkViewer worldRef={worldRef} mirrored={status?.mirrored ?? false} onUnavailable={(m) => {
+                console.warn(`[scan] 3D landmark card unavailable: ${m}`);
+                setViewerNote(m);
+              }} />
             </div>
           </div>
           <h2 className="scan-card-title scan-card-title-2">Live measurements</h2>

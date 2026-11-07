@@ -7,6 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { routeConfig } from "./scanConfig";
 import { startCustomerScan } from "./views";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -24,14 +25,8 @@ const VIEWPORTS = [
 // Software WebGL is far slower than a phone GPU: the 3D hand over the picture must not trip its speed guard here.
 const GENEROUS = { enabled: true, max_frame_ms: 100_000, min_fps: 0.01, fallback_after_slow_s: 600 };
 
-async function overlayConfig(page: Page, overlay3d: Record<string, unknown>) {
-  await page.route("**/api/config", async (route) => {
-    const res = await route.fetch();
-    const body = await res.json();
-    body.live_scan.overlay_3d = { ...body.live_scan.overlay_3d, ...overlay3d };
-    await route.fulfill({ response: res, json: body });
-  });
-}
+// The first view stays open for the whole test (scanConfig.ts), at the shipped 50 ms frame interval.
+const overlayConfig = (page: Page, overlay3d: Record<string, unknown>) => routeConfig(page, { overlay3d, timing: "hold" });
 
 const rect = (page: Page, selector: string) =>
   page.evaluate((s) => {

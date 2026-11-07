@@ -71,9 +71,9 @@ export async function showSide(page: Page, side: ShownSide): Promise<void> {
 export const NEXT_VIEW_BUTTONS = ["Scan back of hand", "Scan side view"] as const;
 
 /** Start a customer scan up to the camera: coin question, quick guide, camera. */
-export async function startCustomerScan(page: Page): Promise<void> {
+export async function startCustomerScan(page: Page, path = "/"): Promise<void> {
   await installTurnableCamera(page); // the palm view shows the video as it plays
-  await page.goto("/");
+  await page.goto(path);
   await page.getByRole("button", { name: "Start Scan" }).click();
   // The coin must be confirmed before the camera starts.
   await page.getByRole("button", { name: /Yes, this is my coin/ }).click();

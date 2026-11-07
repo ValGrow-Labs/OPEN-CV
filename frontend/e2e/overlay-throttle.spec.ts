@@ -8,25 +8,14 @@ import { expect, test, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { routeConfig } from "./scanConfig";
 import { startCustomerScan } from "./views";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 test.skip(!existsSync(resolve(__dirname, ".media/hand.json")), "hand test video not generated (run npm run e2e)");
 
-const BIG = 100_000;
-
-/** Serve /api/config with the scan held open and, optionally, some of live_scan.overlay_3d replaced. */
-async function holdScanOpen(page: Page, overlay3d: Record<string, unknown> = {}) {
-  await page.route("**/api/config", async (route) => {
-    const res = await route.fetch();
-    const body = await res.json();
-    Object.assign(body.live_scan, { mobile_frames_target: BIG, mobile_frames_min: BIG, early_stop_frames_mobile: BIG, early_stop_frames_desktop: BIG, early_stop_after_s: BIG, timeout_s: BIG });
-    body.live_scan.overlay_3d = { ...body.live_scan.overlay_3d, ...overlay3d };
-    body.capture.frames_target = BIG;
-    for (const v of body.capture.views) if ("mobile_frames_target" in v) v.mobile_frames_target = BIG;
-    await route.fulfill({ response: res, json: body });
-  });
-}
+/** The scan held open (scanConfig.ts) and, optionally, some of live_scan.overlay_3d replaced. */
+const holdScanOpen = (page: Page, overlay3d: Record<string, unknown> = {}) => routeConfig(page, { overlay3d, timing: "hold" });
 
 interface Sample {
   t: number;
