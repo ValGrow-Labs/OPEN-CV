@@ -1,0 +1,426 @@
+/* EXPERIMENTAL capture prototype: a small, mobile-first, light stylesheet. Colours come from the app's tokens (styles.css and
+   theme-blue.css are imported read-only for them); every class here is prefixed xp- so nothing leaks into the app. */
+
+.xp-root {
+  min-height: 100dvh;
+  padding: 0 0 48px;
+  background: var(--paper, #eef4fb);
+  color: var(--ink, #0b1f4a);
+  font-family: var(--font, system-ui, sans-serif);
+  overflow-x: hidden;
+}
+
+.xp-banner {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px 14px;
+  background: #fff7d6;
+  border-bottom: 2px solid #d9a400;
+  color: #4a3600;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.xp-banner strong {
+  letter-spacing: 0.02em;
+}
+
+.xp-wrap {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 14px 12px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.xp-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 14px 14px 16px;
+  box-shadow: 0 0 0 1px var(--line-strong, rgba(11, 31, 74, 0.16)), 0 24px 48px -36px rgba(20, 60, 140, 0.4);
+  min-width: 0;
+}
+
+.xp-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.02rem;
+  letter-spacing: 0.01em;
+}
+
+.xp-card h3 {
+  margin: 12px 0 6px;
+  font-size: 0.92rem;
+}
+
+.xp-muted {
+  color: var(--muted, #5f7091);
+}
+
+.xp-small {
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.xp-title {
+  margin: 0;
+  font-size: clamp(1.15rem, 4.6vw, 1.5rem);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.xp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.xp-btn {
+  appearance: none;
+  border: 1px solid #c9d6ea;
+  background: #fff;
+  color: var(--ink-2, #2b3d63);
+  border-radius: 999px;
+  padding: 10px 16px;
+  min-height: 44px;
+  font: 650 0.86rem/1.2 var(--font, system-ui, sans-serif);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.xp-btn:hover:not(:disabled) {
+  background: #f3f7fc;
+}
+
+.xp-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.xp-btn:focus-visible,
+.xp-field select:focus-visible,
+.xp-field input:focus-visible {
+  outline: 3px solid rgba(31, 94, 234, 0.45);
+  outline-offset: 2px;
+}
+
+.xp-btn-primary {
+  border-color: #1747cf;
+  background: linear-gradient(180deg, #4d8dff 0%, #1f5eea 55%, #1747cf 100%);
+  color: #fff;
+}
+
+.xp-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5b97ff 0%, #2a68f0 55%, #1b4fd9 100%);
+}
+
+.xp-btn-danger {
+  color: #9b1c1c;
+  border-color: #e3b5b5;
+}
+
+.xp-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  font-size: 0.84rem;
+}
+
+.xp-field select {
+  width: 100%;
+  max-width: 100%; /* a select is as wide as its longest option unless told otherwise */
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #c9d6ea;
+  padding: 0 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.xp-check {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.86rem;
+  min-height: 44px;
+}
+
+.xp-check input {
+  width: 20px;
+  height: 20px;
+}
+
+/* the live camera */
+.xp-live {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* without this the single column grows to its widest unwrapped child and runs off a narrow phone */
+  gap: 14px;
+}
+
+@media (min-width: 900px) {
+  .xp-live {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.xp-video {
+  position: relative;
+  width: 100%;
+  background: #dde7f4;
+  border-radius: 16px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  box-shadow: 0 0 0 1px var(--line-strong, rgba(11, 31, 74, 0.16));
+}
+
+.xp-video video,
+.xp-video canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.xp-mirrored {
+  transform: scaleX(-1);
+}
+
+.xp-video-note {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted, #5f7091);
+  font-size: 0.9rem;
+}
+
+.xp-steps {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.xp-step {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(11, 31, 74, 0.08));
+  background: var(--surface-2, #f3f7fc);
+  font-size: 0.86rem;
+  min-width: 0;
+}
+
+.xp-step.is-current {
+  border-color: var(--accent-line, rgba(31, 94, 234, 0.3));
+  background: var(--accent-soft, rgba(31, 94, 234, 0.09));
+  font-weight: 650;
+}
+
+.xp-step-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(11, 31, 74, 0.1);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.xp-step.is-done .xp-step-num {
+  background: #1a7a52;
+  color: #fff;
+}
+
+.xp-step.is-unchecked .xp-step-num {
+  background: #b7791f;
+  color: #fff;
+}
+
+.xp-step-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.xp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.xp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  background: var(--surface-2, #f3f7fc);
+  border: 1px solid var(--line, rgba(11, 31, 74, 0.08));
+}
+
+.xp-chip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #a3b2cc;
+}
+
+.xp-chip.is-ok {
+  color: #1a7a52;
+  background: rgba(26, 122, 82, 0.1);
+  border-color: rgba(26, 122, 82, 0.3);
+}
+
+.xp-chip.is-ok i {
+  background: #1a7a52;
+}
+
+.xp-chip.is-bad {
+  color: #8a4b00;
+  background: rgba(217, 164, 0, 0.12);
+  border-color: rgba(217, 164, 0, 0.45);
+}
+
+.xp-chip.is-bad i {
+  background: #d9a400;
+}
+
+.xp-chip.is-na {
+  opacity: 0.7;
+}
+
+.xp-reasons {
+  margin: 6px 0 0;
+  padding-left: 1.1em;
+  font-size: 0.84rem;
+  color: #6b4a00;
+}
+
+.xp-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(31, 94, 234, 0.07);
+  border: 1px solid var(--accent-line, rgba(31, 94, 234, 0.3));
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.xp-notice-warn {
+  background: #fff7d6;
+  border-color: #d9a400;
+  color: #4a3600;
+}
+
+.xp-error {
+  background: #fdecec;
+  border-color: #e3b5b5;
+  color: #7a1c1c;
+}
+
+/* analysis */
+.xp-results {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 700px) {
+  .xp-results {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.xp-result canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  background: #dde7f4;
+}
+
+.xp-kv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  font-size: 0.84rem;
+}
+
+.xp-kv dt {
+  color: var(--muted, #5f7091);
+}
+
+.xp-kv dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* simulated section: visibly separate from real captures */
+.xp-sim {
+  border: 2px dashed #7a5cff;
+  background: #faf8ff;
+}
+
+.xp-sim h2 {
+  color: #4c2fc7;
+}
+
+.xp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.xp-table th,
+.xp-table td {
+  padding: 6px 6px;
+  text-align: right;
+  border-bottom: 1px solid var(--line, rgba(11, 31, 74, 0.08));
+}
+
+.xp-table th:first-child,
+.xp-table td:first-child {
+  text-align: left;
+}
+
+.xp-table-wrap {
+  overflow-x: auto;
+}
+
+.xp-viewer {
+  height: min(70vw, 360px);
+  min-height: 260px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 10px 0;
+  background: #f1ecff;
+}
+
+@media (max-width: 380px) {
+  .xp-card {
+    padding: 12px 10px 14px;
+  }
+  .xp-btn {
+    padding: 10px 12px;
+  }
+}

@@ -1,0 +1,137 @@
+/* The experimental mesh viewer: light (white and pale blue, navy ink, one blue accent), like the rest of the app. */
+.mv {
+  --mv-ink: #0b1f4a;
+  --mv-muted: #5f7091;
+  --mv-line: rgba(11, 31, 74, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  color: var(--mv-ink);
+}
+
+.mv-stage {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  height: 100%;
+  flex: 1 1 auto;
+  border-radius: 20px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(70% 55% at 50% 45%, rgba(31, 94, 234, 0.1), rgba(31, 94, 234, 0) 72%),
+    linear-gradient(180deg, #ffffff 0%, #e8f0fb 100%);
+  box-shadow: inset 0 0 0 1px var(--mv-line);
+}
+
+.mv-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.mv-note {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--mv-muted);
+  pointer-events: none;
+}
+
+.mv-error {
+  color: var(--mv-ink);
+}
+
+.mv-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border-radius: 50%;
+  border: 2px solid rgba(31, 94, 234, 0.25);
+  border-top-color: #1f5eea;
+  animation: mv-spin 0.9s linear infinite;
+}
+
+@keyframes mv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mv-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mv-btn {
+  appearance: none;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--mv-line);
+  background: #fff;
+  color: var(--mv-ink);
+  font: 600 0.82rem/1 inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 18px -12px rgba(20, 60, 140, 0.5);
+}
+
+.mv-btn[aria-pressed="true"] {
+  background: #1f5eea;
+  border-color: #1f5eea;
+  color: #fff;
+}
+
+.mv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mv-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--mv-ink);
+}
+
+.mv-legend i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.mv-legend-low {
+  background: #f08c00;
+}
+
+.mv-legend-high {
+  background: #1f5eea;
+  margin-left: 8px;
+}
+
+.mv-caption {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--mv-muted);
+}
