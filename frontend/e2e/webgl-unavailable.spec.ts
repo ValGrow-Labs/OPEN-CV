@@ -68,7 +68,9 @@ test("without WebGL the scan screen says so, draws the flat hand and keeps worki
   await expect(card.locator("canvas")).toHaveCount(0);
   // The numbers and the status are still all there.
   await expect(page.locator(".scan-chips .scan-chip")).toHaveCount(2);
-  await expect(page.locator(".scan-measure dt")).toHaveCount(8);
+  await expect(page.locator(".length-item dt")).toHaveCount(6);
+  await expect(page.locator(".lengths-main span")).toHaveText("Hand length");
+  await expect(page.locator(".scan-pose")).toBeVisible(); // the pose reader needs no WebGL
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "test-results/webgl-unavailable-scan.png" });

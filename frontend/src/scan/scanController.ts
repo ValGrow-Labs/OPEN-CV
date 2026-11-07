@@ -99,6 +99,11 @@ export interface ScanControllerOptions {
   /** A 3D layer draws the hand and its finger lengths: skip the 2D outline, skeleton and finger tags
    *  (the coin ring and search window stay). Can be switched off mid-scan with setOverlay3d. */
   overlay3d?: boolean;
+  /** The customer view: nothing decorative on the 2D layer. No search window box, no hand contour outline, no dashed
+   *  coin ring or pulse and no finger tags (the screen shows coin and hand status and the lengths in words). When
+   *  the 3D layer is off only the plain skeleton is drawn. Detection, the live checks, the live lengths and every
+   *  measurement are exactly the same: this only changes what is drawn. */
+  simpleOverlay?: boolean;
   /** The canvas the focus mask (everything but the hand and the coin black) is drawn on: stacked over the video
    *  and under the 2D drawing canvas, with the video's own CSS so `object-fit: contain` keeps it aligned. Its
    *  pixel size is set here (longest side live_scan.overlay_3d.focus_mask_max_px). Without it there is no mask. */
@@ -814,19 +819,20 @@ export class ScanController {
     const focus = this.focusOn;
     if (focus) this.drawFocus(w, h, smoothed, coin, now);
     else if (this.focusAlpha > 0 || this.maskDirty) this.resetFocus();
+    const simple = this.opts.simpleOverlay === true;
     if (hand && smoothed) {
-      if (roi && !focus) drawRoi(ctx, roi, scale); // the search window would show as a box on the black
+      if (roi && !focus && !simple) drawRoi(ctx, roi, scale); // the search window would show as a box on the black
       if (!this.overlay3dOn) {
         const color = live.ok ? COLORS.good : COLORS.neutral;
-        drawHandOutline(ctx, smoothed, color, scale, live.ok ? 1.0 : 0.6);
+        if (!simple) drawHandOutline(ctx, smoothed, color, scale, live.ok ? 1.0 : 0.6);
         drawSkeleton(ctx, smoothed, color, scale);
       }
     }
-    if (coin?.found) {
+    if (coin?.found && !simple) {
       drawCoin(ctx, coin, scale);
       if (this.overlay3dOn && coin.accepted && !this.reducedMotion) drawCoinPulse(ctx, coin, now, scale);
     }
-    if (liveMm && smoothed && !this.overlay3dOn) {
+    if (liveMm && smoothed && !this.overlay3dOn && !simple) {
       for (const f of Object.keys(FINGER_TIPS) as FingerName[]) {
         drawTag(ctx, labelAnchor(smoothed, f, 22 * scale), `${Math.round(liveMm.fingersMm[f])} mm`, scale, this.status.mirrored);
       }

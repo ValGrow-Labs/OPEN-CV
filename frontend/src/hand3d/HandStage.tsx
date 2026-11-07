@@ -63,6 +63,11 @@ export interface HandStageProps {
    *  (the page supplies a pale stage): normal blending, orbit rings, a fine mesh, navy labels and a bracket for
    *  the hand length. Only the stage modes ("static", "scan") use it; "live" and "overlay" ignore it. */
   theme?: "dark" | "light";
+  /** Overlay mode only. "glow" (default): the glowing hologram (sampled-point mesh, rings, sweep, rails) that the
+   *  result and calculating screens and the older live view use. "clean": ONLY the live 3D landmark skeleton: joints,
+   *  finger-coloured tapered bones, a translucent palm and a short wrist stub, with no rings, sparkles, halo, sweep,
+   *  mesh, grid or rails. It is a skeleton of the tracked landmarks, not a reconstructed surface; z only shades it. */
+  look?: "glow" | "clean";
 }
 
 const Scene = lazy(() => import("./HandStageGL"));

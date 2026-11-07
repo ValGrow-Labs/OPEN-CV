@@ -114,7 +114,7 @@ describe("guided angles (back and side are required)", () => {
     expect(controllers[0].startView).toHaveBeenCalledTimes(1);
     expect(controllers[0].startView.mock.calls[0][0].id).toBe("back");
     expect(screen.getByText("Back of hand · Measuring")).toBeTruthy();
-    expect(screen.getByText("Show back of hand")).toBeTruthy(); // the first step chip
+    expect(screen.queryByText("Show back of hand")).toBeNull(); // the three step chips are gone from the simple view
 
     await complete(12);
     expect(screen.getByText("✓ The back of your hand captured (12 frames)")).toBeTruthy();

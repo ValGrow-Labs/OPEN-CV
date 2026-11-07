@@ -44,7 +44,7 @@ describe("the 3D landmark card", () => {
   it("says 'Loading 3D view' while the scene loads, with the honest caption already there", async () => {
     await load();
     expect(screen.getByRole("status").textContent).toMatch(/Loading 3D view/);
-    expect(screen.getByText(/Estimated 3D landmark view\. Depth is MediaPipe's relative estimate, not a calibrated measurement\./)).toBeTruthy();
+    expect(screen.getByText(/Live 3D landmark skeleton from hand tracking, not a reconstructed surface\. Depth is MediaPipe's relative estimate, not a calibrated measurement\./)).toBeTruthy();
   });
 
   it("asks to show a hand once the scene is ready and nothing is tracked", async () => {

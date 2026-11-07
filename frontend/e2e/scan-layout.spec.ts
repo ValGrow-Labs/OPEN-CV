@@ -89,7 +89,7 @@ for (const vp of VIEWPORTS) {
       // 4. The cards exist and sit where the layout says: below the camera on a phone, beside it on a wide screen.
       await page.locator(".scan-3d").scrollIntoViewIfNeeded();
       const card3d = (await rect(page, ".scan-3d"))!;
-      const measure = (await rect(page, ".scan-measure"))!;
+      const measure = (await rect(page, ".scan-lengths"))!;
       const panel = (await rect(page, ".scan-panel"))!;
       for (const r of [card3d, measure, panel]) {
         expect(r.width).toBeGreaterThan(150);
@@ -108,14 +108,24 @@ for (const vp of VIEWPORTS) {
         expect(card3d.width).toBeGreaterThan(vp.width * 0.8); // a full-width card
       }
 
-      // 5. The measurements: two columns, eight labels, units in mm, nothing invented before a reading exists.
-      const labels = await page.locator(".scan-measure dt").allTextContents();
-      expect(labels).toEqual(["Hand length", "Middle finger", "Index finger", "Ring finger", "Palm width", "Thumb", "Pinky finger", "Coin scale"]);
-      const cols = await page.locator(".scan-measure .mcol").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().x));
-      expect(cols.length).toBe(2);
-      expect(cols[1]).toBeGreaterThan(cols[0] + 50);
-      const values = await page.locator(".scan-measure dd").allTextContents();
-      for (const v of values) expect(v).toMatch(/^(—|\d+ mm|\d+\.\d+ px\/mm)/);
+      // 5. The measurements so far: hand length first, then the other lengths; units in mm; nothing invented before a reading.
+      await expect(page.locator(".lengths-main span")).toHaveText("Hand length");
+      const labels = await page.locator(".length-item dt").allTextContents();
+      expect(labels).toEqual(["Thumb", "Index", "Middle", "Ring", "Pinky", "Palm width"]);
+      const values = [...(await page.locator(".lengths-main strong").allTextContents()), ...(await page.locator(".length-item dd").allTextContents())];
+      expect(values).toHaveLength(7);
+      for (const v of values) expect(v).toMatch(/^(—|\d+ mm)$/);
+      // No technical diagnostics for an ordinary customer (they are behind ?debug).
+      await expect(page.getByRole("region", { name: "Diagnostics" })).toHaveCount(0);
+      await expect(page.getByText(/px\/mm/)).toHaveCount(0);
+      await expect(page.locator(".scan-steps")).toHaveCount(0);
+
+      // 5b. The current hand pose and the five fingers, from the real landmarks.
+      const pose = page.locator(".scan-pose");
+      await expect(pose).toBeVisible();
+      await expect(pose).toContainText(/Show your hand|Hand not clear|Open palm|Closed fist|Fingers|Thumb|Index|Pointing|Relaxed/i);
+      await expect(pose).toContainText("Thumb");
+      await expect(pose).toContainText("Pinky");
 
       // 6. Hand and coin status, apart; progress; Reset reachable.
       await expect(page.locator(".scan-chips .scan-chip")).toHaveCount(2);
@@ -132,7 +142,8 @@ for (const vp of VIEWPORTS) {
         expect(c.width).toBeGreaterThan(150);
         expect(c.height).toBeGreaterThan(150);
       }
-      await expect(page.locator(".scan-3d")).toContainText(/Estimated 3D landmark view/i);
+      await expect(page.locator(".scan-3d")).toContainText(/Live 3D landmark skeleton/i);
+      await expect(page.locator(".scan-3d")).toContainText(/not a reconstructed surface/i);
 
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: `test-results/scan-layout-${vp.name}.png`, fullPage: false });
@@ -181,8 +192,10 @@ test.describe("empty states", () => {
     await expect(page.locator(".live-pill")).toBeVisible({ timeout: 120_000 });
     await expect(page.locator(".scan-chips")).toContainText("No hand yet");
     await expect(page.locator(".scan-chips")).toContainText("Coin not found");
-    const values = await page.locator(".scan-measure dd").allTextContents();
-    expect(values.every((v) => v.startsWith("—"))).toBe(true); // nothing shown as a result
+    await expect(page.locator(".lengths-main strong")).toHaveText("—"); // nothing shown as a result
+    const values = await page.locator(".length-item dd").allTextContents();
+    expect(values.every((v) => v.startsWith("—"))).toBe(true);
+    await expect(page.locator(".scan-pose")).toContainText(/Show your hand|Hand not clear/);
     await expect(page.locator(".scan-panel")).toContainText("0 / ");
     expect(problems).toEqual([]);
   });

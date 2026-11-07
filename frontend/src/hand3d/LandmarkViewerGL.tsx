@@ -39,7 +39,7 @@ import {
 } from "three";
 import type { SceneHandState, SceneProps } from "./LandmarkViewer";
 import { boneOf, CONNECTIONS, fingerOf, JOINT_COUNT, PALM_POLYGON, PART_COLOURS } from "./landmarkTopology";
-import { fitDistance, isUsableHand, palmFacesCamera, smoothInto, toScene } from "./viewerMath";
+import { fitDistance, isUsableHand, palmFacesCamera, sceneRadius, smoothInto, toScene } from "./viewerMath";
 
 const FOV = 38;
 const FLOOR_Y = -1.5;
@@ -49,7 +49,10 @@ const DEFAULT_PITCH = 0.28;
 const TOP_PITCH = 1.38;
 const FRAME_MS = 33; // about 30 frames a second
 const SMOOTH = 0.55; // share of the way to the new landmarks each frame (MediaPipe's points jitter)
-const FIT_RADIUS = 1.5; // scene units: the hand and a little forearm fit in a sphere of this size
+const FIT_RADIUS = 1.3; // scene units: an open hand and a little forearm fit in a sphere of this size (a little margin)
+const FIT_MIN = 1.0; // ... and a closed fist is framed no tighter than this, so the view stays calm and nothing is cut off
+const FIT_MARGIN = 1.3; // framing sphere = this much more than the farthest joint from the middle
+const FIT_SETTLE = 0.06; // share of the way to the new framing each frame: slow, so a moving hand does not make the view breathe
 
 const MSG_FAILED = "3D view unavailable: it could not start on this device. The scan itself still works.";
 const MSG_LOST = "3D view stopped: the browser reset the graphics. Reload the page to see it again. The scan itself still works.";
@@ -226,11 +229,14 @@ export default function LandmarkViewerGL(props: SceneProps) {
     let radiusT = radius;
     let userZoomed = false;
     let aspect = 1;
-    const fit = () => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, fitDistance(FIT_RADIUS, FOV, aspect)));
+    // The default view frames the hand it is showing: an open hand gets the full sphere, a fist a tighter one, so
+    // either reads clearly. Once the person zooms, their zoom is kept.
+    let fitRadius = FIT_RADIUS;
+    const fit = () => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, fitDistance(fitRadius, FOV, aspect)));
     const place = () => {
       const cp = Math.cos(pitch);
       camera.position.set(radius * cp * Math.sin(yaw), radius * Math.sin(pitch), radius * cp * Math.cos(yaw));
-      camera.lookAt(0, -0.33, 0);
+      camera.lookAt(0, -0.12, 0); // the hand is centred on its own middle; the wrist and floor sit below it
     };
     const clampPitch = (p: number) => Math.min(TOP_PITCH + 0.1, Math.max(-0.35, p));
     const clampRadius = (r: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, r));
@@ -403,6 +409,8 @@ export default function LandmarkViewerGL(props: SceneProps) {
           smoothInto(cur, target, SMOOTH);
         }
         poseHand();
+        fitRadius += (Math.min(FIT_RADIUS, Math.max(FIT_MIN, FIT_MARGIN * sceneRadius(cur))) - fitRadius) * FIT_SETTLE;
+        if (!userZoomed) radiusT = fit();
         const side = palmFacesCamera(world.points, world.handedness);
         if (side !== palmSide) {
           palmSide = side;

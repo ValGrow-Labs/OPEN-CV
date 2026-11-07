@@ -547,3 +547,159 @@ export function layoutLabels(ins: readonly LabelIn[], frame: LabelFrame, out: La
   }
   return shown;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// The CLEAN look (look="clean", HandOverlayCleanGL.tsx): only the live landmark skeleton, drawn as tapered strokes
+// and discs over the real hand. The numbers below are in screen pixels; sizes follow the PALM length (wrist to
+// middle knuckle), which stays almost the same in a fist, unlike the wrist-to-fingertip length.
+//
+// This is a skeleton of the 21 tracked landmarks. It is not a reconstructed surface, and the relief (z) is only
+// used to shade near parts lighter and to draw far bones first: MediaPipe's relative depth is an estimate, never
+// a physical distance.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Half width of the stroke at each of the 21 joints, as a share of the palm length. Narrower than the real finger,
+ *  so the real finger stays visible under it. */
+export const SKELETON_HW: readonly number[] = [
+  0.05, // wrist
+  0.052, 0.05, 0.044, 0.038, // thumb
+  0.05, 0.046, 0.04, 0.034, // index
+  0.05, 0.046, 0.04, 0.034, // middle
+  0.046, 0.042, 0.036, 0.03, // ring
+  0.046, 0.042, 0.036, 0.03, // pinky
+];
+export const SKELETON_MIN_HW_PX = 2;
+export const SKELETON_MIN_JOINT_PX = 7;
+/** How much wider than the stroke the white halo and the dark outline are, in pixels (the stroke itself is 0). */
+export const SKELETON_EDGE_PX: readonly number[] = [2.6, 1.3, 0];
+/** Per bone: three quads (dark outline, white halo, fill), four vertices each. */
+export const SKELETON_QUADS = 3;
+export const SKELETON_BONE_VERTS = SKELETON_QUADS * 4;
+
+/** The palm length of a hand given as x, y, (z) triples in screen pixels: wrist (0) to the middle knuckle (9). */
+export function palmLength(joints: ArrayLike<number>): number {
+  return Math.max(1, Math.hypot(joints[27] - joints[0], joints[28] - joints[1]));
+}
+
+/** A shade factor from relief (pixels, positive = nearer the camera): nearer parts a little lighter, farther a little darker. */
+export function skeletonShade(z: number, palm: number): number {
+  const t = Math.max(-1, Math.min(1, z / (0.6 * palm)));
+  return 1 + 0.22 * t;
+}
+
+/** Half width in pixels of the stroke at joint ``i``. */
+export function strokeHalfWidth(i: number, palm: number): number {
+  return Math.max(SKELETON_MIN_HW_PX, SKELETON_HW[i] * palm);
+}
+
+/** Diameter in pixels of the disc at joint ``i``: fingertips a little larger, nearer joints a little larger. */
+export function jointDiameter(i: number, palm: number, z: number): number {
+  const tip = i > 0 && i % 4 === 0 ? 1.2 : 1;
+  const near = 1 + 0.12 * Math.max(-1, Math.min(1, z / (0.6 * palm)));
+  return Math.max(SKELETON_MIN_JOINT_PX, strokeHalfWidth(i, palm) * 3 * tip * near);
+}
+
+/** The opacity of the whole skeleton by tone: full when the pose is fine, a little dimmer when it needs fixing. The colours never change. */
+export function skeletonToneAlpha(tone: "ok" | "warn" | "idle" | undefined): number {
+  return tone === "warn" ? 0.78 : 1;
+}
+
+/** Sort ``order`` (indices) by ``key`` ascending, in place, allocation-free (insertion sort: at most 21 items, nearly sorted from frame to frame). */
+export function sortByKey(order: number[] | Uint8Array, key: ArrayLike<number>): void {
+  for (let i = 1; i < order.length; i++) {
+    const v = order[i];
+    const kv = key[v];
+    let j = i - 1;
+    while (j >= 0 && key[order[j]] > kv) {
+      order[j + 1] = order[j];
+      j--;
+    }
+    order[j + 1] = v;
+  }
+}
+
+/** The vertices of every bone's three quads, in draw order (far bones first, so nearer ones cover them). ``pos`` holds
+ *  x, y, z (z = 0) per vertex, ``col`` r, g, b, a. ``bones`` are the joint index pairs, ``rgb`` the stroke colour of each
+ *  bone (three numbers 0..1), ``order`` the bone draw order and ``z`` the relief per joint. */
+export function fillBoneVerts(
+  joints: ArrayLike<number>,
+  bones: readonly (readonly [number, number])[],
+  order: ArrayLike<number>,
+  rgb: ArrayLike<number>,
+  palm: number,
+  pos: Float32Array,
+  col: Float32Array,
+): void {
+  for (let slot = 0; slot < bones.length; slot++) {
+    const k = order[slot];
+    const [a, b] = bones[k];
+    const ax = joints[a * 3];
+    const ay = joints[a * 3 + 1];
+    const bx = joints[b * 3];
+    const by = joints[b * 3 + 1];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    const nx = len > 1e-3 ? -dy / len : 0;
+    const ny = len > 1e-3 ? dx / len : 0;
+    const hwa = strokeHalfWidth(a, palm);
+    const hwb = strokeHalfWidth(b, palm);
+    const sa = skeletonShade(joints[a * 3 + 2], palm);
+    const sb = skeletonShade(joints[b * 3 + 2], palm);
+    for (let q = 0; q < SKELETON_QUADS; q++) {
+      const e = SKELETON_EDGE_PX[q];
+      const v = (slot * SKELETON_BONE_VERTS + q * 4) * 3;
+      const c = (slot * SKELETON_BONE_VERTS + q * 4) * 4;
+      const wa = hwa + e;
+      const wb = hwb + e;
+      pos[v] = ax + nx * wa; pos[v + 1] = ay + ny * wa; pos[v + 2] = 0;
+      pos[v + 3] = ax - nx * wa; pos[v + 4] = ay - ny * wa; pos[v + 5] = 0;
+      pos[v + 6] = bx + nx * wb; pos[v + 7] = by + ny * wb; pos[v + 8] = 0;
+      pos[v + 9] = bx - nx * wb; pos[v + 10] = by - ny * wb; pos[v + 11] = 0;
+      for (let m = 0; m < 4; m++) {
+        const s = m < 2 ? sa : sb;
+        const o = c + m * 4;
+        if (q === 0) {
+          col[o] = 0.02; col[o + 1] = 0.1; col[o + 2] = 0.2; col[o + 3] = 0.34;
+        } else if (q === 1) {
+          col[o] = 1; col[o + 1] = 1; col[o + 2] = 1; col[o + 3] = 0.92;
+        } else {
+          col[o] = Math.min(1, rgb[k * 3] * s);
+          col[o + 1] = Math.min(1, rgb[k * 3 + 1] * s);
+          col[o + 2] = Math.min(1, rgb[k * 3 + 2] * s);
+          col[o + 3] = 0.97;
+        }
+      }
+    }
+  }
+}
+
+/** A short wrist stub beyond the wrist joint (away from the fingers) so the wrist reads as part of the hand: a quad as wide as
+ *  most of the palm's base, fading out. ``pos``: 4 x (x, y, z), ``col``: 4 x (r, g, b, a). Returns false for a degenerate hand. */
+export function fillWristStub(joints: ArrayLike<number>, palm: number, rgb: readonly [number, number, number], pos: Float32Array, col: Float32Array): boolean {
+  const wx = joints[0];
+  const wy = joints[1];
+  let dx = wx - joints[27];
+  let dy = wy - joints[28];
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-3) return false;
+  dx /= len;
+  dy /= len;
+  const knuckles = Math.hypot(joints[15] - joints[51], joints[16] - joints[52]); // index (5) to little (17) knuckle
+  const hw = Math.max(6, 0.4 * knuckles);
+  const length = 0.32 * palm;
+  const nx = -dy;
+  const ny = dx;
+  const far = 0.9;
+  pos[0] = wx + nx * hw; pos[1] = wy + ny * hw; pos[2] = 0;
+  pos[3] = wx - nx * hw; pos[4] = wy - ny * hw; pos[5] = 0;
+  pos[6] = wx + dx * length + nx * hw * far; pos[7] = wy + dy * length + ny * hw * far; pos[8] = 0;
+  pos[9] = wx + dx * length - nx * hw * far; pos[10] = wy + dy * length - ny * hw * far; pos[11] = 0;
+  for (let m = 0; m < 4; m++) {
+    col[m * 4] = rgb[0];
+    col[m * 4 + 1] = rgb[1];
+    col[m * 4 + 2] = rgb[2];
+    col[m * 4 + 3] = m < 2 ? 0.5 : 0;
+  }
+  return true;
+}

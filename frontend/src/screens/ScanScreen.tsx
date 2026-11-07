@@ -5,7 +5,7 @@ import { isMobileDevice, type Facing } from "../camera/camera";
 import type { Landmark } from "../hand3d/handModel";
 import { HandStage, webglAvailable } from "../hand3d/HandStage";
 import { LandmarkViewer, type WorldHand } from "../hand3d/LandmarkViewer";
-import { overlayTags } from "../scan/overlayTags";
+import { HandPosePanel, PoseSmoother, readHandPose, type HandPoseReading } from "../gesture";
 import { holdTone, INITIAL_TONE, rawTone, type ToneState } from "../scan/overlayTone";
 import { OverlayBoundary } from "./OverlayBoundary";
 import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreakdown, type ScanTimingInfo } from "../scan/scanController";
@@ -16,12 +16,11 @@ import {
   SAME_WAY_UP_HINT,
   tagFrames,
   viewsForScan,
-  viewStepLabel,
   viewStepOf,
   withViewFrames,
 } from "../scan/views";
 import { Icon } from "../ui/components";
-import { CoachIcon, coachKind, GUIDE_STEPS, liveStage } from "../ui/guide";
+import { CoachIcon, coachKind } from "../ui/guide";
 import { coinConfirmed, introSeen, markCoinConfirmed, markIntroSeen, referenceLabel } from "../ui/settings";
 import { CoinConfirm } from "./CoinConfirm";
 import { ScanDebug } from "./ScanDebug";
@@ -171,6 +170,7 @@ export function ScanScreen<R = ScanResponse>({
       view: viewList[viewIdxRef.current],
       onStatus: setStatus,
       overlay3d: canUse3d && !degradedRef.current,
+      simpleOverlay: true, // no coin ring, contour outline or search box: the screen says it in words
       maskCanvas: canUse3d && overlayCfg.focus_mask ? maskRef.current : null,
       onPose: (landmarks, frame, world) => {
         poseRef.current = landmarks;
@@ -325,13 +325,33 @@ export function ScanScreen<R = ScanResponse>({
     };
   }, [status?.phase]);
 
+  // The current hand pose and the bend of each finger, from the real landmarks (MediaPipe), a few times a second.
+  const [pose, setPose] = useState<HandPoseReading | null>(null);
+  const smootherRef = useRef(new PoseSmoother());
+  useEffect(() => {
+    if (status?.phase !== "running") return;
+    const same = (a: HandPoseReading | null, b: HandPoseReading | null) =>
+      a === b ||
+      (a !== null &&
+        b !== null &&
+        a.label === b.label &&
+        a.fingers.every((f, i) => f.state === b.fingers[i].state && Math.round(f.bendDeg / 6) === Math.round(b.fingers[i].bendDeg / 6)));
+    const id = setInterval(() => {
+      const lm = poseRef.current;
+      let next: HandPoseReading | null = null;
+      if (lm) next = smootherRef.current.update(readHandPose(lm, worldRef.current?.points ?? null), performance.now());
+      else smootherRef.current.reset();
+      setPose((prev) => (same(prev, next) ? prev : next));
+    }, 150);
+    return () => clearInterval(id);
+  }, [status?.phase]);
+
   const showHint =
     runningSec >= config.live_scan.hint_after_s &&
     (status?.collected ?? 0) < config.live_scan.mobile_frames_min &&
     status?.topIssue != null;
   const liveCodes = status?.live?.codes ?? [];
   const handSeen = status?.live ? !liveCodes.includes("no_hand") : false;
-  const stage = phase === "complete" ? 3 : liveStage(liveCodes);
   // The 3D hand's colour: green when the pose is fine, pale blue when it needs fixing, held so it does not flicker.
   const toneRef = useRef<ToneState>(INITIAL_TONE);
   toneRef.current = holdTone(toneRef.current, rawTone(handSeen, status?.live?.ok), performance.now(), overlayCfg.tone_hold_ms);
@@ -346,7 +366,6 @@ export function ScanScreen<R = ScanResponse>({
     : { cls: "", text: "Coin not found" };
   const live = status?.liveMm ?? null;
   const mm = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? `${Math.round(v)} mm` : "\u2014");
-  const scale = coin?.found && coin.accepted && ref.diameter > 0 ? coin.major_axis_px / ref.diameter : null;
   const overlayNote = degradeNote ?? (overlayCfg.enabled && !canUse3d ? degradeMessage("no_webgl") : null);
 
   return (
@@ -384,7 +403,6 @@ export function ScanScreen<R = ScanResponse>({
           <canvas ref={maskRef} className={`focus-mask-canvas ${status?.mirrored ? "mirrored" : ""}`} aria-hidden="true" />
         )}
         <canvas ref={canvasRef} className={status?.mirrored ? "mirrored" : ""} aria-hidden="true" />
-        {phase === "running" && !handSeen && <Guide />}
         {overlay3d && phase === "running" && !between && !submitting && !submitError && (
           <div className="scan-overlay3d" aria-hidden="true">
             <OverlayBoundary onError={(err) => degrade("error", String(err))}>
@@ -393,7 +411,7 @@ export function ScanScreen<R = ScanResponse>({
                 poseRef={poseRef}
                 frameRef={frameRef}
                 mirror={status?.mirrored ?? false}
-                tags={overlayTags(status?.liveMm ?? null)}
+                look="clean"
                 budget={{ maxFrameMs: overlayCfg.max_frame_ms, minFps: overlayCfg.min_fps }}
                 tone={toneRef.current.tone}
                 onBlack={overlayCfg.focus_mask}
@@ -510,7 +528,7 @@ export function ScanScreen<R = ScanResponse>({
         />
       )}
 
-      <div className="scan-panel">
+      <div className="scan-panel" aria-label="Scan status">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <strong>
             {multiView && view ? `${view.label} · ` : ""}
@@ -543,20 +561,8 @@ export function ScanScreen<R = ScanResponse>({
             {coinChip.text}
           </span>
         </div>
-        <ol className="scan-steps" aria-label="Scan steps">
-          {GUIDE_STEPS.map((st, i) => {
-            const state = i < stage ? "done" : i === stage && phase === "running" ? "current" : "todo";
-            return (
-              <li key={st.short} className={`scan-step is-${state}`} aria-current={state === "current" ? "step" : undefined}>
-                <span className="scan-step-num">{state === "done" ? "✓" : i + 1}</span>
-                <span className="scan-step-label">{viewStepLabel(view, viewList[0], i, st.short)}</span>
-                <span className="visually-hidden">{state === "done" ? " done" : state === "current" ? " in progress" : ""}</span>
-              </li>
-            );
-          })}
-        </ol>
-        {/* The reason frames are not counted, and the way to start the count again. It always has its row, so
-            the page never jumps while the scan runs. */}
+        {/* The one thing to fix, and the way to start the count again. It always has its row, so the page never
+            jumps while the scan runs. */}
         {phase !== "error" && (
           <div className="scan-hint" role="status">
             <span className="small">
@@ -583,38 +589,42 @@ export function ScanScreen<R = ScanResponse>({
       </div>
 
       <div className="scan-side">
-        <section className="scan-card scan-hand" aria-label="Your hand in 3D and live measurements">
+        <section className="scan-card scan-hand" aria-label="Your hand in 3D">
           <h2 className="scan-card-title">Your hand in 3D</h2>
           <div className="scan-3d">
             <div className="scan-3d-box">
-              <LandmarkViewer worldRef={worldRef} mirrored={status?.mirrored ?? false} onUnavailable={(m) => {
-                console.warn(`[scan] 3D landmark card unavailable: ${m}`);
-                setViewerNote(m);
-              }} />
+              <LandmarkViewer
+                worldRef={worldRef}
+                mirrored={status?.mirrored ?? false}
+                onUnavailable={(m) => {
+                  console.warn(`[scan] 3D landmark card unavailable: ${m}`);
+                  setViewerNote(m);
+                }}
+              />
             </div>
           </div>
-          <h2 className="scan-card-title scan-card-title-2">Live measurements</h2>
-          <div className="scan-measure">
-          <div className="mcols">
-            <dl className="mcol">
-              <MeasureRow label="Hand length" value={mm(live?.handMm)} />
-              <MeasureRow label="Middle finger" value={mm(live?.fingersMm.middle)} />
-              <MeasureRow label="Index finger" value={mm(live?.fingersMm.index)} />
-              <MeasureRow label="Ring finger" value={mm(live?.fingersMm.ring)} />
-            </dl>
-            <dl className="mcol">
-              <MeasureRow label="Palm width" value={mm(live?.palmWidthMm)} />
-              <MeasureRow label="Thumb" value={mm(live?.fingersMm.thumb)} />
-              <MeasureRow label="Pinky finger" value={mm(live?.fingersMm.little)} />
-              <MeasureRow label="Coin scale" value={scale !== null ? `${scale.toFixed(2)} px/mm` : "—"} state={coinChip.text} />
-            </dl>
+          <HandPosePanel reading={pose} className="scan-pose" />
+        </section>
+
+        <section className="scan-card scan-lengths" aria-label="Measurements so far">
+          <h2 className="scan-card-title">Measurements so far</h2>
+          <div className="lengths-main">
+            <span>Hand length</span>
+            <strong className="num">{mm(live?.handMm)}</strong>
           </div>
+          <dl className="lengths-grid">
+            <LengthItem label="Thumb" value={mm(live?.fingersMm.thumb)} />
+            <LengthItem label="Index" value={mm(live?.fingersMm.index)} />
+            <LengthItem label="Middle" value={mm(live?.fingersMm.middle)} />
+            <LengthItem label="Ring" value={mm(live?.fingersMm.ring)} />
+            <LengthItem label="Pinky" value={mm(live?.fingersMm.little)} />
+            <LengthItem label="Palm width" value={mm(live?.palmWidthMm)} />
+          </dl>
           <p className="scan-card-note small">
             {live
-              ? "Live estimates from this frame, scaled by the coin. The final values, with their uncertainty, are worked out from all counted frames."
+              ? "Live estimates from this frame, scaled by the coin. The final values are worked out from all counted frames."
               : "Lengths appear once your hand and the coin are both found. Nothing is shown before then."}
           </p>
-          </div>
         </section>
       </div>
       </div>
@@ -652,32 +662,12 @@ export function ScanScreen<R = ScanResponse>({
   );
 }
 
-function Guide() {
-  return (
-    <div className="guide" aria-hidden="true">
-      <svg viewBox="0 0 240 300" style={{ height: "78%", maxWidth: "88%" }} fill="none">
-        <path
-          d="M78 268c-12-22-28-58-34-82-4-14 10-22 18-10l14 22V86c0-10 14-10 14 0v66V62c0-10 15-10 15 0v88V70c0-10 15-10 15 0v82V88c0-10 14-10 14 0v104c0 34-14 60-40 76z"
-          stroke="rgba(255,255,255,0.55)"
-          strokeWidth="2.5"
-          strokeDasharray="7 6"
-          strokeLinejoin="round"
-        />
-        <circle cx="118" cy="186" r="15" stroke="rgba(240,138,75,0.9)" strokeWidth="2.5" strokeDasharray="4 4" />
-      </svg>
-    </div>
-  );
-}
-
-function MeasureRow({ label, value, state }: { label: string; value: string; state?: string }) {
+function LengthItem({ label, value }: { label: string; value: string }) {
   const na = value === "—";
   return (
-    <div className={`mrow2 ${na ? "is-na" : ""}`}>
+    <div className={`length-item ${na ? "is-na" : ""}`}>
       <dt>{label}</dt>
-      <dd className="num">
-        {value}
-        {state && <small>{state}</small>}
-      </dd>
+      <dd className="num">{value}</dd>
     </div>
   );
 }

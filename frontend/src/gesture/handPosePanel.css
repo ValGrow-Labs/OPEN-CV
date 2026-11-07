@@ -1,0 +1,80 @@
+/* The hand-pose panel: white and pale blue, navy ink, one blue accent (tokens from theme-blue.css, with fallbacks). */
+.hpp {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  color: var(--ink, #0b1f4a);
+  box-shadow: 0 0 0 1px var(--line-strong, rgba(11, 31, 74, 0.16));
+  min-width: 0;
+}
+
+.hpp-pose {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.hpp-fingers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.hpp-finger {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr) 4.6rem;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.hpp-name {
+  font-weight: 650;
+  color: var(--ink-2, #2b3d63);
+}
+
+.hpp-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line, rgba(11, 31, 74, 0.08));
+  overflow: hidden;
+}
+
+.hpp-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #1f5eea);
+  transition: width 120ms linear;
+}
+
+.hpp-state {
+  text-align: right;
+  color: var(--muted, #5f7091);
+  white-space: nowrap;
+}
+
+.hpp-finger.is-bent .hpp-state {
+  color: var(--ink, #0b1f4a);
+  font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hpp-bar > span {
+    transition: none;
+  }
+}
+
+@media (max-width: 340px) {
+  .hpp-finger {
+    grid-template-columns: 3.6rem minmax(0, 1fr) 4.2rem;
+    gap: 6px;
+  }
+}

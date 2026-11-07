@@ -36,6 +36,7 @@ import {
 } from "three";
 import { useEffect, useRef, useState } from "react";
 import type { HandStageProps, OverlayDegradeReason } from "./HandStage";
+import HandOverlayCleanGL from "./HandOverlayCleanGL";
 import { genericHand, handWire, poseSamples, sampleHand, type Landmark, type SampledHand, type Vec3 } from "./handModel";
 import {
   BEAD_COUNT,
@@ -330,7 +331,7 @@ interface FrameStats {
   frameMs: number;
 }
 
-export default function HandOverlayGL(props: HandStageProps) {
+function GlowOverlay(props: HandStageProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const tagEls = useRef<(HTMLSpanElement | null)[]>([]);
   const leadEls = useRef<(SVGLineElement | null)[]>([]);
@@ -1053,4 +1054,10 @@ export default function HandOverlayGL(props: HandStageProps) {
       )}
     </>
   );
+}
+
+/** The overlay scene: the glowing hologram look (default) or, with ``look="clean"``, only the live landmark skeleton
+ *  (HandOverlayCleanGL.tsx). ``look`` does not change while the layer is mounted. */
+export default function HandOverlayGL(props: HandStageProps) {
+  return props.look === "clean" ? <HandOverlayCleanGL {...props} /> : <GlowOverlay {...props} />;
 }

@@ -5,7 +5,11 @@
 //
 // Display only. It reads landmarks the scan already has and never feeds anything back.
 import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { CAPTION, CAPTION_2D, handLabel, type WorldPoint } from "./viewerMath";
+import { CAPTION_2D, handLabel, type WorldPoint } from "./viewerMath";
+
+/** The card says what it is: a skeleton of the tracked landmarks, not a surface, and that depth is only an estimate. */
+export const SKELETON_CAPTION =
+  "Live 3D landmark skeleton from hand tracking, not a reconstructed surface. Depth is MediaPipe's relative estimate, not a calibrated measurement.";
 import "./landmarkViewer.css";
 
 export type { WorldPoint };
@@ -174,7 +178,7 @@ export function LandmarkViewer({ worldRef, mirrored = false, className = "", onU
       </div>
       <p className="lv-caption">
         {phase === "ready" && hand.present && !hand.depth && <strong className="lv-2d">{CAPTION_2D}. </strong>}
-        {CAPTION}
+        {SKELETON_CAPTION}
       </p>
     </div>
   );

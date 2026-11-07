@@ -23,6 +23,7 @@ type Opts = {
   onStatus: (s: unknown) => void;
   onPose?: (l: unknown, frame: { width: number; height: number }) => void;
   overlay3d?: boolean;
+  simpleOverlay?: boolean;
   maskCanvas?: HTMLCanvasElement | null;
 };
 const controllers: { opts: Opts; setOverlay3d: ReturnType<typeof vi.fn> }[] = [];
@@ -82,7 +83,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the live 3D measuring over the camera picture", () => {
-  const liveMm = { handMm: 183.4, fingersMm: { thumb: 61.2, index: 72.4, middle: 79.6, ring: 73.1, little: 58.9 } };
+  const liveMm = { handMm: 183.4, fingersMm: { thumb: 61.2, index: 72.4, middle: 79.6, ring: 73.1, little: 58.9 }, palmWidthMm: 80.2 };
   const running = (patch: object) =>
     act(() =>
       controllers.at(-1)!.opts.onStatus({ phase: "running", live: null, collected: 0, target: 10, coin: null, mirrored: true, fps: 0, timing: { handMs: 0, coinMs: 0 }, error: null, topIssue: null, tilt: { rawDeg: null, smoothedDeg: null }, exposureEv: null, liveMm: null, handedness: null, ...patch }),
@@ -114,14 +115,23 @@ describe("the live 3D measuring over the camera picture", () => {
     expect(frameRef.current).toEqual({ width: 720, height: 1280 });
   });
 
-  it("draws the live finger lengths and the hand length as labels once the coin is measured", () => {
-    mountScan();
+  it("keeps the camera view clean: a skeleton look, no label pills, and the lengths in words in a card", () => {
+    const { container } = mountScan();
+    expect(stages.at(-1)!.look).toBe("clean");
     expect(stages.at(-1)!.tags).toBeUndefined();
+    expect(container.querySelector(".lengths-main strong")!.textContent).toBe("—"); // nothing before a reading
     running({ liveMm });
-    const tags = stages.at(-1)!.tags as { joint: number; label: string; between?: number[]; emphasis?: boolean }[];
-    expect(tags.map((t) => t.label)).toEqual(["61 mm", "72 mm", "80 mm", "73 mm", "59 mm", "183 mm"]);
-    expect(tags.slice(0, 5).map((t) => t.joint)).toEqual([4, 8, 12, 16, 20]);
-    expect(tags[5]).toMatchObject({ between: [0, 12], emphasis: true });
+    expect(stages.at(-1)!.tags).toBeUndefined(); // still no pills over the picture
+    expect(container.querySelector(".lengths-main strong")!.textContent).toBe("183 mm");
+    const items = [...container.querySelectorAll(".length-item")].map((e) => `${e.querySelector("dt")!.textContent} ${e.querySelector("dd")!.textContent}`);
+    expect(items).toEqual(["Thumb 61 mm", "Index 72 mm", "Middle 80 mm", "Ring 73 mm", "Pinky 59 mm", "Palm width 80 mm"]);
+  });
+
+  it("asks the controller for nothing decorative on the 2D layer, and draws no dashed hand guide", () => {
+    const { container } = mountScan();
+    expect(controllers.at(-1)!.opts.simpleOverlay).toBe(true);
+    expect(container.querySelector(".guide")).toBeNull();
+    expect(container.querySelector(".scan-steps")).toBeNull();
   });
 
   it("goes away while the measurements are calculated", async () => {
