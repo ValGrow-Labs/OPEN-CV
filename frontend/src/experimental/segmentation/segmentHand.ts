@@ -9,19 +9,23 @@
 import type { InteractiveSegmenter } from "@mediapipe/tasks-vision";
 import type { BinaryMask, Pt, RejectReason } from "../common";
 import type { CV } from "../../vision/opencv";
-import { runGrabCut } from "./backends/grabcut";
+import { runGrabCutWithModels, type GrabCutModels } from "./backends/grabcut";
 import { runInteractive } from "./backends/interactive";
 import { runSkin } from "./backends/skin";
 import { DEFAULT_WORKING_SIZE, GRABCUT_ITERATIONS, MAX_FILLED_HOLE_FRACTION } from "./constants";
 import { analyseGaps, cutAtWrist, refineFingertips, tipsFound, type GapReport } from "./fingers";
 import { scaleLandmarks } from "./geometry";
 import { toGray, toWorking, type ImageLike } from "./imageops";
-import { contourArea, maskToContour, simplifyPolygon } from "./metrics";
+import { contourArea, maskToContour, resizeMaskNearest, simplifyPolygon } from "./metrics";
 import { countOn, fillSmallHoles, keepMainComponent, majority3, open } from "./morph";
 import { gateReasons, measureQuality, type QualityNumbers } from "./quality";
 import { buildSeeds } from "./seeds";
 
-export type SegBackend = "grabcut" | "interactive" | "skin";
+/**
+ * "external" takes a mask made elsewhere (options.externalMask, e.g. a promptable model run offline) and puts it through
+ * the same wrist cut, clean-up, analysis and gates, so different segmenters are judged by one yardstick.
+ */
+export type SegBackend = "grabcut" | "interactive" | "skin" | "external";
 
 export interface SegmentationOptions {
   /** Which segmentation to run (default "grabcut"). */
@@ -35,6 +39,8 @@ export interface SegmentationOptions {
   /** A created InteractiveSegmenter, required for the "interactive" backend (createInteractiveSegmenter). */
   interactiveSegmenter?: InteractiveSegmenter;
   grabCutIterations?: number;
+  /** The mask for the "external" backend, any size (resampled nearest to the working size; non-zero = hand). */
+  externalMask?: BinaryMask;
 }
 
 export interface SegmentationResult {
@@ -66,6 +72,10 @@ export interface SegmentationResult {
   timingMs: Record<string, number>;
   /** Set when a backend threw: the message (reasons then contain "segmentation_failed"). */
   error?: string;
+  /** GrabCut's final colour models (grabcut backend only), for per-pixel confidence. */
+  colourModel?: GrabCutModels;
+  /** The working-size picture the mask belongs to (absent when no mask was made). */
+  workingImage?: ImageLike;
 }
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -115,10 +125,18 @@ export async function segmentHand(frame: ImageLike, landmarks: readonly Pt[] | n
   lap("seeds");
 
   let raw: Uint8Array;
+  let colourModel: GrabCutModels | undefined;
   try {
     if (backend === "grabcut") {
       if (!options.cv) throw new Error("the grabcut backend needs options.cv");
-      raw = runGrabCut(options.cv, image, seeds, options.grabCutIterations ?? GRABCUT_ITERATIONS);
+      const g = runGrabCutWithModels(options.cv, image, seeds, options.grabCutIterations ?? GRABCUT_ITERATIONS);
+      raw = g.mask;
+      colourModel = g.models ?? undefined;
+    } else if (backend === "external") {
+      if (!options.externalMask) throw new Error("the external backend needs options.externalMask");
+      const m = resizeMaskNearest(options.externalMask, W, H).data;
+      raw = new Uint8Array(m.length);
+      for (let i = 0; i < m.length; i++) if (m[i]) raw[i] = 255;
     } else if (backend === "interactive") {
       if (!options.interactiveSegmenter) throw new Error("the interactive backend needs options.interactiveSegmenter");
       raw = runInteractive(options.interactiveSegmenter, image, lm);
@@ -188,5 +206,7 @@ export async function segmentHand(frame: ImageLike, landmarks: readonly Pt[] | n
     gaps: gapAnalysis.gaps,
     quality,
     timingMs: timing,
+    colourModel,
+    workingImage: image,
   };
 }

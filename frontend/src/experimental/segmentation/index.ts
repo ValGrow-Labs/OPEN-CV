@@ -11,3 +11,15 @@ export type { QualityNumbers } from "./quality";
 export type { ImageLike } from "./imageops";
 export { toWorking } from "./imageops";
 export * as thresholds from "./constants";
+// Stage 2a: board-independent hand analysis (part labels, finger gaps, confidence, boundary metrics, gates).
+export { analyseHand, forearmSide, gate } from "./analyse";
+export type { AnalyseOptions, GateCode, GateReason, HandAnalysis } from "./analyse";
+export { FINGER_NAMES, PART, PART_NAMES, fingerPart, labelParts, measureFingers, skeletonSegments } from "./parts";
+export type { EdgeKind, FingerName, FingerPart, PartLabels, PartName, WidthSample } from "./parts";
+export { analyseFingerGaps } from "./fingerGaps";
+export type { FingerGap, GapAnalysisResult, GapStatus, GapWidth } from "./fingerGaps";
+export { fitColourGmm, pixelConfidence } from "./confidence";
+export type { ColourGmm, ConfidenceResult, ConfidenceSummary } from "./confidence";
+export { boundaryMetrics, compareToTruth, contourRoughness } from "./boundary";
+export type { BoundaryMetrics, TruthComparison } from "./boundary";
+// pngNode.ts (decodePng) is Node-only and deliberately not exported here.

@@ -1,0 +1,141 @@
+/* The dev-only viewer demo page: the app's light white / pale-blue look. */
+.vd-root {
+  box-sizing: border-box;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  color: var(--ink, #0b1f4a);
+  font-family: "Geist Variable", system-ui, sans-serif;
+}
+
+body:has(.vd-root) {
+  background: var(--paper, #eef4fb);
+}
+
+.vd-head h1 {
+  margin: 4px 0 10px;
+  font-size: clamp(1.5rem, 4.6vw, 2.2rem);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.vd-kicker {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #5f7091);
+}
+
+.vd-sim {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 999px;
+  background: var(--info-soft, rgba(31, 94, 234, 0.09));
+  border: 1px solid var(--info-line, rgba(31, 94, 234, 0.28));
+  color: var(--info-ink, #173f9e);
+  font-size: 0.9rem;
+}
+
+.vd-sim strong {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent, #1f5eea);
+  color: #fff;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
+.vd-lede {
+  margin: 0 0 12px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--ink-2, #2b3d63);
+  max-width: 70ch;
+}
+
+.vd-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.vd-nav a {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong, rgba(11, 31, 74, 0.16));
+  background: #fff;
+  color: var(--accent-text, #1a4fd0);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.vd-nav a[aria-current="page"] {
+  background: var(--accent, #1f5eea);
+  border-color: var(--accent, #1f5eea);
+  color: #fff;
+}
+
+.vd-card {
+  background: var(--surface, #fff);
+  border-radius: 22px;
+  padding: 14px;
+  box-shadow: var(--lift, 0 30px 60px -38px rgba(20, 60, 140, 0.36)), var(--ring, 0 0 0 1px rgba(11, 31, 74, 0.07));
+  margin-bottom: 16px;
+}
+
+.vd-small {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink-2, #2b3d63);
+}
+
+.vd-small p {
+  margin: 0;
+}
+
+.vd-status {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  margin: 0;
+  color: var(--muted, #5f7091);
+}
+
+.vd-error {
+  color: #a61e1e;
+}
+
+.vd-spin {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  vertical-align: -3px;
+  border-radius: 50%;
+  border: 2px solid rgba(31, 94, 234, 0.25);
+  border-top-color: #1f5eea;
+  animation: vd-spin 0.9s linear infinite;
+}
+
+@keyframes vd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .vd-root {
+    padding: 16px 12px 32px;
+  }
+  .vd-card {
+    padding: 10px;
+    border-radius: 18px;
+  }
+}

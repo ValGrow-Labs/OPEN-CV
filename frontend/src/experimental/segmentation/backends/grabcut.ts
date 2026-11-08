@@ -7,7 +7,21 @@ import type { Seeds } from "../seeds";
 // The OpenCV.js typings do not declare grabCut; the function exists in the bundled build (checked at run time).
 type AnyCv = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/**
+ * GrabCut's two colour models after the last iteration: Gaussian mixtures of 5 components in the picture's own channel
+ * order (RGB here), laid out as OpenCV stores them (1 x 65 doubles: 5 weights, 5 x 3 means, 5 x 9 covariances).
+ */
+export interface GrabCutModels {
+  fg: Float64Array;
+  bg: Float64Array;
+}
+
 export function runGrabCut(cv: CV, img: ImageLike, seeds: Seeds, iterations: number): Uint8Array {
+  return runGrabCutWithModels(cv, img, seeds, iterations).mask;
+}
+
+/** As runGrabCut, and also returns GrabCut's final colour models (null when nothing was modelled). */
+export function runGrabCutWithModels(cv: CV, img: ImageLike, seeds: Seeds, iterations: number): { mask: Uint8Array; models: GrabCutModels | null } {
   const c = cv as unknown as AnyCv;
   if (typeof c.grabCut !== "function") throw new Error("this OpenCV.js build has no grabCut");
   const { width: w, height: h, labels, band } = seeds;
@@ -26,7 +40,7 @@ export function runGrabCut(cv: CV, img: ImageLike, seeds: Seeds, iterations: num
     }
   }
   const out = new Uint8Array(w * h);
-  if (x1 < 0) return out;
+  if (x1 < 0) return { mask: out, models: null };
   x0 = Math.max(0, x0 - 2);
   y0 = Math.max(0, y0 - 2);
   x1 = Math.min(w - 1, x1 + 2);
@@ -44,6 +58,7 @@ export function runGrabCut(cv: CV, img: ImageLike, seeds: Seeds, iterations: num
   const bgd = new c.Mat();
   const fgd = new c.Mat();
   const rect = new c.Rect(0, 0, cw, ch);
+  let models: GrabCutModels | null = null;
   try {
     c.grabCut(crop, mask, rect, bgd, fgd, iterations, c.GC_INIT_WITH_MASK);
     for (let y = 0; y < ch; y++) {
@@ -52,8 +67,12 @@ export function runGrabCut(cv: CV, img: ImageLike, seeds: Seeds, iterations: num
         if (v === c.GC_FGD || v === c.GC_PR_FGD) out[(y0 + y) * w + x0 + x] = 255;
       }
     }
+    const read = (m: AnyCv): Float64Array | null => (m.data64F && m.data64F.length === 65 ? Float64Array.from(m.data64F as Float64Array) : null);
+    const fg = read(fgd);
+    const bg = read(bgd);
+    if (fg && bg) models = { fg, bg };
   } finally {
     for (const m of [rgba, rgb, roiView, crop, mask, bgd, fgd]) m.delete();
   }
-  return out;
+  return { mask: out, models };
 }

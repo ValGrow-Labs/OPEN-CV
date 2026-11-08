@@ -143,11 +143,45 @@ phone**. A browser worker would be slower than Node; it is untested.
 
 ## Viewer
 
-`MeshViewer.tsx` (+ lazy `MeshViewerGL.tsx`, three.js, no new dependency): orbit, zoom, **Reset view**, **Wireframe**,
-**Colour by observation** (amber = weakly observed, blue = a silhouette contour passes through it), a reference grid, light
-theme, loading / empty / WebGL-error states, and an honesty caption you pass in (default "Experimental, not a validated
-measurement"). The wrapper's states and controls are unit-tested in jsdom with the scene stubbed. **The scene has not been
-looked at in a browser** (none was available when it was written); treat it as untested visually.
+`MeshViewer.tsx` (wrapper: states, buttons, legends, readouts) + lazy `MeshViewerGL.tsx` (three.js scene, its own chunk) +
+`meshViewerModel.ts` (pure helpers: preset directions, colour tables, bounds, grid, landmark checks). No new dependency.
+
+**Input** (all optional; wrong-length arrays are ignored, never applied to the wrong vertices):
+`mesh` (positions + indices), `confidence` (per vertex, 0..1), `support` (per vertex, `quality.ts` `vertexSupport` codes),
+`points` (a separate cloud) with `pointColors` (sRGB 0..1, 3 per point) and/or `pointLabels` (support codes), `landmarks`
+(21 MediaPipe points, 21 triples or 63 numbers, same frame), `handFrame` (`{ origin, x: little finger, y: fingers, z: out of
+the palm }`; `viewerFrameOf()` converts a `measure.ts` `HandFrame`), `label` (honesty caption, default "Experimental, not a
+validated measurement"), `unit` (default `mm`), `defaultDisplay`, `defaultColour`, `onUnavailable`.
+
+**Frame.** Millimetres in the board frame: +z up out of the board, +x roughly along the fingers, board plane z = 0.
+
+**Controls.** Free rotation (TrackballControls: a full 360 degrees about any axis, no pole clamp, so the underside is
+reachable), zoom, pan (right-drag / two fingers), **Reset view**; keyboard on the focused view: arrows turn 15 degrees, + / −
+zoom, 0 resets. Presets with a hand frame: Top, Palm, Back, Thumb side, Little-finger side, Fingertips, Wrist; without one
+the board axes (Top (+z), Underside (−z), ±x end, ±y side) and the panel says so. For a palm-down hand the Palm view (and the
+Underside view when board-labelled vertices exist) shows "bounded by the board, not observed" on the stage, with a shortcut
+to the support colours. Display: Surface / Wireframe / Point cloud (the separate cloud, else the mesh's vertices). Colour:
+Plain / Support (legend: observed, implied, bounded by the board not observed, cut at the forearm, truncated, each with its
+share) / Confidence (rose = weakly observed to blue = directly observed, with the share at 0.5 or more). The landmark
+skeleton is a separate overlay, off by default, orange and drawn on top, labelled "Landmark skeleton (diagnostic)". A grid
+(round step, e.g. 10 mm squares, darker every 50 mm) on the board plane, an axes gizmo, the bounding size (and the extents
+along the hand frame, labelled "not measurements"), triangle / vertex / point counts. Loading, empty and WebGL-unavailable
+states; buttons are real buttons with `aria-pressed`; controls sit under the stage so nothing covers the model at 390 px.
+
+**Performance.** Geometry, colour buffers, skeleton and grid are built once per input; mode and colour toggles swap
+materials, copy one precomputed colour array into one attribute, or flip visibility (the browser test checks the GPU
+geometry count does not grow over a second pass through every mode). Rendering is on demand and pauses off screen; every
+GPU resource is disposed on unmount (and the context released).
+
+**Looked at in a browser.** `frontend/experiment/viewer/` is a dev-only demo page (not in `vite build`) that builds a
+SIMULATED reconstruction in a worker: the synthetic capsule hand resting palm-down on a board, 13 simulated views (a ring
+12 degrees above the board plus one from above, 224 px masks), 2 mm voxels, about 109k triangles, per-vertex support labels,
+60k surface points, synthetic landmarks. Labelled "SIMULATED: synthetic capsule hand, not a real scan" everywhere. `?data=stress`
+loads a procedural 501k-triangle / 200k-point shape (not a hand); `?frame=0` and `?cloud=0` drop the frame or the cloud.
+`npx playwright test -c playwright.viewer.config.ts` (own Vite config `vite.viewer.config.ts`, port 5207, own dependency cache)
+exercises every preset, mode, colour, the skeleton, mouse and keyboard rotation to the underside, phone width, the no-frame
+fallback and the stress set, fails on any console error or failed request, and saves screenshots to
+`test-results/viewer/`. Only headless desktop Chromium (software or desktop GPU) was used: **no phone GPU was tried**.
 
 ## What real captures must prove (none of it is shown here)
 
@@ -177,5 +211,5 @@ npx tsc -b --noEmit
 noise · `carving.ts` visual hull, view coverage, unconstrained-surface heuristic · `meshing.ts` field, marching tetrahedra,
 smoothing, topology · `pointcloud.ts` depth, ICP, fusion, triangulation · `measure.ts` frames, slicing, measurements ·
 `quality.ts` confidence, completeness, silhouette IoU, gates · `stats.ts` validation statistics · `prior.ts` capsule prior ·
-`pipeline.ts` the chain · `experiment.ts` synthetic grid and repeatability · `MeshViewer*.tsx`, `meshViewer.css` viewer ·
+`pipeline.ts` the chain · `experiment.ts` synthetic grid and repeatability · `MeshViewer*.tsx`, `meshViewerModel.ts`, `meshViewer.css` viewer, `viewerDemo/` its SIMULATED demo page ·
 `testSupport.ts` analytic test helpers · `../depth/` capability detection and metric-depth surfaces.

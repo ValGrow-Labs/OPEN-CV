@@ -1,0 +1,10 @@
+{
+  "schema": "glovesize.phantom-reference/1",
+  "phantom": { "id": "synthetic-fixture-block-B", "description": "TEST FIXTURE: invented numbers, no physical object" },
+  "date": "2026-11-08",
+  "units": "mm",
+  "instruments": [{ "id": "cal-1", "type": "caliper", "resolution_mm": 0.01, "calibration_check": { "reference": "gauge_block", "nominal_mm": 50, "reading_mm": 50.0 } }],
+  "measurers": [{ "code": "M01" }, { "code": "M02" }],
+  "protocol": { "spread_tolerance_mm": 0.3, "agreed_value": "median" },
+  "readings_csv": "readings.fixture.csv"
+}
