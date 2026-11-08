@@ -36,6 +36,13 @@ export interface SyntheticHand {
   withForearm: BinaryMask;
   landmarks: Pt[];
   palmWidth: number;
+  /**
+   * Part truth for the hand-only mask (values as parts.ts PART: 1 palm, 2 wrist, 3 thumb, 4 index, 5 middle, 6 ring,
+   * 7 little), from the primitives that drew each pixel, with the conventions of parts.ts: a finger begins at the line
+   * through its knuckle perpendicular to it, the thumb at the line through landmark 2 perpendicular to 2-3, and palm
+   * pixels within 0.2 palm widths of the wrist line are wrist.
+   */
+  parts: BinaryMask;
 }
 
 /** Local hand frame: x across the palm, y from the wrist towards the fingers (up). Lengths in palm widths. */
@@ -109,6 +116,37 @@ export function makeSyntheticHand(o: SyntheticHandOptions = {}): SyntheticHand {
     }
   }
 
+  // Part truth (see SyntheticHand.parts).
+  const parts = new Uint8Array(width * height);
+  const segDist = (px: number, py: number, a: Pt, b: Pt) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.min(1, Math.max(0, ((px - a.x) * dx + (py - a.y) * dy) / l2)) : 0;
+    return Math.hypot(px - a.x - t * dx, py - a.y - t * dy);
+  };
+  const beyond = (px: number, py: number, a: Pt, b: Pt) => (px - a.x) * (b.x - a.x) + (py - a.y) * (b.y - a.y) >= 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!handOnly[i]) continue;
+      const px = x + 0.5;
+      const py = y + 0.5;
+      let label = 1;
+      let bestD = Infinity;
+      [5, 9, 13, 17].forEach((b, f) => {
+        const d = segDist(px, py, lm[b], lm[b + 3]);
+        if (d <= fr && d < bestD && beyond(px, py, lm[b], lm[b + 1])) ((bestD = d), (label = 4 + f));
+      });
+      if (beyond(px, py, lm[2], lm[3])) {
+        const d = Math.min(segDist(px, py, lm[2], lm[3]) <= 0.14 * pw ? segDist(px, py, lm[2], lm[3]) : Infinity, segDist(px, py, lm[3], lm[4]) <= 0.125 * pw ? segDist(px, py, lm[3], lm[4]) : Infinity);
+        if (d < bestD) ((bestD = d), (label = 3));
+      }
+      if (label === 1 && (px - wrist.x) * upx + (py - wrist.y) * upy < 0.2 * pw) label = 2;
+      parts[i] = label;
+    }
+  }
+
   const skin = o.skin ?? [201, 150, 120];
   const bg = o.background ?? [235, 235, 238];
   const noise = o.noise ?? 0;
@@ -129,6 +167,7 @@ export function makeSyntheticHand(o: SyntheticHandOptions = {}): SyntheticHand {
     withForearm: { width, height, data: withForearm },
     landmarks: lm,
     palmWidth: pw,
+    parts: { width, height, data: parts },
   };
 }
 

@@ -57,7 +57,7 @@ export interface QualityInput {
 }
 
 /** Normal direction (from the hand outwards) at every boundary pixel, from the gradient of a blurred mask. */
-function boundaryNormals(mask: BinaryMask, boundary: Uint8Array): { idx: number[]; nx: Float32Array; ny: Float32Array } {
+export function boundaryNormals(mask: BinaryMask, boundary: Uint8Array): { idx: number[]; nx: Float32Array; ny: Float32Array } {
   const { width: w, height: h, data } = mask;
   const blurred = new Float32Array(w * h);
   const r = 3;

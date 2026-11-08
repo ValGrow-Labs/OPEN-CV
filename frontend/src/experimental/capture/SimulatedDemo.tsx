@@ -40,7 +40,8 @@ export function SimulatedDemo() {
       )}
       {result && (
         <>
-          <div className="xp-viewer">
+          {/* The viewer sizes its own stage and puts its controls under it, so the box grows with it instead of clipping. */}
+          <div className="xp-viewer" style={{ height: "auto", minHeight: 0, overflow: "visible", background: "transparent" }}>
             <MeshViewer mesh={result.mesh} confidence={result.confidence} label={SIMULATED_VIEWER_LABEL} />
           </div>
           <p className="xp-small" role="status">

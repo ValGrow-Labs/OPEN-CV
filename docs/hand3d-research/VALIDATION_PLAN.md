@@ -127,3 +127,43 @@ Decision framework to fill in with the client:
 ## 11. The report
 
 Must contain: the pre-registration (hash), the instruments and their checks, rater error, the participant strata with counts, the metrics per group with intervals, the failure and refusal rates, processing times per device, the licence record, every deviation from the plan, and a plain statement of what was **not** shown.
+
+## 12. Addendum (2026-11-08): the printed-board multi-view reconstruction
+
+The capture now being built (`frontend/src/experimental/recon/`, `board/`, `multiview/`; see `AUDIT_3D_STATUS.md`) changes
+what can be measured and how. Same rules as above: nothing here has been run on a real phone or a real person.
+
+**What the board capture observes, and what it does not.** The hand rests palm-down on the board. Its back, sides,
+fingers and the outline of the finger gaps are shaped by silhouettes from a top view and a low ring of views; the palm
+side is **bounded by the board plane, not observed** (labelled per vertex); concavities (palm hollow, web of the thumb)
+are filled by the visual hull. So: lengths, breadth and thickness can be direct; a knuckle circumference is a hull
+**upper bound** (the palm-side part of the loop is the board plane); surface area is withheld unless every gate passes and is
+still an upper bound.
+
+**Metrics to report for every capture (the pipeline already records most of them):**
+
+| Metric | Source | Gate or reference |
+|---|---|---|
+| Camera self-calibration RMS (px), focal length and k1 with their standard deviations, method (Zhang or assumed) | `board/calibrate.ts` via `recon/chain.ts` | Refused above 1.5 px RMS or when assumed |
+| Camera reprojection error per view (px), markers used, views dropped and why (inconsistent markers, too few, residual) | `board/pose.ts`, `chain.ts` `consistentMarkers` | Per-view limit 1.5 px |
+| Metric scale error | Board print scale from the ruler check (30.0 mm square) and from `checkCoinScale` (coin vs printed board) | Disagreement over 2 % means a mis-printed board: measurements withheld |
+| Point-cloud and mesh completeness, holes, watertightness, support shares (observed / implied / board / forearm cut / truncated) | `reconstruction/quality.ts` `vertexSupport`, `reconstructionQuality` | Gates listed in `AUDIT_3D_STATUS.md` |
+| Hand-moved check: landmark triangulation residuals, views named | `multiview/landmarks.ts` | Named views dropped; over 25 % named = capture rejected |
+| Hand length, palm breadth, palm thickness, finger lengths, knuckle circumference, surface area (with basis) | `reconstruction/measure.ts` | Against the instruments of section 2 |
+| Reconstruction time per stage, JS heap, device model, browser, camera resolution, capture duration, failure rate | The capture page's report and `?debug` | Operational |
+
+**Stage G1 for this method (rigid phantoms first).** A hand-shaped rigid phantom (3D-printed from a model this project
+owns, or a cast), measured with calipers and tape by two people, placed on the printed board exactly like a hand. On each
+test phone: at least 10 captures per phantom, the board re-printed once and re-measured. Report bias, SD and limits of
+agreement per measurement, the coin-vs-board scale agreement, and the calibration focal length spread across captures of
+the same phone (a stable focal length is a direct check of the self-calibration). A phantom isolates the camera geometry
+and segmentation from posture and soft tissue: if the phantom fails, a real hand will not pass.
+
+**Stage G2 changes.** A real hand cannot be perfectly still for the 30 to 60 s of a sweep: record the hand-moved check's
+output for every capture and report the share of captures it rejects. Repeat each participant's capture three times with
+the hand lifted and replaced in between; caliper references taken at the same session (blind to the camera). The palm
+must be flat on the board for the board-bounded underside to be meaningful; record visible gaps (photos only with consent).
+
+**Not claimed until G1/G2 data exist:** any accuracy figure, any agreement with the existing coin-only measurement, any
+glove size. The SIMULATED results (`recon/chain.test.ts`, `multiview/README.md`, `board/README.md`) only show that the
+mathematics and the code work on clean renders of a synthetic capsule hand.

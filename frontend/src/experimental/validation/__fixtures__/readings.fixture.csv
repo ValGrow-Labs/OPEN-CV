@@ -1,0 +1,9 @@
+dimension,measurer,value_mm,instrument,definition,note
+palm_breadth,M01,84.10,cal-1,"fixture: breadth, at the knuckle datum",
+palm_breadth,M01,84.20,cal-1,,
+palm_breadth,M02,84.30,,,
+palm_breadth,M02,84.20,,,second pass
+palm_thickness,M01,24.00,cal-1,fixture: thickness,
+palm_thickness,M01,24.10,,,
+palm_thickness,M02,24.05,,,
+palm_thickness,M02,24.15,,,

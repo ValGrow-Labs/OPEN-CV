@@ -18,6 +18,10 @@ export interface CarveView {
   mask: BinaryMask;
   intrinsics: Intrinsics;
   pose: CameraPose;
+  /** Optional, same size as ``mask``: 255 where the mask's classification is reliable, 0 where it is UNKNOWN (for
+   *  example the room behind the board in a low view, or a coin). A voxel projecting onto an unknown pixel is not
+   *  carved by this view (the view abstains). Absent = every pixel is known (the original behaviour). */
+  known?: BinaryMask;
 }
 
 export interface Occupancy {
@@ -32,6 +36,9 @@ export interface Occupancy {
   /** In how many views the voxel centre falls inside the picture at all. */
   observed: Uint8Array;
   nViews: number;
+  /** Only when some view has a ``known`` mask: in how many views the voxel centre fell on an UNKNOWN pixel. Such a view
+   *  abstains: it is counted in ``support`` and ``observed`` so it never carves the voxel. */
+  abstained?: Uint8Array;
 }
 
 export interface CarveOptions {
@@ -52,9 +59,11 @@ export function carveVisualHull(views: readonly CarveView[], bounds: { min: Vec3
   const support = new Uint8Array(n);
   const observed = new Uint8Array(n);
   const k = opts.tolerance ?? 0;
+  const abstained = views.some((v) => v.known) ? new Uint8Array(n) : undefined;
 
   for (const view of views) {
     const { mask, intrinsics: K, pose } = view;
+    const known = view.known ? view.known.data : null;
     const R = pose.R, t = pose.t;
     const sx = mask.width / K.width;
     const sy = mask.height / K.height;
@@ -85,7 +94,11 @@ export function carveVisualHull(views: readonly CarveView[], bounds: { min: Vec3
           const v = (K.fy * yn + K.cy) * sy;
           if (u < 0 || v < 0 || u >= mw || v >= mh) continue;
           observed[idx]++;
-          if (data[(v | 0) * mw + (u | 0)] > 0) support[idx]++;
+          const pix = (v | 0) * mw + (u | 0);
+          if (known && known[pix] === 0) {
+            support[idx]++; // unknown pixel: this view abstains
+            abstained![idx]++;
+          } else if (data[pix] > 0) support[idx]++;
         }
       }
     }
@@ -98,7 +111,9 @@ export function carveVisualHull(views: readonly CarveView[], bounds: { min: Vec3
     if (ignore) occupancy[i] = observed[i] >= 2 && support[i] >= observed[i] - k ? 1 : 0;
     else occupancy[i] = support[i] >= nViews - k && nViews > 0 ? 1 : 0;
   }
-  return { dims: [nx, ny, nz], origin: [bounds.min[0], bounds.min[1], bounds.min[2]], voxelMm: voxel, occupancy, support, observed, nViews };
+  const out: Occupancy = { dims: [nx, ny, nz], origin: [bounds.min[0], bounds.min[1], bounds.min[2]], voxelMm: voxel, occupancy, support, observed, nViews };
+  if (abstained) out.abstained = abstained;
+  return out;
 }
 
 export function voxelCount(o: Occupancy): number {
@@ -211,4 +226,46 @@ export function unconstrainedSurfaceFraction(o: Occupancy, views: readonly { pos
         if (!constrained) free++;
       }
   return surface === 0 ? 1 : free / surface;
+}
+
+/** A face of the carving volume (the axis-aligned search box): "-z" is the face at bounds.min z, and so on. */
+export type BoundsFace = "-x" | "+x" | "-y" | "+y" | "-z" | "+z";
+export const BOUNDS_FACES: readonly BoundsFace[] = ["-x", "+x", "-y", "+y", "-z", "+z"];
+
+export interface BoundsContact {
+  /** Hull surface voxels (occupied, with an empty 6-neighbour or on the edge of the grid). */
+  surfaceVoxels: number;
+  /** Per face: the share of the surface voxels that lie on that face of the search box. A hull is shaped by the
+   *  silhouettes only where it does NOT touch the box; where it lies on a face, the BOX cut it (a support plane such
+   *  as the board under the hand, the end of the volume at the wrist, or a direction no view constrains). */
+  share: Record<BoundsFace, number>;
+}
+
+/** How much of the hull's surface was cut by the search box rather than shaped by a silhouette. */
+export function boundsContact(o: Occupancy): BoundsContact {
+  const [nx, ny, nz] = o.dims;
+  const occ = o.occupancy;
+  const idx = (i: number, j: number, k: number) => i + nx * (j + ny * k);
+  const counts: Record<BoundsFace, number> = { "-x": 0, "+x": 0, "-y": 0, "+y": 0, "-z": 0, "+z": 0 };
+  let surface = 0;
+  for (let k = 0; k < nz; k++)
+    for (let j = 0; j < ny; j++)
+      for (let i = 0; i < nx; i++) {
+        if (!occ[idx(i, j, k)]) continue;
+        const onEdge = i === 0 || j === 0 || k === 0 || i === nx - 1 || j === ny - 1 || k === nz - 1;
+        const exposed =
+          onEdge ||
+          !occ[idx(i - 1, j, k)] || !occ[idx(i + 1, j, k)] || !occ[idx(i, j - 1, k)] || !occ[idx(i, j + 1, k)] || !occ[idx(i, j, k - 1)] || !occ[idx(i, j, k + 1)];
+        if (!exposed) continue;
+        surface++;
+        if (i === 0) counts["-x"]++;
+        if (i === nx - 1) counts["+x"]++;
+        if (j === 0) counts["-y"]++;
+        if (j === ny - 1) counts["+y"]++;
+        if (k === 0) counts["-z"]++;
+        if (k === nz - 1) counts["+z"]++;
+      }
+  const share = {} as Record<BoundsFace, number>;
+  for (const f of BOUNDS_FACES) share[f] = surface ? counts[f] / surface : 0;
+  return { surfaceVoxels: surface, share };
 }

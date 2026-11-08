@@ -1,0 +1,5 @@
+{ "user_agent": "Mozilla/5.0 (Linux; Android 14; FixturePhone 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  "screen": { "width": 412, "height": 915, "dpr": 2.6 }, "device_memory_gb": 8, "hardware_concurrency": 8,
+  "camera": { "width": 1280, "height": 720, "settings": { "facingMode": "environment" } },
+  "capture_ms": 40000, "build_ms": 20000, "export_ms": 1000, "heap_samples_mb": [100, 250, 300], "peak_heap_mb": 310,
+  "errors": [], "webgl_context_lost": false, "export_ok": true, "started_at": "2026-11-08T10:00:00Z", "finished_at": "2026-11-08T10:01:01Z" }

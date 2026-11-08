@@ -60,3 +60,56 @@ export const MAX_EDGE_WIDTH_PX = 6;
 export const MIN_EDGE_CONTRAST = 12;
 /** At least this share of the sampled contour points must have enough contrast, else sharpness is "unknown". */
 export const MIN_EDGE_VALID_SHARE = 0.3;
+
+// ---- stage 2a: part labels, finger gaps, confidence, analysis gates (analyse.ts) ------------------------------
+// Same rule as above: PROVISIONAL, chosen on synthetic hands and the composite scenes, never fitted to real labelled data.
+/** Palm pixels within this distance of the wrist cut (towards the fingers) are labelled "wrist". */
+export const WRIST_BAND = 0.2;
+/** Length of the palm skeleton stub that ends at each knuckle along the finger's axis (sets the knuckle-line convention). */
+export const PALM_STUB = 0.5;
+/** Width-profile stations, as fractions of a finger's mask length measured from its knuckle line. */
+export const WIDTH_STATIONS: readonly number[] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+/** Gap widths are reported at these distances from the valley point towards the fingertips (fractions of palm width). */
+export const GAP_WIDTH_DISTANCES: readonly number[] = [0.05, 0.1, 0.2, 0.3, 0.5];
+/** A background region between two fingers counts as a gap when at least this deep (fraction of palm width)... */
+export const GAP_MIN_DEPTH = 0.12;
+/** ...and at least this large (fraction of the palm width squared). */
+export const GAP_MIN_AREA = 0.004;
+/** ...and at least this share of the landmark reference depth (shallower notches, e.g. between touching fingertips, are not gaps). */
+export const GAP_OPEN_MIN_RATIO = 0.25;
+/**
+ * Two fingers the landmarks show apart are "merged" when the open gap between them reaches less than this share of the
+ * reference depth (the less advanced landmark fingertip's height above the knuckle line). On the composite scenes clean
+ * spread hands gave 0.37-1.3 (lowest: ring-little, whose web sits high, under JPEG quality 25), a skin-coloured bridge
+ * 0.30, the small-hand and blurred masks 0-0.36: the margin is narrow and was set on those same scenes.
+ */
+export const GAP_MERGED_DEPTH_RATIO = 0.35;
+/** A finger whose mask reaches less than this share of its landmark chain length (knuckle to tip) is called occluded. */
+export const OCCLUDED_LENGTH_RATIO = 0.7;
+/**
+ * A finger narrowing below this share of its own median width between 20 % and 80 % of its length is called occluded
+ * (on the composite scenes natural tapering bottomed out at 0.73, the thumb; a bar over a finger gave 0.57).
+ */
+export const OCCLUDED_NECK_RATIO = 0.65;
+/** A finger widening beyond this multiple of its own median width between 20 % and 80 % of its length: something lies over it. */
+export const OCCLUDED_BULGE_RATIO = 1.6;
+/** A cross-band of a finger with more than this share of pixels outside the hand's chromaticity range: an object over it. */
+export const COLOUR_BREAK_SHARE = 0.5;
+/** Colour bands are checked from 10 % up to this fraction of the finger's length (beyond it the nail changes the colour). */
+export const COLOUR_BREAK_MAX_AT = 0.6;
+/** A finger with less than this share of the area its landmarks imply (length x 0.2 palm widths) is "missing". */
+export const MISSING_FINGER_AREA_RATIO = 0.25;
+/** Distance from the mask boundary (fraction of palm width) at which the distance part of the confidence saturates. */
+export const CONF_DIST_SCALE = 0.06;
+/** Image gradient (grey levels per pixel) along the boundary that counts as a fully supporting edge. */
+export const CONF_EDGE_REF = 18;
+/** Colour log-likelihood ratio scale of the colour part of the confidence (logistic slope). */
+export const CONF_COLOUR_SCALE = 2;
+/** Gate: mean confidence in the band around the boundary must be at least this... */
+export const MIN_BOUNDARY_CONFIDENCE = 0.45;
+/** ...and no more than this share of the hand pixels may have a confidence below 0.5. */
+export const MAX_LOW_CONFIDENCE_SHARE = 0.3;
+/** Boundary-to-gradient agreement: a boundary pixel agrees when the strongest gradient along its normal is this close (px). */
+export const GRADIENT_AGREE_PX = 1.5;
+/** Gradients weaker than this (grey levels per pixel) do not count as an image edge. */
+export const MIN_GRADIENT = 6;

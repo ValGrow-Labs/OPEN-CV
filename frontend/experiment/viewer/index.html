@@ -1,0 +1,20 @@
+<!doctype html>
+<!--
+  EXPERIMENTAL, dev-only page. It is served by the Vite dev server at /experiment/viewer/ (npm run dev). It is NOT part of the
+  production build: `vite build` builds only frontend/index.html (vite.config.ts sets no build input), so this page and its
+  code never reach dist or the deployed site. It is not linked from the customer app.
+  It shows a SIMULATED reconstruction of a synthetic capsule hand, built in the page. It is not a real scan.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="data:," />
+    <title>EXPERIMENT: 3D viewer (simulated hand)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/experimental/reconstruction/viewerDemo/main.tsx"></script>
+  </body>
+</html>
