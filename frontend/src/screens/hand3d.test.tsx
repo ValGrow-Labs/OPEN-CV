@@ -428,7 +428,7 @@ describe("the customer's hand on the result page", () => {
     expect(screen.getByText("An illustration drawn from the 21 hand points we measured, not a 3D scan.")).toBeTruthy();
     const p = stages.at(-1)!;
     expect(p.landmarks).toBe(landmarks);
-    expect(p.theme).toBe("light"); // the result page's hand is drawn on the light stage
+    expect(p.theme).toBe("dark"); // the result page is dark like the scan (MILLIMESH): the hand is drawn on the dark stage
     expect(p.tags).toEqual([
       { joint: 8, label: "Index 72 mm" },
       { joint: 12, label: "Middle 78 mm" },

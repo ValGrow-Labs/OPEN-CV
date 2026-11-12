@@ -32,7 +32,7 @@ export function applyScanTiming(config: any, timing: ScanTiming): void {
     return;
   }
   const n = timing.frames;
-  Object.assign(ls, { mobile_frames_target: n, early_stop_frames_mobile: n, early_stop_frames_desktop: n });
+  Object.assign(ls, { mobile_frames_target: n, early_stop_frames_mobile: n, early_stop_frames_desktop: n, timeout_s: 40 });
   config.capture.frames_target = n;
   for (const v of config.capture.views ?? []) if ("mobile_frames_target" in v) v.mobile_frames_target = n;
 }

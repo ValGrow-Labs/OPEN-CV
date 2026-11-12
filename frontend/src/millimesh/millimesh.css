@@ -1,0 +1,1095 @@
+/* MILLIMESH "Surface Swarm": the dark navy look of the customer scan flow, and (under .mm-app) of the measurements and
+   results screens that follow it. Dark navy/black, thin light-blue lines, glowing blue particles, light-blue gradient pills.
+   No orange hologram tones. Mobile first: 360 px and up, safe-area insets, nothing animates under prefers-reduced-motion. */
+
+:root {
+  --mm-bg: #04070d;
+  --mm-bg-2: #081426;
+  --mm-ink: #e9f1fb;
+  --mm-ink-2: #c3d3ea;
+  --mm-mute: #8ea3c0;
+  --mm-blue: #6cb2ff;
+  --mm-blue-hi: #a8d4ff;
+  --mm-line: rgba(130, 180, 255, 0.2);
+  --mm-line-strong: rgba(130, 180, 255, 0.42);
+  --mm-card: rgba(12, 22, 40, 0.82);
+  --mm-green: #3ddc97;
+  --mm-amber: #f2c14e;
+  --mm-pill: linear-gradient(180deg, #cfe8ff 0%, #93c8fb 52%, #6cb0f2 100%);
+}
+
+html[data-mm="on"],
+html[data-mm="on"] body {
+  background: var(--mm-bg);
+  color-scheme: dark;
+}
+
+.mm-app {
+  min-height: 100dvh;
+  background: var(--mm-bg);
+}
+
+/* ------------------------------------------------------------------ shared pieces */
+
+.mm-screen {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: max(14px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  color: var(--mm-ink);
+  font-family: var(--font);
+  background:
+    radial-gradient(120% 55% at 50% -8%, rgba(40, 100, 220, 0.28), transparent 62%),
+    radial-gradient(90% 40% at 50% 108%, rgba(30, 80, 190, 0.2), transparent 70%),
+    var(--mm-bg);
+}
+
+@media (min-width: 560px) {
+  .mm-screen {
+    border-inline: 1px solid rgba(130, 180, 255, 0.1);
+  }
+}
+
+.mm-top {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 14px;
+}
+
+.mm-top--bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 4px 0 8px;
+}
+
+.mm-top-slot {
+  display: flex;
+  min-width: 0;
+}
+
+.mm-top-actions {
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mm-wordmark {
+  display: inline-flex;
+  align-items: flex-start;
+  color: var(--mm-ink);
+  font-weight: 500;
+  letter-spacing: 0.56em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mm-wordmark--sm {
+  font-size: 11px;
+  letter-spacing: 0.5em;
+}
+.mm-wordmark--md {
+  font-size: 13px;
+}
+.mm-wordmark--lg {
+  font-size: 20px;
+}
+
+.mm-wordmark sup {
+  font-size: 0.48em;
+  letter-spacing: 0;
+  margin-left: -0.35em;
+  opacity: 0.8;
+}
+
+.mm-h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 12vw, 3.1rem);
+  font-weight: 300;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  color: var(--mm-ink);
+  outline: none;
+}
+
+.mm-h1-line {
+  display: block;
+}
+
+.mm-h2 {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  color: var(--mm-ink);
+  outline: none;
+}
+
+.mm-lead {
+  margin: 14px 0 22px;
+  max-width: 26ch;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--mm-ink-2);
+}
+
+.mm-sub {
+  margin: 8px auto 18px;
+  max-width: 30ch;
+  text-align: center;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--mm-mute);
+}
+
+.mm-fine {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--mm-mute);
+}
+
+.mm-fine strong {
+  color: var(--mm-ink-2);
+  font-weight: 600;
+}
+
+.mm-fine a,
+.mm-link {
+  color: var(--mm-blue-hi);
+}
+
+.mm-link {
+  display: inline-block;
+  margin: 6px 0 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.mm-note {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--mm-mute);
+}
+
+/* The light-blue gradient pill. */
+.mm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 1px solid rgba(190, 225, 255, 0.55);
+  border-radius: 999px;
+  background: var(--mm-pill);
+  color: #061226;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 12px 30px -12px rgba(108, 178, 255, 0.7);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.mm-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.mm-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.mm-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.mm-btn--quiet {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--mm-line-strong);
+  color: var(--mm-ink);
+  box-shadow: none;
+}
+
+.mm-btn--ghost {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: var(--mm-line);
+  color: var(--mm-mute);
+  box-shadow: none;
+}
+
+.mm-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.mm-actions--row {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.mm-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--mm-line);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--mm-blue-hi);
+  cursor: pointer;
+}
+.mm-icon-btn:disabled {
+  opacity: 0.4;
+}
+
+.mm-screen :focus-visible {
+  outline: 2px solid var(--mm-blue-hi);
+  outline-offset: 3px;
+}
+
+/* The heading each step moves focus to (tabindex="-1", for screen readers and keyboard users following along) is
+   never a Tab stop, so it draws no box when focus arrives by script. Every real control keeps its ring. */
+.mm-screen [tabindex="-1"]:focus,
+.mm-screen [tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
+.mm-spinner {
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(130, 180, 255, 0.25);
+  border-top-color: var(--mm-blue-hi);
+  border-radius: 50%;
+  animation: mm-spin 0.9s linear infinite;
+}
+
+@keyframes mm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------------ 1. start */
+
+.mm-start {
+  overflow: hidden;
+}
+
+.mm-start-wave {
+  position: absolute;
+  z-index: 0;
+  left: -24px;
+  right: -24px;
+  top: 12%;
+  width: calc(100% + 48px);
+  height: 40%;
+  pointer-events: none;
+}
+
+.mm-start-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  padding-bottom: 4px;
+}
+
+.mm-start-body .mm-btn {
+  margin-top: 6px;
+}
+
+.mm-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mm-field label {
+  font-size: 0.75rem;
+  color: var(--mm-mute);
+}
+
+.mm-select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--mm-ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.mm-select option {
+  background: #0c1626;
+  color: #e9f1fb;
+}
+
+.mm-start-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 14px;
+  margin-top: 14px;
+}
+
+.mm-start-links {
+  display: inline-flex;
+  gap: 14px;
+}
+
+/* ------------------------------------------------------------------ 2. coin */
+
+.mm-coins {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mm-coin-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 12px 8px 10px;
+  border: 1px solid var(--mm-line);
+  border-radius: 18px;
+  background: rgba(14, 26, 46, 0.62);
+  color: var(--mm-ink);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.mm-coin-card:has(input:focus-visible) {
+  outline: 2px solid var(--mm-blue-hi);
+  outline-offset: 2px;
+}
+
+.mm-coin-card.is-on {
+  border-color: var(--mm-blue);
+  background: rgba(30, 64, 120, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(108, 178, 255, 0.5),
+    0 0 24px -4px rgba(108, 178, 255, 0.5);
+}
+
+.mm-coin-card.is-off {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mm-coin {
+  display: block;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+}
+
+.mm-coin-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.mm-coin-mm {
+  font-size: 0.72rem;
+  color: var(--mm-mute);
+  font-variant-numeric: tabular-nums;
+}
+.mm-coin-why {
+  margin-top: 2px;
+  font-size: 0.66rem;
+  color: var(--mm-mute);
+}
+
+.mm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--mm-ink-2);
+}
+.mm-check input {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex: none;
+  accent-color: #6cb2ff;
+}
+
+.mm-coin .mm-actions,
+.mm-coin > .mm-actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding-bottom: 2px;
+  background: linear-gradient(180deg, transparent, var(--mm-bg) 38%);
+}
+
+/* ------------------------------------------------------------------ 3. camera */
+
+.mm-camera-body {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  flex: 1;
+  gap: 4px;
+  text-align: center;
+}
+
+.mm-camera-icon {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  margin-bottom: 18px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 18px;
+  background: rgba(30, 64, 120, 0.3);
+  color: var(--mm-blue-hi);
+  box-shadow: 0 0 34px -6px rgba(108, 178, 255, 0.55);
+}
+
+.mm-camera-body .mm-fine {
+  max-width: 34ch;
+}
+
+/* ------------------------------------------------------------------ 4-6. capture */
+
+.mm-capture {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mm-tabs {
+  display: flex;
+  justify-content: space-around;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-tabs li {
+  padding: 6px 16px 8px;
+  border-bottom: 2px solid transparent;
+  font-size: 0.88rem;
+  color: var(--mm-mute);
+}
+
+.mm-tabs li.is-active {
+  border-bottom-color: var(--mm-blue);
+  color: #fff;
+  font-weight: 600;
+}
+
+.mm-cam {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #02050a;
+}
+
+.mm-cam video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mm-cam video.mirrored {
+  transform: scaleX(-1);
+}
+
+.mm-cam-draw {
+  display: none;
+}
+
+.mm-particles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.mm-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 0 solid rgba(168, 212, 255, 0.9);
+  pointer-events: none;
+}
+.mm-corner--tl {
+  top: 12px;
+  left: 12px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  border-top-left-radius: 6px;
+}
+.mm-corner--tr {
+  top: 12px;
+  right: 12px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+  border-top-right-radius: 6px;
+}
+.mm-corner--bl {
+  bottom: 12px;
+  left: 12px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+  border-bottom-left-radius: 6px;
+}
+.mm-corner--br {
+  bottom: 12px;
+  right: 12px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+  border-bottom-right-radius: 6px;
+}
+
+.mm-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  max-width: calc(100% - 56px);
+  padding: 8px 14px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 999px;
+  background: rgba(5, 12, 24, 0.74);
+  color: var(--mm-ink);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  text-align: center;
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.mm-pill.is-ok {
+  border-color: rgba(61, 220, 151, 0.5);
+}
+
+.mm-cam-msg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  background: rgba(2, 6, 12, 0.72);
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--mm-ink-2);
+}
+.mm-cam-msg p {
+  margin: 0;
+}
+.mm-cam-msg--veil {
+  background: rgba(2, 6, 12, 0.82);
+}
+
+.mm-sheet-card {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+  padding: 18px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 18px;
+  background: rgba(10, 20, 38, 0.96);
+}
+.mm-sheet-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.mm-sheet-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--mm-ink-2);
+}
+
+.mm-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px 14px 14px 16px;
+  border: 1px solid var(--mm-line);
+  border-radius: 20px;
+  background: var(--mm-card);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.mm-card--between {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 16px;
+}
+
+.mm-between-done {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--mm-green);
+}
+
+.mm-card-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 11px;
+  color: var(--mm-blue-hi);
+}
+
+.mm-card-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.mm-card-text {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--mm-ink-2);
+}
+
+.mm-ring {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex: none;
+}
+.mm-ring svg {
+  width: 100%;
+  height: 100%;
+}
+.mm-ring-track {
+  fill: none;
+  stroke: rgba(130, 180, 255, 0.2);
+  stroke-width: 4;
+}
+.mm-ring-fill {
+  fill: none;
+  stroke: var(--mm-blue-hi);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.35s ease;
+  filter: drop-shadow(0 0 4px rgba(108, 178, 255, 0.8));
+}
+.mm-ring-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mm-capture .scan-debug-panel {
+  max-height: 30vh;
+  margin-top: 8px;
+  overflow: auto;
+  font-size: 10px;
+  color: var(--mm-ink-2);
+}
+
+/* ------------------------------------------------------------------ 7. reconstruction */
+
+.mm-estimate {
+  margin: 10px auto 0;
+  max-width: 34ch;
+  padding: 7px 14px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 14px;
+  background: rgba(30, 64, 120, 0.22);
+  text-align: center;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--mm-blue-hi);
+}
+
+.mm-recon-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 300px;
+  margin: 6px -8px 0;
+  background: radial-gradient(60% 48% at 50% 46%, rgba(40, 110, 255, 0.24), transparent 72%);
+}
+
+.mm-recon-host {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+.mm-recon-host:active {
+  cursor: grabbing;
+}
+.mm-recon-host:focus-visible {
+  outline: 2px solid var(--mm-blue-hi);
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+.mm-recon-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mm-flat {
+  position: absolute;
+  inset: 4% 10% 10%;
+  width: 80%;
+  height: 86%;
+}
+.mm-flat-note {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  margin: 0;
+  text-align: center;
+  color: var(--mm-mute);
+}
+
+.mm-legend {
+  position: absolute;
+  right: 10px;
+  bottom: 14px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.72rem;
+  color: var(--mm-ink-2);
+  pointer-events: none;
+}
+.mm-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mm-legend li.is-missing {
+  opacity: 0.4;
+}
+
+.mm-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid;
+  border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
+}
+.mm-dot--palm {
+  color: var(--mm-green);
+  border-color: var(--mm-green);
+}
+.mm-dot--side {
+  color: var(--mm-amber);
+  border-color: var(--mm-amber);
+}
+.mm-dot--back {
+  color: var(--mm-blue);
+  border-color: var(--mm-blue);
+}
+
+.mm-reset {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+}
+
+.mm-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+  padding: 4px;
+  border: 1px solid var(--mm-line);
+  border-radius: 999px;
+  background: rgba(12, 22, 40, 0.8);
+}
+.mm-seg button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mm-ink-2);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.mm-seg button.is-on {
+  background: var(--mm-pill);
+  color: #061226;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-spinner {
+    animation: none;
+  }
+  .mm-btn,
+  .mm-coin-card,
+  .mm-ring-fill {
+    transition: none;
+  }
+}
+
+@media (max-height: 640px) {
+  .mm-tabs li {
+    padding-block: 3px 5px;
+  }
+}
+
+/* ================================================================== the screens after the scan, in the same look
+   The measurements and results screens keep their markup, content and logic; only the design tokens they already use
+   are replaced by the dark MILLIMESH ones (and the few places that hard-code white are overridden below). */
+
+.mm-app {
+  color-scheme: dark;
+  --paper: #05080f;
+  --surface: #0d1727;
+  --surface-2: #111f35;
+  --surface-3: #16294a;
+  --ink: #e9f1fb;
+  --ink-2: #c3d3ea;
+  --muted: #8ea3c0;
+  --line: rgba(130, 180, 255, 0.16);
+  --line-strong: rgba(130, 180, 255, 0.32);
+  --accent: #6cb2ff;
+  --accent-hover: #93c8fb;
+  --accent-ink: #061226;
+  --accent-text: #a8d4ff;
+  --accent-soft: rgba(108, 178, 255, 0.12);
+  --accent-line: rgba(108, 178, 255, 0.4);
+  --glow: rgba(108, 178, 255, 0.18);
+  --good: #3ddc97;
+  --good-soft: rgba(61, 220, 151, 0.12);
+  --warn: #f2c14e;
+  --warn-soft: rgba(242, 193, 78, 0.12);
+  --bad: #ff9a9a;
+  --bad-soft: rgba(255, 120, 120, 0.12);
+  --info: #6cb2ff;
+  --info-soft: rgba(108, 178, 255, 0.12);
+  --info-ink: #a8d4ff;
+  --info-line: rgba(108, 178, 255, 0.34);
+  --demo-ink: #f2d58a;
+  --demo-bg: rgba(242, 193, 78, 0.1);
+  --demo-line: rgba(242, 193, 78, 0.34);
+  --bad-ink: #ffb4b4;
+  --bad-line: rgba(255, 130, 130, 0.36);
+  --stage: #02050a;
+  --lift: 0 30px 60px -38px rgba(0, 0, 0, 0.85), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --focus: 0 0 0 3px rgba(108, 178, 255, 0.45);
+  --ring: 0 0 0 1px rgba(130, 180, 255, 0.14);
+  --tint: rgba(130, 180, 255, 0.06);
+  --inset-hi: rgba(255, 255, 255, 0.06);
+  --shell: rgba(130, 180, 255, 0.06);
+  --shell-line: rgba(130, 180, 255, 0.14);
+  --hover-line: rgba(130, 180, 255, 0.5);
+  --btn-bg: #8cc3fa;
+  --btn-bg-hover: #a9d3fc;
+  --btn-ink: #061226;
+  color: var(--ink);
+  background:
+    radial-gradient(120% 40% at 50% -6%, rgba(40, 100, 220, 0.24), transparent 62%),
+    var(--mm-bg);
+}
+
+.mm-app .topbar {
+  background: rgba(4, 8, 14, 0.82);
+  border-bottom-color: var(--line);
+}
+.mm-app .brand {
+  color: var(--ink);
+}
+.mm-app .brand-mark {
+  background: rgba(108, 178, 255, 0.14);
+  color: var(--mm-blue-hi);
+}
+
+.mm-app .footer {
+  color: var(--muted);
+  border-top-color: var(--line);
+}
+.mm-app .footer a {
+  color: var(--mm-blue-hi);
+}
+
+.mm-app .btn-primary {
+  background: var(--mm-pill);
+  border-color: rgba(190, 225, 255, 0.55);
+  color: #061226;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 12px 30px -12px rgba(108, 178, 255, 0.65);
+}
+.mm-app .btn-primary:hover {
+  background: linear-gradient(180deg, #dcefff 0%, #a4d1fc 52%, #7bb9f4 100%);
+}
+.mm-app .btn:not(.btn-primary) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.mm-app .btn-ghost,
+.mm-app .btn-quiet {
+  background: transparent;
+}
+
+.mm-app .card,
+.mm-app .panel,
+.mm-app .notice {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.mm-app .input,
+.mm-app .select {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.mm-app .input::placeholder {
+  color: var(--muted);
+}
+.mm-app option {
+  background: #0c1626;
+  color: #e9f1fb;
+}
+
+/* ?debug panel: the capture screen scrolls so the whole panel can be read */
+.mm-capture:has(.scan-debug-panel) {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+.mm-capture:has(.scan-debug-panel) .mm-cam {
+  flex: none;
+  height: 62dvh;
+}
+
+/* ------------------------------------------------------------------ results (the hero card and its pills) */
+
+.mm-app .results-v2::before,
+.mm-app .results-v2::after {
+  opacity: 0.2; /* the fine circuit traces either side of the hero: kept, but quiet on dark */
+}
+
+.mm-app .rv2-hero {
+  background:
+    radial-gradient(90% 40% at 50% 0%, rgba(40, 100, 220, 0.2), transparent 70%),
+    var(--mm-card);
+  box-shadow:
+    0 0 0 1px var(--mm-line),
+    0 46px 90px -44px rgba(0, 0, 0, 0.9),
+    0 3px 10px rgba(0, 0, 0, 0.35);
+}
+
+@media (min-width: 720px) {
+  .mm-app .rv2-hero::before {
+    background: radial-gradient(closest-side, rgba(24, 54, 108, 0.55) 62%, rgba(10, 22, 44, 0.35) 100%);
+    box-shadow:
+      0 0 0 1px rgba(130, 180, 255, 0.18),
+      0 0 0 22px rgba(130, 180, 255, 0.04),
+      0 0 0 23px rgba(130, 180, 255, 0.12);
+  }
+}
+
+.mm-app .rv2-title {
+  color: var(--mm-ink);
+  letter-spacing: 0.04em;
+}
+
+.mm-app .rv2-size {
+  background: rgba(16, 30, 54, 0.9);
+  border-color: var(--mm-line-strong);
+  box-shadow: 0 10px 26px -18px rgba(0, 0, 0, 0.8);
+}
+
+.mm-app .rv2-size-letter {
+  color: var(--mm-blue-hi);
+  text-shadow: 0 0 24px rgba(108, 178, 255, 0.45);
+}
+
+.mm-app .rv2-cta {
+  color: #061226;
+  background: var(--mm-pill);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 14px 30px -14px rgba(108, 178, 255, 0.7);
+}
+
+.mm-app .rv2-cta-ghost {
+  color: var(--mm-ink);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px var(--mm-line-strong);
+}
+
+.mm-app .rv2-cta-ghost:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.mm-app .results-v2 .card {
+  box-shadow: 0 0 0 1px var(--mm-line), 0 26px 50px -34px rgba(0, 0, 0, 0.85);
+}
+
+.mm-app .hand-stage {
+  box-shadow:
+    inset 0 0 0 1px rgba(130, 180, 255, 0.16),
+    inset 0 0 60px rgba(25, 120, 220, 0.14);
+}
+
+/* the measurement diagram: labels outlined in the page's dark instead of white */
+.mm-app .diagram {
+  background: #0a1626;
+}
+.mm-app .diagram text {
+  stroke: #0a1626;
+}
+
+/* the ?debug panel inside the capture screen */
+.mm-capture .scan-debug-panel {
+  margin-inline: 0;
+  background: rgba(10, 20, 38, 0.92);
+  border-color: var(--mm-line-strong);
+  color: var(--mm-ink-2);
+}

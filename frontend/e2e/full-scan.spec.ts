@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanRemainingViews, startCustomerScan } from "./views";
+import { continueFromRecon, scanRemainingViews, startCustomerScan } from "./views";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const summaryPath = resolve(__dirname, ".media/hand.json");
@@ -39,10 +39,15 @@ async function fullScan(page: Page, tag: string) {
     if (r.url().endsWith("/api/scan")) bodies.push(r.postData() ?? "");
   });
 
-  await startCustomerScan(page);
-  // The customer flow guides through three angles (palm, back of hand, side view), each required.
-  // The fake camera plays the same hand video for every view.
+  // The synthetic coin on the test video is a US quarter (24.26 mm): that is the coin to pick here (the flow's own default,
+  // the 2-rupee coin, would scale the hand by 23 / 24.26 and the comparison with the Python pipeline would be wrong).
+  await startCustomerScan(page, "/", /Quarter/);
+  // The customer flow guides through three phases (palm, side, back), each required. The fake camera plays the same
+  // hand video for every phase.
   await scanRemainingViews(page);
+  // An accepted scan ends in the estimated 3D reconstruction, then the measurements page.
+  await expect(page.getByRole("note")).toContainText("not a measured scan", { timeout: 180_000 });
+  await continueFromRecon(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your hand measurements", { timeout: 120_000 });
 
   // Only numeric observations are sent, in one request: no image data, frames tagged by view.

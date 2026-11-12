@@ -25,6 +25,28 @@
       "notes": "Disabled until verified in field testing. Enable only after the validation study includes nickel captures."
     },
     {
+      "id": "us_dime",
+      "label": "US dime (10¢)",
+      "shape": "circle",
+      "diameter_mm": 17.91,
+      "diameter_uncertainty_mm": 0.05,
+      "thickness_mm": 1.35,
+      "source": "United States Mint coin specifications (diameter 0.705 in / 17.91 mm, thickness 1.35 mm, cupronickel-clad copper core, silver colour).",
+      "enabled": true,
+      "notes": "Not validated: detection on real dimes not yet tested. At 17.91 mm it is the smallest coin offered, so it is more often too small in the image. Silver colour (cupronickel clad). diameter_uncertainty_mm is an assumed allowance as for the other US coins, not an official tolerance."
+    },
+    {
+      "id": "us_penny",
+      "label": "US penny (1¢)",
+      "shape": "circle",
+      "diameter_mm": 19.05,
+      "diameter_uncertainty_mm": 0.05,
+      "thickness_mm": 1.52,
+      "source": "United States Mint coin specifications (diameter 0.750 in / 19.05 mm, thickness 1.52 mm, copper-plated zinc, copper colour).",
+      "enabled": true,
+      "notes": "Not validated: detection on real pennies not yet tested. Copper colour (copper-plated zinc) is closer to skin tones than the silver coins the detector was tuned on, so it may be found less often. diameter_uncertainty_mm is an assumed allowance as for the other US coins, not an official tolerance."
+    },
+    {
       "id": "inr_2_2019",
       "label": "Indian 2-rupee coin, 2019 series (silver)",
       "shape": "circle",

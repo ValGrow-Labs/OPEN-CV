@@ -108,6 +108,17 @@ export interface ScanControllerOptions {
    *  and under the 2D drawing canvas, with the video's own CSS so `object-fit: contain` keeps it aligned. Its
    *  pixel size is set here (longest side live_scan.overlay_3d.focus_mask_max_px). Without it there is no mask. */
   maskCanvas?: HTMLCanvasElement | null;
+  /** Called with every frame the live checks accepted, as it is collected (the same frame onComplete later hands
+   *  over). Read-only: for showing live coverage. It cannot change which frames are collected. */
+  onFrameAccepted?: (frame: FrameObservation) => void;
+  /** Asked only once the view has collected what it needs by the usual rule (the frame target, or the early stop
+   *  on stable frames): return true to keep collecting a little longer (e.g. until the phone has seen the hand from
+   *  enough angles). It can only ask for MORE accepted frames, never fewer, and every frame still passes the same
+   *  checks; the scan timeout still ends the view with what it has (live_scan.timeout_s). */
+  holdCompletion?: (frames: readonly FrameObservation[]) => boolean;
+  /** Called whenever the collected frames are dropped and counting starts again (a reset, a new view, the page coming
+   *  back from the background), so a display that keeps its own copy of the accepted frames can drop them too. */
+  onCollectionReset?: () => void;
 }
 
 // Loop settings come from config/measurement.json "live_scan":
@@ -371,6 +382,11 @@ export class ScanController {
     this.startScanMs = performance.now();
     this.tFirstLock = 0;
     this.tFirstFrameCollected = 0;
+    try {
+      this.opts.onCollectionReset?.();
+    } catch (err) {
+      console.error("onCollectionReset failed", err);
+    }
     this.emit({ collected: 0 }, true);
   }
 
@@ -700,6 +716,11 @@ export class ScanController {
       if (this.frames.length === 0) this.tFirstFrameCollected = snap.now;
       this.frames.push(frame);
       this.lastAcceptMs = snap.now;
+      try {
+        this.opts.onFrameAccepted?.(frame);
+      } catch (err) {
+        console.error("onFrameAccepted failed", err); // a display consumer must never stop the scan loop
+      }
     }
     this.finishIfDone(snap.now);
   }
@@ -871,6 +892,16 @@ export class ScanController {
       (n >= earlyN && this.checkSampleStability(ls.early_stop_rel_sd)) ||
       (n >= minAccepted && elapsedSec >= ls.early_stop_after_s && this.checkSampleStability(this.config.capture.max_frame_rel_sd));
     if (n < target && !isStable) {
+      this.emit({ collected: n });
+      return;
+    }
+    let hold = false;
+    try {
+      hold = this.opts.holdCompletion?.(this.frames) === true;
+    } catch (err) {
+      console.error("holdCompletion failed", err);
+    }
+    if (hold) {
       this.emit({ collected: n });
       return;
     }

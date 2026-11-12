@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { CalibrationParams, CaptureParams, CoinDetectionParams, FrameObservation, LiveScanParams, PublicConfig } from "../api/types";
+import type { ReferenceObject, CalibrationParams, CaptureParams, CoinDetectionParams, FrameObservation, LiveScanParams, PublicConfig } from "../api/types";
 
 // Paths relative to the frontend root (vitest's cwd); import.meta.url is not a file URL under jsdom.
 const measurement = JSON.parse(readFileSync(resolve(process.cwd(), "../config/measurement.json"), "utf-8"));
@@ -88,4 +88,11 @@ export function publicConfig(overrides: Partial<PublicConfig> = {}): PublicConfi
     pilot_remote_enabled: false,
     ...overrides,
   };
+}
+
+/** publicConfig() with the coins exactly as config/reference_objects.json serves them (all seven). */
+export function publicConfigWithRealCoins(overrides: Partial<PublicConfig> = {}): PublicConfig {
+  const file = JSON.parse(readFileSync(resolve(process.cwd(), "../config/reference_objects.json"), "utf-8")) as { default: string; objects: Record<string, unknown>[] };
+  const objects = file.objects.map((o) => ({ availability: "all", size_check: false, customer_hint: null, notes: null, thickness_mm: null, ...o })) as unknown as ReferenceObject[];
+  return publicConfig({ reference_objects: { default: file.default, objects }, ...overrides });
 }

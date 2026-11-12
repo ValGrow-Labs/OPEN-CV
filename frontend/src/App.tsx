@@ -12,9 +12,8 @@ const MANUAL_LABELS: Record<keyof ManualEntries, string> = {
 };
 import { ResultsScreen } from "./screens/ResultsScreen";
 import { preloadScanTools, type ScanTimingBreakdown } from "./scan/scanController";
-import { ScanScreen } from "./screens/ScanScreen";
 import { ValidationScreen } from "./screens/ValidationScreen";
-import { WelcomeScreen } from "./screens/WelcomeScreen";
+import { MillimeshFlow } from "./millimesh/MillimeshFlow";
 import { BrandMark } from "./ui/components";
 import { observeReveals } from "./ui/motion";
 import { clearCoinConfirmed, loadChart, loadReference, saveChart, saveReference } from "./ui/settings";
@@ -93,6 +92,17 @@ export function App() {
       h1.focus({ preventScroll: true });
     }
   }, [screen, config]);
+
+  // The customer flow (scan, measurements, results) has the dark MILLIMESH look; the operator screens keep the light one.
+  const dark = screen === "welcome" || screen === "scan" || screen === "measurements" || screen === "results";
+  useEffect(() => {
+    const root = document.documentElement;
+    if (dark && !pilotToken) root.dataset.mm = "on";
+    else delete root.dataset.mm;
+    return () => {
+      delete root.dataset.mm;
+    };
+  }, [dark, pilotToken]);
 
   // Scroll-reveal any newly rendered [data-reveal] elements.
   useEffect(() => {
@@ -195,13 +205,15 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      {screen !== "scan" && <Header onHome={goHome} />}
-      {screen === "welcome" && (
-        <WelcomeScreen
+    <div className={`app ${dark ? "mm-app" : ""}`}>
+      {screen !== "scan" && screen !== "welcome" && <Header onHome={goHome} />}
+      {(screen === "welcome" || screen === "scan") && (
+        <MillimeshFlow
+          key={scanKey}
           config={config}
           chartId={chart.chart_id}
           reference={reference}
+          initialStep={screen === "scan" ? "capture" : "start"}
           onChartChange={(id) => {
             setChartId(id);
             saveChart(id);
@@ -210,21 +222,7 @@ export function App() {
             setReference(sel);
             saveReference(sel);
           }}
-          onStart={startScan}
-        />
-      )}
-      {screen === "scan" && (
-        <ScanScreen
-          key={scanKey}
-          config={config}
-          chartId={chart.chart_id}
-          reference={reference}
-          views={config.capture.views}
           onCancel={() => setScreen(result ? "measurements" : "welcome")}
-          onReferenceConfirm={(sel) => {
-            setReference(sel);
-            saveReference(sel);
-          }}
           onResult={(r, m, t) => {
             setResult(r);
             setMirrored(m);
@@ -275,7 +273,7 @@ export function App() {
           onClose={goHome}
         />
       )}
-      {screen !== "scan" && (
+      {screen !== "scan" && screen !== "welcome" && (
         <footer className="footer">
           <span>
             {config.calibration_validated ? "Camera-based estimate" : "Unvalidated prototype · camera-based estimate"} · not a

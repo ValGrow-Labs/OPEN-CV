@@ -5,7 +5,6 @@ import { publicConfig } from "../test/fixtures";
 import { coachKind, liveStage } from "../ui/guide";
 import { introSeen } from "../ui/settings";
 import { ScanScreen } from "./ScanScreen";
-import { WelcomeScreen } from "./WelcomeScreen";
 
 afterEach(cleanup);
 
@@ -79,49 +78,5 @@ describe("pre-scan quick guide", () => {
     expect(screen.getByRole("heading", { name: /Open your palm/ })).toBeTruthy();
     fireEvent.keyDown(dialog, { key: "ArrowLeft" });
     expect(screen.getByRole("heading", { name: "Before you start" })).toBeTruthy();
-  });
-});
-
-describe("welcome walkthrough", () => {
-  it("lets the visitor step through how it works", () => {
-    render(
-      <WelcomeScreen
-        config={publicConfig()}
-        chartId="demo-length-v1"
-        reference={{ object_id: "us_quarter" }}
-        onChartChange={() => {}}
-        onReferenceChange={() => {}}
-        onStart={() => {}}
-      />,
-    );
-    const steps = screen.getAllByRole("button", { name: /Open your palm|Place the coin|Hold still/ });
-    expect(steps).toHaveLength(3);
-    fireEvent.click(steps[1]);
-    expect(steps[1].getAttribute("aria-current")).toBe("step");
-    expect(screen.getByText("A US quarter (24.26 mm) gives the scale.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Play demo" })).toBeTruthy(); // autoplay stopped by the click
-  });
-});
-
-describe("product picker", () => {
-  it("shows each product as a selectable option with its sizing basis", () => {
-    const onChartChange = vi.fn();
-    const base = publicConfig();
-    const config = publicConfig({
-      charts: [
-        ...base.charts,
-        { ...base.charts[0], chart_id: "fitted", product_model: "Fitted Glove", measurements: ["hand_circumference_mm", "hand_length_mm"] },
-      ],
-    });
-    render(
-      <WelcomeScreen config={config} chartId="demo-length-v1" reference={{ object_id: "us_quarter" }} onChartChange={onChartChange} onReferenceChange={() => {}} onStart={() => {}} />,
-    );
-    const options = screen.getAllByRole("radio");
-    expect(options).toHaveLength(2);
-    expect((options[0] as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByText("Sized by hand circumference and hand length")).toBeTruthy();
-    fireEvent.click(screen.getByText("Fitted Glove"));
-    expect(onChartChange).toHaveBeenCalledWith("fitted");
-    expect(screen.getByText("Demo size chart")).toBeTruthy();
   });
 });
