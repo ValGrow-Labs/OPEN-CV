@@ -111,7 +111,7 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
             <div className="rv2-stage-box">
               <HandStage
                 mode="static"
-                theme="light"
+                theme="dark"
                 landmarks={result.landmarks_px_median}
                 tags={tags}
                 label="A glowing 3D model of your hand with its measured lengths"

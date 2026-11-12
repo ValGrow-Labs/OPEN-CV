@@ -44,6 +44,11 @@ export function loadReference(config: PublicConfig): ReferenceSelection {
   return fallback;
 }
 
+/** Whether this device has a coin choice saved (otherwise loadReference only returns the configured default). */
+export function hasSavedReference(): boolean {
+  return read(REF_KEY) !== null;
+}
+
 export function saveReference(sel: ReferenceSelection): void {
   write(REF_KEY, JSON.stringify(sel));
 }

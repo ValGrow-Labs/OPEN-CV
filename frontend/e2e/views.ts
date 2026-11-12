@@ -67,40 +67,43 @@ export async function showSide(page: Page, side: ShownSide): Promise<void> {
   await page.evaluate((s) => ((window as unknown as { __shown: string }).__shown = s), side);
 }
 
-/** The views after the palm, in the order the customer is guided through them (config capture.views). */
-export const NEXT_VIEW_BUTTONS = ["Scan back of hand", "Scan side view"] as const;
+/** The phases after the palm, in the order the customer is guided through them: the side, then the back of the hand. */
+export const NEXT_VIEW_BUTTONS = ["Start side scan", "Start back scan"] as const;
 
-/** Start a customer scan up to the camera: coin question, quick guide, camera. */
-export async function startCustomerScan(page: Page, path = "/"): Promise<void> {
+/** Start a customer scan up to the camera: start screen, coin choice (the 2-rupee coin is preselected; its size is
+ *  confirmed), camera step. Opens the camera and starts the palm phase. */
+export async function startCustomerScan(page: Page, path = "/", coin?: RegExp): Promise<void> {
   await installTurnableCamera(page); // the palm view shows the video as it plays
   await page.goto(path);
-  await page.getByRole("button", { name: "Start Scan" }).click();
-  // The coin must be confirmed before the camera starts.
-  await page.getByRole("button", { name: /Yes, this is my coin/ }).click();
-  // Walk through the quick guide; the camera starts only at the end.
-  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("button", { name: /Start camera/ }).click();
+  await page.getByRole("button", { name: /Start Scan/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Select a Reference Coin" })).toBeVisible();
+  if (coin) await page.getByRole("radio", { name: coin }).check({ force: true });
+  // Coins whose older, bigger twin is still in circulation need their size confirmed (as the server requires).
+  const sizeCheck = page.getByRole("checkbox");
+  if (await sizeCheck.count()) await sizeCheck.check();
+  await page.getByRole("button", { name: /Continue/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Allow Camera Access" })).toBeVisible();
+  await page.getByRole("button", { name: "Allow Camera" }).click();
 }
 
 export interface SheetCheck {
   /** Prefix of the screenshot file name written for each card (test-results/<prefix>-<n>.png). */
   shots?: string;
-  /** Also assert the layout rules of the next-angle sheet (thumb reach, no scrolling, 56 px button). */
+  /** Also assert the layout rules of the between-phase sheet (thumb reach, no scrolling, 52 px button). */
   layout?: boolean;
 }
 
-/** The side each guided view must show, after the palm: the back is the palm turned over, the side the hand on its edge. */
-const SIDE_FOR_BUTTON: ShownSide[] = ["back", "side"];
+/** The side each guided view must show: the side view the hand on its edge, the back the palm turned over. */
+const SIDE_FOR_BUTTON: ShownSide[] = ["side", "back"];
 
-/** After the palm: scan the back of the hand, then the side view (each needs one tap on its card). The
- *  picture is turned over / onto its edge before the tap, as a customer turns their hand. */
+/** After the palm: scan the side, then the back of the hand (each needs one tap on its card). The picture is turned
+ *  onto its edge / over before the tap, as a customer turns their hand. */
 export async function scanRemainingViews(page: Page, check: SheetCheck = {}): Promise<void> {
   for (const [i, name] of NEXT_VIEW_BUTTONS.entries()) {
     const button = page.getByRole("button", { name });
-    await expect(button).toBeVisible({ timeout: 120_000 });
-    // Required views offer no way to skip to the size.
-    await expect(page.getByRole("button", { name: "Skip, see my size" })).toHaveCount(0);
-    await expect(page.getByText(`Step ${i + 2} of 3`)).toBeVisible();
+    await expect(button).toBeVisible({ timeout: 180_000 });
+    // Every phase is required: there is no way to skip to the size.
+    await expect(page.getByRole("button", { name: /Skip/ })).toHaveCount(0);
     await page.waitForTimeout(400); // let the sheet settle before it is photographed
     if (check.shots) await page.screenshot({ path: `test-results/${check.shots}-card${i + 2}.png` });
     if (check.layout) await expectSheetLayout(page);
@@ -109,28 +112,30 @@ export async function scanRemainingViews(page: Page, check: SheetCheck = {}): Pr
   }
 }
 
+/** The 3D Reconstruction step that follows an accepted scan: continue to the measurements page. */
+export async function continueFromRecon(page: Page): Promise<void> {
+  await expect(page.getByRole("heading", { level: 1, name: "3D Reconstruction" })).toBeVisible({ timeout: 180_000 });
+  await page.getByRole("button", { name: /See my measurements/ }).click();
+}
+
 /** The rules the next-angle sheet is built to: bottom-aligned, thumb-sized button, no scrolling. */
 export async function expectSheetLayout(page: Page): Promise<void> {
   const vp = page.viewportSize()!;
-  const sheet = page.locator(".view-sheet");
+  const sheet = page.locator(".mm-card--between");
   const box = (await sheet.boundingBox())!;
-  const portrait = vp.height >= vp.width;
-  // inside the screen, and on the bottom edge (portrait) or the right edge (landscape)
+  // inside the screen, near the bottom edge (a thumb reaches it) and leaving the camera picture visible
   expect(box.x).toBeGreaterThanOrEqual(-1);
   expect(box.y).toBeGreaterThanOrEqual(-1);
-  if (portrait) {
-    expect(Math.abs(box.y + box.height - vp.height)).toBeLessThanOrEqual(2);
-    expect(box.width).toBeGreaterThanOrEqual(vp.width - 2); // full width
-    expect(box.height).toBeLessThanOrEqual(vp.height * 0.7); // leaves the camera picture visible
-  } else {
-    expect(Math.abs(box.x + box.width - vp.width)).toBeLessThanOrEqual(2);
-  }
+  expect(box.y + box.height).toBeLessThanOrEqual(vp.height + 1);
+  expect(vp.height - (box.y + box.height)).toBeLessThanOrEqual(48);
+  expect(box.width).toBeGreaterThanOrEqual(Math.min(vp.width, 520) - 44);
+  expect(box.height).toBeLessThanOrEqual(vp.height * 0.7);
   // nothing to scroll
   const scrolls = await sheet.evaluate((el) => el.scrollHeight - el.clientHeight);
   expect(scrolls).toBeLessThanOrEqual(1);
   // the primary button is a thumb target
   const btn = (await sheet.getByRole("button").first().boundingBox())!;
-  expect(btn.height).toBeGreaterThanOrEqual(56);
+  expect(btn.height).toBeGreaterThanOrEqual(52);
   expect(btn.y + btn.height).toBeLessThanOrEqual(vp.height + 1);
   // no horizontal scrolling of the page
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);

@@ -62,14 +62,14 @@ export interface SampledHand {
 // Constants of the body (units of hand length)
 
 /** Radius at the start and end of every capsule bone (null: not a capsule). Continuous along a finger. */
-const BONE_RADII: readonly (readonly [number, number] | null)[] = [
+export const BONE_RADII: readonly (readonly [number, number] | null)[] = [
   [0.085, 0.082], [0.082, 0.07], [0.07, 0.06], [0.06, 0.05], // thumb (the first bone is the thenar bulge)
   null, [0.062, 0.056], [0.056, 0.049], [0.049, 0.042], // index
   null, [0.065, 0.058], [0.058, 0.051], [0.051, 0.043], // middle
   null, [0.062, 0.055], [0.055, 0.048], [0.048, 0.041], // ring
   null, [0.053, 0.047], [0.047, 0.041], [0.041, 0.036], // little
 ];
-const CAPSULE_BONES: readonly number[] = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19];
+export const CAPSULE_BONES: readonly number[] = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19];
 const TIP_BONES: readonly number[] = [3, 7, 11, 15, 19];
 const JOINT_BASES: readonly number[] = [0, 5, 9, 13, 17]; // capsule bones that start a finger (get a start ring)
 

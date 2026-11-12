@@ -1,11 +1,11 @@
-// The guided angles on a phone: palm -> back of hand -> side view, then the measurements page.
+// The guided phases on a phone: palm -> side -> back of hand, then the measurements page.
 // Written but not run in the worktree that produced it. The fake camera plays the same hand video
 // for every view; the side view needs only a hand and a coin in view (basic checks).
 import { expect, test, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanRemainingViews, startCustomerScan } from "./views";
+import { continueFromRecon, scanRemainingViews, startCustomerScan } from "./views";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 test.skip(!existsSync(resolve(__dirname, ".media/hand.json")), "hand test video not generated (run npm run e2e)");
@@ -27,6 +27,7 @@ async function threeViews(page: Page, tag: string) {
   await startCustomerScan(page);
   // The camera is opened once: the next-angle cards must not bring a new permission prompt or restart it.
   await scanRemainingViews(page, { shots: tag, layout: true });
+  await continueFromRecon(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your hand measurements", { timeout: 120_000 });
 
   // One request, numbers only, frames tagged by view.

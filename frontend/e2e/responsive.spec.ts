@@ -25,36 +25,35 @@ for (const vp of VIEWPORTS) {
   test.describe(vp.name, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    test("welcome, guide, scan and calibration fit the screen", async ({ page }) => {
+    test("start, coin, camera, scan and calibration fit the screen", async ({ page }) => {
       await page.goto("/");
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Find your glove size");
-      // Scroll through so reveal-on-scroll content enters, and let the scene draw.
-      for (let i = 0; i < 8; i++) {
-        await page.mouse.wheel(0, 400);
-        await page.waitForTimeout(100);
-      }
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.waitForTimeout(2500);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Surface Swarm");
+      await page.waitForTimeout(1500); // let the wave draw
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
-      await page.screenshot({ path: `test-results/rwd-${vp.name}-welcome.png`, fullPage: true });
+      await page.screenshot({ path: `test-results/rwd-${vp.name}-start.png`, fullPage: true });
+      // the primary action is reachable without scrolling sideways
+      const start = await page.getByRole("button", { name: /Start Scan/ }).boundingBox();
+      expect(start && start.x + start.width).toBeLessThanOrEqual(vp.width);
 
-      await page.getByRole("button", { name: "Start Scan" }).click();
-      await expect(page.getByRole("dialog", { name: "Which coin are you holding?" })).toBeVisible();
+      await page.getByRole("button", { name: /Start Scan/ }).click();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Select a Reference Coin");
+      await page.getByRole("checkbox").check();
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
-      await page.getByRole("button", { name: /Yes, this is my coin/ }).click();
-      const guide = page.getByRole("dialog", { name: "Before you start" });
-      await expect(guide).toBeVisible();
-      await page.getByRole("button", { name: "Next" }).click();
-      await page.waitForTimeout(2600);
-      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
-      await page.screenshot({ path: `test-results/rwd-${vp.name}-guide.png` });
-      // The primary action must be reachable without scrolling sideways.
-      const next = await page.getByRole("button", { name: "Next" }).boundingBox();
-      expect(next && next.x + next.width).toBeLessThanOrEqual(vp.width);
+      await page.screenshot({ path: `test-results/rwd-${vp.name}-coin.png`, fullPage: true });
+      const go = await page.getByRole("button", { name: /Continue/ }).boundingBox();
+      expect(go && go.x + go.width).toBeLessThanOrEqual(vp.width);
+      await page.getByRole("button", { name: /Continue/ }).click();
 
-      await page.getByRole("button", { name: "Skip guide" }).click();
-      await expect(page.locator(".live-pill")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Allow Camera Access");
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `test-results/rwd-${vp.name}-camera.png` });
+      await page.getByRole("button", { name: "Allow Camera" }).click();
+
+      await expect(page.locator(".mm-pill")).toBeVisible();
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+      // the camera card and the ring are on the screen, not scrolled away
+      const card = await page.locator(".mm-card").boundingBox();
+      expect(card && card.y + card.height).toBeLessThanOrEqual(vp.height + 1);
       await page.screenshot({ path: `test-results/rwd-${vp.name}-scan.png` });
       await page.getByRole("button", { name: "Cancel scan" }).click();
 

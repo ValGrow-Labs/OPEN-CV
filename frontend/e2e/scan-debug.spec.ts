@@ -12,10 +12,9 @@ test.skip(!existsSync(resolve(__dirname, ".media/hand.json")), "hand test video 
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-test("?debug shows camera, hand, coin, frames, the 3D state, WebGL errors and the API connection", async ({ page }) => {
+test("?debug shows camera, hand, coin, frames, the layers, WebGL errors and the API connection", async ({ page }) => {
   test.setTimeout(240_000);
-  // The view stays open while the panel is read; the 3D layer gets a budget software WebGL cannot trip.
-  await routeConfig(page, { overlay3d: { max_frame_ms: 100_000, min_fps: 0.01, fallback_after_slow_s: 600 }, timing: "hold" });
+  await routeConfig(page, { timing: "hold" }); // the view stays open while the panel is read
   await startCustomerScan(page, "/?debug");
   const panel = page.getByRole("region", { name: "Diagnostics" });
   await expect(panel).toBeVisible({ timeout: 120_000 });
@@ -24,7 +23,7 @@ test("?debug shows camera, hand, coin, frames, the 3D state, WebGL errors and th
   await expect(panel).toContainText(/hand\s+found/, { timeout: 120_000 });
   await expect(panel).toContainText(/coin\s+accepted/, { timeout: 120_000 });
   await expect(panel).toContainText(/frames\s+accepted [1-9]\d* \/ \d+/, { timeout: 120_000 });
-  await expect(panel).toContainText(/3d layer\s+on/, { timeout: 120_000 });
+  await expect(panel).toContainText(/3d layer\s+off.*particles/); // the MILLIMESH scan draws particles
   await expect(panel).toContainText(/3d card\s+ok/);
   await expect(panel).toContainText(/webgl\s+no errors seen/);
   await expect(panel).toContainText(/api\s+OK HTTP 200 · \d+ ms · v/, { timeout: 30_000 }); // the page's own /api/health
