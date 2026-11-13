@@ -8,8 +8,9 @@ import type { Landmark } from "../hand3d/handModel";
 import { PerfGuard } from "../hand3d/perfGuard";
 import { particleCount, skinSamples, skinTable, swarmShare, videoToCanvas } from "./swarm";
 
-const MAX_PARTICLES = 460;
-const SKIN_SAMPLES = 640;
+// Many small points, so the hand reads as a dense swarm. A prime sample count keeps `(i * 7) % SKIN_SAMPLES` distinct.
+const MAX_PARTICLES = 1100;
+const SKIN_SAMPLES = 1399;
 
 export interface ParticleFieldProps {
   /** The tracked hand in video pixels (smoothed), or null; read every frame, no re-render. */
@@ -37,6 +38,9 @@ interface Particle {
   skin: number;
   rank: number;
   tw: number;
+  /** Drawn size and opacity this frame. */
+  s: number;
+  al: number;
 }
 
 let sprite: HTMLCanvasElement | null = null;
@@ -54,6 +58,28 @@ function glowSprite(): HTMLCanvasElement {
     g.fillRect(0, 0, 32, 32);
   }
   sprite = c;
+  return c;
+}
+
+/** The points on the skin: a white core, a saturated blue body and a deep-blue edge, drawn normally (not added to the
+ *  picture) so they stay visible on a bright wall as well as a dark one. */
+let skinSprite: HTMLCanvasElement | null = null;
+function skinDot(): HTMLCanvasElement {
+  if (skinSprite) return skinSprite;
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const g = c.getContext("2d");
+  if (g) {
+    const grad = g.createRadialGradient(24, 24, 0, 24, 24, 24);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.2, "rgba(232,246,255,1)");
+    grad.addColorStop(0.42, "rgba(80,170,255,0.96)");
+    grad.addColorStop(0.7, "rgba(24,96,238,0.55)");
+    grad.addColorStop(1, "rgba(16,64,220,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 48, 48);
+  }
+  skinSprite = c;
   return c;
 }
 
@@ -75,6 +101,9 @@ export function ParticleField({ poseRef, frameRef, coverageRef, mirror, onDegrad
     const table = skinTable(SKIN_SAMPLES);
     const samples = new Float32Array(SKIN_SAMPLES * 2);
     const sprite = glowSprite();
+    const dot = skinDot();
+    const floatIdx = new Int32Array(MAX_PARTICLES);
+    const skinIdx = new Int32Array(MAX_PARTICLES);
     let w = 0;
     let h = 0;
     const rnd = (() => {
@@ -91,6 +120,8 @@ export function ParticleField({ poseRef, frameRef, coverageRef, mirror, onDegrad
       skin: Math.floor(rnd() * SKIN_SAMPLES),
       rank: i / MAX_PARTICLES,
       tw: rnd() * Math.PI * 2,
+      s: 0,
+      al: 0,
     }));
     // the rank order is shuffled so the swarm fills the hand evenly, not part by part
     for (let i = parts.length - 1; i > 0; i--) {
@@ -156,8 +187,9 @@ export function ParticleField({ poseRef, frameRef, coverageRef, mirror, onDegrad
       const mir = mirrorRef.current;
       const k = still ? 1 : 1 - Math.exp(-7 * dt);
       ctx.clearRect(0, 0, w, h);
-      ctx.globalCompositeOperation = "lighter";
       const sec = now / 1000;
+      let nf = 0;
+      let ns = 0;
       for (let i = 0; i < n; i++) {
         const p = parts[i];
         const swarm = hand !== null && fr !== null && p.rank < share;
@@ -178,14 +210,32 @@ export function ParticleField({ poseRef, frameRef, coverageRef, mirror, onDegrad
           if (p.y > h + 4) p.y = -4;
           else if (p.y < -4) p.y = h + 4;
         }
-        const twinkle = plan.sweep && !still ? 0.75 + 0.25 * Math.sin(sec * 2.2 + p.tw) : 0.9;
-        const alpha = (0.28 + 0.72 * p.a * handAlpha) * twinkle;
-        const s = (p.size + 2.2 * p.a * handAlpha) * 2.4;
-        ctx.globalAlpha = Math.min(1, alpha);
-        ctx.drawImage(sprite, p.x - s / 2, p.y - s / 2, s, s);
+        const twinkle = plan.sweep && !still ? 0.8 + 0.2 * Math.sin(sec * 2.2 + p.tw) : 0.92;
+        const onSkin = p.a * handAlpha;
+        if (onSkin > 0.35) {
+          p.s = (0.8 + p.size * 0.6 + 1.4 * onSkin) * 2.5;
+          p.al = Math.min(1, (0.5 + 0.5 * onSkin) * twinkle + 0.08);
+          skinIdx[ns++] = i;
+        } else {
+          p.s = (p.size + 2.2 * onSkin) * 2.4;
+          p.al = Math.min(1, (0.34 + 0.66 * onSkin) * twinkle);
+          floatIdx[nf++] = i;
+        }
+      }
+      // the floating glow is added to the picture; the points on the skin are drawn over it, in solid colour
+      ctx.globalCompositeOperation = "lighter";
+      for (let j = 0; j < nf; j++) {
+        const p = parts[floatIdx[j]];
+        ctx.globalAlpha = p.al;
+        ctx.drawImage(sprite, p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+      }
+      ctx.globalCompositeOperation = "source-over";
+      for (let j = 0; j < ns; j++) {
+        const p = parts[skinIdx[j]];
+        ctx.globalAlpha = p.al;
+        ctx.drawImage(dot, p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
       }
       ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
       guard.frame(performance.now() - t0);
     };
     raf = requestAnimationFrame(frame);
