@@ -86,12 +86,30 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const [pendingFrames, setPendingFrames] = useState<FrameObservation[] | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [degraded, setDegraded] = useState(false);
+  // The camera picture's own shape (width / height). Wide screens give the camera a frame of exactly this shape, so a
+  // landscape webcam is not cropped to a portrait window; the phone layout fills its window as before and ignores it.
+  const [videoAr, setVideoAr] = useState(16 / 9);
   const debug = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
 
   useEffect(() => {
     preloadScanTools("scan");
     warmupService();
   }, []);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const read = () => {
+      if (v.videoWidth > 0 && v.videoHeight > 0) setVideoAr(v.videoWidth / v.videoHeight);
+    };
+    read();
+    v.addEventListener("loadedmetadata", read);
+    v.addEventListener("resize", read);
+    return () => {
+      v.removeEventListener("loadedmetadata", read);
+      v.removeEventListener("resize", read);
+    };
+  }, [status?.phase]);
 
   /** Coverage of the view being scanned, from the frames the live checks accepted. */
   const coverageNow = useCallback(
@@ -286,6 +304,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
           </button>
         </span>
       </header>
+      <div className="mm-capture-body">
       <h1 className="visually-hidden">Hand scan: {text.title}</h1>
 
       <ol className="mm-tabs" aria-label="Scan views">
@@ -296,7 +315,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         ))}
       </ol>
 
-      <div className="mm-cam">
+      <div className="mm-cam" style={{ ["--ar" as string]: String(videoAr) }}>
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className="mm-cam-draw" aria-hidden="true" />
         {!degraded && phaseRunning === "running" && !submitting && (
@@ -416,6 +435,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
           <Ring percent={percent} label={`${text.title} coverage`} />
         </section>
       )}
+      </div>
     </main>
   );
 }

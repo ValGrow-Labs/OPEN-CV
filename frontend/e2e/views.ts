@@ -119,10 +119,32 @@ export async function continueFromRecon(page: Page): Promise<void> {
 }
 
 /** The rules the next-angle sheet is built to: bottom-aligned, thumb-sized button, no scrolling. */
+/** Area (px squared) two boxes have in common; 0 when they only touch or are apart. */
+export const overlapArea = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): number =>
+  Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+
 export async function expectSheetLayout(page: Page): Promise<void> {
   const vp = page.viewportSize()!;
   const sheet = page.locator(".mm-card--between");
   const box = (await sheet.boundingBox())!;
+  if (vp.width >= 600) {
+    // Tablet, laptop, landscape phone: the card sits in the side panel beside the camera (or under it on a portrait
+    // tablet). It must be inside the screen sideways, clear of the camera, readable without inner scrolling, and its
+    // button a proper touch target that can be reached (the page may scroll a little on a short landscape window).
+    expect(box.x).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width).toBeLessThanOrEqual(vp.width + 1);
+    expect(box.y).toBeGreaterThanOrEqual(-1);
+    const cam = await page.locator(".mm-cam").boundingBox();
+    if (cam) expect(overlapArea(box, cam)).toBeLessThanOrEqual(1);
+    expect(await sheet.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+    const wideButton = sheet.getByRole("button").first();
+    await wideButton.scrollIntoViewIfNeeded();
+    const wb = (await wideButton.boundingBox())!;
+    expect(wb.height).toBeGreaterThanOrEqual(44);
+    expect(wb.y + wb.height).toBeLessThanOrEqual(vp.height + 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    return;
+  }
   // inside the screen, near the bottom edge (a thumb reaches it) and leaving the camera picture visible
   expect(box.x).toBeGreaterThanOrEqual(-1);
   expect(box.y).toBeGreaterThanOrEqual(-1);

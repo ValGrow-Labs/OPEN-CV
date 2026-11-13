@@ -1093,3 +1093,17 @@ html[data-mm="on"] body {
   border-color: var(--mm-line-strong);
   color: var(--mm-ink-2);
 }
+
+/* the hand diagram's two measurement labels and lines were drawn in dark blue and green for a pale page: lighter here */
+.mm-app .diagram text[fill="#1f5eea"] {
+  fill: #9ccbff;
+}
+.mm-app .diagram text[fill="#12805a"] {
+  fill: #66e3ae;
+}
+.mm-app .diagram line[stroke="#1f5eea"] {
+  stroke: #7fb8ff;
+}
+.mm-app .diagram line[stroke="#12805a"] {
+  stroke: #4fd19b;
+}

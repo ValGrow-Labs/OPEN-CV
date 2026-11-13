@@ -217,7 +217,10 @@ export default function ReconScene({ fit, mode, resetKey, onUnavailable }: Recon
       canvas.style.height = "100%";
       camera.aspect = w / h;
       const t = Math.tan((camera.fov * Math.PI) / 360);
-      const dist = Math.max(0.74 / t, 0.56 / (t * camera.aspect)) * 1.03;
+      // A wide stage (a laptop) is height-limited: leave room above and below the hand so the fingertips and the sway never touch
+      // the edge. A tall one (a phone) keeps its tighter fit.
+      const halfHeight = camera.aspect >= 1 ? 0.86 : 0.74;
+      const dist = Math.max(halfHeight / t, 0.56 / (t * camera.aspect)) * 1.03;
       camera.position.set(0, 0, dist);
       camera.lookAt(0, 0, 0);
       camera.updateProjectionMatrix();

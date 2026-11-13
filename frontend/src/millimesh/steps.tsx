@@ -112,6 +112,9 @@ export function CoinStep({ config, previous, onContinue, onBack }: CoinProps) {
       </h1>
       <p className="mm-sub">Choose the coin you will place on your hand for the entire scan.</p>
 
+      {/* Wrappers for the wide layouts (coins on one side, the explanation and Continue on the other); they take no
+          part in the phone layout (display: contents). */}
+      <div className="mm-coin-layout">
       <div className="mm-coins" role="radiogroup" aria-label="Reference coin">
         {coins.map((c) => {
           const on = c.id === choice && c.selectable;
@@ -138,6 +141,7 @@ export function CoinStep({ config, previous, onContinue, onBack }: CoinProps) {
         })}
       </div>
 
+      <div className="mm-coin-aside">
       {chosen?.object.customer_hint && <p className="mm-fine">{chosen.object.customer_hint}</p>}
       {needsCheck && chosen && (
         <label className="mm-check">
@@ -156,6 +160,8 @@ export function CoinStep({ config, previous, onContinue, onBack }: CoinProps) {
           Back
         </button>
       </div>
+      </div>
+      </div>
     </main>
   );
 }
@@ -169,6 +175,7 @@ export function CameraStep({ onAllow, onNotNow }: { onAllow: () => void; onNotNo
       <header className="mm-top">
         <Wordmark />
       </header>
+      <div className="mm-camera-card">
       <div className="mm-camera-body">
         <span className="mm-camera-icon" aria-hidden="true">
           <CameraIcon />
@@ -186,6 +193,7 @@ export function CameraStep({ onAllow, onNotNow }: { onAllow: () => void; onNotNo
         <button className="mm-btn mm-btn--ghost" onClick={onNotNow}>
           Not Now
         </button>
+      </div>
       </div>
     </main>
   );

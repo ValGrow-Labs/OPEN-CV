@@ -1,0 +1,650 @@
+/* ================================================================== RESPONSIVE (tablet, laptop, desktop, landscape)
+   The phone layout (under 600 px wide, in millimesh.css) is the client's design and is left exactly as it is. Everything
+   here only applies from 600 px up, in two steps:
+     T  (min-width: 600px)                                   a roomier single column, bigger type, real card sizes;
+     W  (min-width: 900px) or (600px+ and landscape)         side-by-side layouts: camera or 3D stage on one side, the
+                                                              panel (tabs, guidance, controls) on the other.
+   Layout only: no logic, threshold or measurement is touched. Loaded after millimesh.css. */
+
+/* Wrappers added for the wide layouts: invisible on a phone. */
+.mm-coin-layout,
+.mm-coin-aside,
+.mm-camera-card,
+.mm-capture-body,
+.rv2-rest {
+  display: contents;
+}
+
+/* Touch targets: the pieces that look small keep their look but get a 44 px hit area. */
+.mm-icon-btn {
+  position: relative;
+}
+.mm-icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+.mm-seg button {
+  position: relative;
+}
+.mm-seg button::after {
+  content: "";
+  position: absolute;
+  inset: -2px 0;
+}
+.mm-link:not(.mm-reset) {
+  position: relative;
+}
+.mm-link::after {
+  content: "";
+  position: absolute;
+  inset: -10px -6px;
+}
+
+/* ---------------------------------------------------------------- T: from 600 px */
+@media (min-width: 600px) {
+  .mm-screen {
+    --mm-content: 760px;
+    --mm-gutter: clamp(20px, 4vw, 48px);
+    max-width: none;
+    border-inline: 0;
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+    padding-left: max(env(safe-area-inset-left), var(--mm-gutter), calc((100% - var(--mm-content)) / 2));
+    padding-right: max(env(safe-area-inset-right), var(--mm-gutter), calc((100% - var(--mm-content)) / 2));
+  }
+
+  .mm-top {
+    padding: 14px 0 22px;
+  }
+  .mm-top--bar {
+    padding: 2px 0 14px;
+  }
+  .mm-wordmark--sm {
+    font-size: 12px;
+  }
+  .mm-wordmark--md {
+    font-size: 15px;
+  }
+
+  .mm-h1 {
+    font-size: clamp(3rem, 6.4vw, 5.4rem);
+  }
+  .mm-h2 {
+    font-size: clamp(1.55rem, 2.6vw, 2.2rem);
+  }
+  .mm-lead {
+    max-width: 34ch;
+    font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+  }
+  .mm-sub {
+    max-width: 52ch;
+    font-size: clamp(0.95rem, 1.3vw, 1.1rem);
+  }
+  .mm-fine {
+    font-size: 0.875rem;
+  }
+  .mm-link,
+  .mm-note {
+    font-size: 0.875rem;
+  }
+  .mm-btn {
+    min-height: 56px;
+    font-size: 1rem;
+  }
+  .mm-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .mm-seg button {
+    min-height: 44px;
+    font-size: 0.95rem;
+  }
+  .mm-select {
+    min-height: 48px;
+    font-size: 0.95rem;
+  }
+  .mm-field label {
+    font-size: 0.85rem;
+  }
+  .mm-check {
+    font-size: 0.9rem;
+  }
+
+  /* 1. start */
+  .mm-start-body {
+    max-width: 560px;
+  }
+
+  /* 2. coin */
+  .mm-screen.mm-coin {
+    display: flex;
+    filter: none;
+    margin-bottom: 0;
+  }
+  .mm-coin-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    margin-top: clamp(20px, 4vh, 48px);
+    margin-bottom: auto;
+  }
+  /* the heading, the line under it and the coins are centred as one group in the space under the wordmark */
+  .mm-coin > .mm-top {
+    margin-bottom: auto;
+  }
+  .mm-coin-aside {
+    display: flex;
+    flex-direction: column;
+  }
+  .mm-coins {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .mm-coin-card {
+    padding: 20px 10px 16px;
+    border-radius: 22px;
+    gap: 4px;
+  }
+  svg.mm-coin {
+    width: 72px;
+    height: 72px;
+  }
+  .mm-coin-name {
+    font-size: 1rem;
+  }
+  .mm-coin-mm {
+    font-size: 0.875rem;
+  }
+  .mm-coin-why {
+    font-size: 0.78rem;
+  }
+  .mm-coin .mm-actions {
+    position: static;
+    margin-top: 22px;
+    padding-bottom: 0;
+    background: none;
+  }
+
+  /* 3. camera permission: a centred card */
+  .mm-camera-card {
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 540px);
+    margin: auto;
+    padding: 44px 36px 36px;
+    border: 1px solid var(--mm-line);
+    border-radius: 28px;
+    background: var(--mm-card);
+  }
+  .mm-camera-body {
+    flex: none;
+  }
+  .mm-camera-icon {
+    width: 76px;
+    height: 76px;
+    border-radius: 22px;
+  }
+  .mm-camera .mm-actions {
+    margin-top: 30px;
+  }
+
+  /* 4-6. capture: a roomier column, the camera in its own shape */
+  .mm-capture {
+    --cam-h: calc(100dvh - 320px);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .mm-capture-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 0 auto;
+    justify-content: center;
+    min-height: 0;
+  }
+  .mm-tabs {
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .mm-tabs li {
+    padding: 8px 24px 10px;
+    font-size: 1rem;
+  }
+  .mm-capture .mm-cam {
+    flex: none;
+    align-self: center;
+    width: min(100%, calc(var(--cam-h) * var(--ar)));
+    max-height: var(--cam-h);
+    aspect-ratio: var(--ar);
+    border-radius: 14px;
+  }
+  .mm-corner {
+    width: 38px;
+    height: 38px;
+  }
+  .mm-corner--tl {
+    top: 18px;
+    left: 18px;
+  }
+  .mm-corner--tr {
+    top: 18px;
+    right: 18px;
+  }
+  .mm-corner--bl {
+    bottom: 18px;
+    left: 18px;
+  }
+  .mm-corner--br {
+    bottom: 18px;
+    right: 18px;
+  }
+  .mm-pill {
+    bottom: 26px;
+    padding: 10px 20px;
+    font-size: 0.95rem;
+  }
+  .mm-cam-msg {
+    overflow: auto;
+    font-size: 1rem;
+  }
+  .mm-card {
+    margin-top: 16px;
+    padding: 18px 22px;
+    gap: 16px;
+    border-radius: 24px;
+  }
+  .mm-card--between {
+    gap: 10px;
+    padding: 20px 22px;
+  }
+  .mm-card-icon {
+    width: 46px;
+    height: 46px;
+  }
+  .mm-card-title {
+    font-size: 1.15rem;
+  }
+  .mm-card-text,
+  .mm-between-done {
+    font-size: 0.95rem;
+  }
+  .mm-ring {
+    width: 76px;
+    height: 76px;
+  }
+  .mm-ring-num {
+    font-size: 1rem;
+  }
+  .mm-sheet-card {
+    max-width: 380px;
+    padding: 22px;
+  }
+  .mm-sheet-card p {
+    font-size: 0.95rem;
+  }
+
+  /* 7. reconstruction: the stage in a column of its own height */
+  .mm-estimate {
+    max-width: 46ch;
+    font-size: 0.875rem;
+  }
+  .mm-recon-stage {
+    min-height: 440px;
+    margin: 10px 0 0;
+  }
+  .mm-seg {
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
+  }
+  .mm-recon .mm-fine {
+    max-width: 62ch;
+    margin-inline: auto;
+    text-align: center;
+  }
+  .mm-legend {
+    right: 16px;
+    bottom: 18px;
+    gap: 10px;
+    font-size: 0.875rem;
+  }
+  .mm-reset {
+    left: 16px;
+    bottom: 18px;
+  }
+
+  /* shared: buttons in a centred column keep a sensible width */
+  .mm-actions {
+    width: 100%;
+    max-width: 460px;
+    margin-inline: auto;
+  }
+  .mm-actions--row {
+    max-width: none;
+  }
+}
+
+/* ---------------------------------------------------------------- W: side by side */
+@media (min-width: 900px), (min-width: 600px) and (orientation: landscape) {
+  .mm-screen {
+    --mm-content: 1400px;
+    --mm-panel: clamp(260px, 27vw, 400px);
+    --mm-split: clamp(20px, 3.2vw, 48px);
+  }
+
+  /* 1. start: the title and the way in on one side, the particle wave on the other */
+  .mm-start {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: var(--mm-split);
+  }
+  .mm-start > .mm-top {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .mm-start > .mm-start-wave {
+    position: relative;
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    height: 100%;
+    min-height: min(60dvh, 560px);
+    left: auto;
+    right: auto;
+    top: auto;
+    align-self: stretch;
+  }
+  .mm-start > .mm-start-body {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+    margin-top: 0;
+    padding-bottom: 0;
+  }
+
+  /* 2. coin: seven cards on one side, the explanation and Continue in a panel on the other */
+  .mm-coin-layout {
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 28vw, 380px);
+    align-items: center;
+    gap: var(--mm-split);
+  }
+  .mm-coins {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .mm-coin-aside {
+    padding: 26px 24px;
+    border: 1px solid var(--mm-line);
+    border-radius: 26px;
+    background: var(--mm-card);
+  }
+  .mm-coin-aside .mm-actions {
+    max-width: none;
+  }
+
+  /* 4-6. capture: the camera large, tabs / guidance / ring in a panel beside it */
+  .mm-capture {
+    --cam-h: calc(100dvh - 112px);
+    overflow-y: auto;
+  }
+  .mm-capture-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--mm-panel);
+    grid-template-rows: minmax(0, 1fr) auto auto auto auto minmax(0, 1fr);
+    column-gap: var(--mm-split);
+    align-items: start;
+    flex: 0 1 auto;
+    margin-block: auto;
+  }
+  .mm-capture .mm-capture-body > .mm-cam {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    justify-self: center;
+    height: auto;
+  }
+  .mm-capture-body > .mm-tabs {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0 0 4px;
+  }
+  .mm-capture-body > .mm-card {
+    grid-column: 2;
+    grid-row: 3;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon ring"
+      "body body";
+    align-items: center;
+    row-gap: 14px;
+  }
+  .mm-capture-body > .mm-card > .mm-card-icon {
+    grid-area: icon;
+    justify-self: start;
+  }
+  .mm-capture-body > .mm-card > .mm-card-body {
+    grid-area: body;
+  }
+  .mm-capture-body > .mm-card > .mm-ring {
+    grid-area: ring;
+    width: 92px;
+    height: 92px;
+  }
+  .mm-capture-body > .mm-card > .mm-ring .mm-ring-num {
+    font-size: 1.2rem;
+  }
+  .mm-capture-body > .mm-card--between {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: none;
+  }
+  .mm-capture-body > .mm-note {
+    grid-column: 2;
+    grid-row: 4;
+  }
+  .mm-capture-body > .scan-debug-panel {
+    grid-column: 2;
+    grid-row: 5;
+  }
+  .mm-capture:has(.scan-debug-panel) {
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  /* 7. reconstruction: the stage fills the height, the controls sit beside it */
+  .mm-recon {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--mm-panel);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto auto minmax(0, 1fr);
+    column-gap: var(--mm-split);
+  }
+  .mm-recon > .mm-top {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .mm-recon > .mm-recon-stage {
+    grid-column: 1;
+    grid-row: 2 / 9;
+    min-height: calc(100dvh - 112px);
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--mm-line);
+    border-radius: 28px;
+  }
+  .mm-recon > .mm-h2 {
+    grid-column: 2;
+    grid-row: 3;
+    margin: 0;
+    text-align: left;
+  }
+  .mm-recon > .mm-estimate {
+    grid-column: 2;
+    grid-row: 4;
+    max-width: none;
+    margin: 14px 0 0;
+    text-align: left;
+  }
+  .mm-recon > .mm-seg {
+    grid-column: 2;
+    grid-row: 5;
+    max-width: none;
+    margin: 22px 0 0;
+  }
+  .mm-recon > .mm-fine {
+    grid-column: 2;
+    grid-row: 6;
+    max-width: none;
+    margin: 14px 0 0;
+    text-align: left;
+  }
+  .mm-recon > .mm-actions {
+    grid-column: 2;
+    grid-row: 7;
+    max-width: none;
+    margin: 0;
+    padding-top: 22px;
+  }
+}
+
+/* A short window (a phone held sideways): tighter spacing so the panel fits without scrolling. */
+@media (min-width: 600px) and (max-height: 560px) {
+  .mm-screen {
+    --cam-h: calc(100dvh - 72px);
+    padding-top: 8px;
+    padding-bottom: 10px;
+  }
+  .mm-top,
+  .mm-top--bar {
+    padding: 2px 0 8px;
+  }
+  .mm-h1 {
+    font-size: 2.4rem;
+  }
+  .mm-lead {
+    margin: 8px 0 14px;
+    font-size: 1rem;
+  }
+  .mm-btn {
+    min-height: 48px;
+  }
+  .mm-card {
+    margin-top: 0;
+    padding: 12px 14px;
+    row-gap: 8px;
+  }
+  .mm-card-text,
+  .mm-between-done {
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+  .mm-capture-body > .mm-card > .mm-ring {
+    width: 64px;
+    height: 64px;
+  }
+  .mm-tabs li {
+    padding: 4px 14px 6px;
+  }
+  .mm-recon > .mm-recon-stage {
+    min-height: calc(100dvh - 72px);
+  }
+  .mm-recon > .mm-seg {
+    margin-top: 12px;
+  }
+  .mm-recon > .mm-fine {
+    margin-top: 8px;
+    font-size: 0.78rem;
+  }
+  .mm-recon > .mm-actions {
+    padding-top: 12px;
+  }
+  .mm-coin-layout {
+    margin-block: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- very wide windows get a wider canvas */
+@media (min-width: 1700px) and (min-aspect-ratio: 1/1) {
+  .mm-screen {
+    --mm-content: 1600px;
+  }
+}
+
+/* ---------------------------------------------------------------- bigger coin cards on a big window */
+@media (min-width: 1400px) {
+  .mm-coins {
+    gap: 20px;
+  }
+  .mm-coin-card {
+    padding: 30px 14px 24px;
+    border-radius: 26px;
+  }
+  svg.mm-coin {
+    width: 92px;
+    height: 92px;
+  }
+  .mm-coin-name {
+    font-size: 1.15rem;
+  }
+  .mm-coin-mm {
+    font-size: 1rem;
+  }
+  .mm-coin-aside {
+    padding: 32px 30px;
+  }
+}
+
+/* ---------------------------------------------------------------- 4 coins per row from 700 px */
+@media (min-width: 700px) {
+  .mm-coins {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ---------------------------------------------------------------- measurements and results, wider */
+@media (min-width: 1000px) {
+  .mm-app .results-v2 {
+    display: grid;
+    grid-template-columns: minmax(380px, 500px) minmax(0, 1fr);
+    column-gap: 32px;
+    align-items: start;
+  }
+  /* the decorative disc and circuit traces were drawn behind a centred hero: with the details beside it they would run
+     through the text, so they are left out */
+  .mm-app .results-v2::before,
+  .mm-app .results-v2::after,
+  .mm-app .rv2-hero::before {
+    display: none;
+  }
+  .mm-app .results-v2 > .rv2-hero {
+    position: sticky;
+    top: 24px;
+    max-width: none;
+    margin: 0;
+  }
+  .mm-app .results-v2 > .rv2-rest {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+  }
+}
+@media (min-width: 1360px) {
+  .mm-app .footer {
+    width: min(1320px, 100%);
+  }
+  .mm-app .page {
+    max-width: 1320px;
+  }
+}
+
+/* measurements: the detected-hand card stays in view beside the long list of measurements */
+@media (min-width: 821px) {
+  .mm-app .grid-2 > :first-child {
+    position: sticky;
+    top: 88px;
+  }
+}
+
+/* the glass disc behind the results hero (drawn from 720 px up for a centred hero on a pale page) is not used on the dark page */
+.mm-app .rv2-hero::before {
+  display: none;
+}

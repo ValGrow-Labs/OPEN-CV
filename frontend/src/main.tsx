@@ -6,6 +6,7 @@ import { App } from "./App";
 import "./styles.css";
 import "./theme-blue.css";
 import "./millimesh/millimesh.css";
+import "./millimesh/responsive.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -160,6 +160,8 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
         </div>
       </section>
 
+      {/* Everything after the hero: a column of its own beside the hero on wide screens (display: contents otherwise). */}
+      <div className="rv2-rest">
       {rec.is_demo_chart && (
         <div className="notice notice-demo small" role="note">
           <Badge tone="demo">Demo chart</Badge> {rec.disclaimer}
@@ -372,6 +374,7 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
         <button className="btn btn-ghost" onClick={onStartOver}>
           Start over
         </button>
+      </div>
       </div>
     </main>
   );
