@@ -66,9 +66,9 @@ describe("skin samples", () => {
 });
 
 describe("how many particles swarm and are drawn", () => {
-  it("swarm more as the real coverage grows, between a third and all of them", () => {
-    expect(swarmShare(0)).toBeCloseTo(0.3, 5);
-    expect(swarmShare(50)).toBeCloseTo(0.65, 5);
+  it("swarm more as the real coverage grows, from most of them to all of them", () => {
+    expect(swarmShare(0)).toBeCloseTo(0.6, 5);
+    expect(swarmShare(50)).toBeCloseTo(0.8, 5);
     expect(swarmShare(100)).toBeCloseTo(1, 5);
     expect(swarmShare(-5)).toBe(swarmShare(0));
     expect(swarmShare(250)).toBe(swarmShare(100));

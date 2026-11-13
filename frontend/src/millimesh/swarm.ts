@@ -108,11 +108,11 @@ export function skinSamples(landmarks: readonly Landmark[], table: SkinTable, ou
   }
 }
 
-/** The share of the particles that swarm onto the hand: some always come as soon as the hand is found, and more as
- *  the real coverage (0..100) of the view grows. */
+/** The share of the particles that swarm onto the hand: most come as soon as the hand is found (so it is clearly
+ *  visible), and the rest as the real coverage (0..100) of the view grows. */
 export function swarmShare(coveragePercent: number): number {
   const c = Math.max(0, Math.min(100, Number.isFinite(coveragePercent) ? coveragePercent : 0));
-  return 0.3 + 0.7 * (c / 100);
+  return 0.6 + 0.4 * (c / 100);
 }
 
 /** How many particles to draw: the full number scaled by the speed guard's share, never fewer than a handful. */
