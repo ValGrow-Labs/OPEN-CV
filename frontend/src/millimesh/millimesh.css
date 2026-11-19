@@ -889,6 +889,126 @@ html[data-mm="on"] body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
+/* ------------------------------------------------------------------ simple results */
+
+.mm-simple .mm-recon-stage {
+  flex: none;
+  height: min(46vh, 330px);
+  min-height: 240px;
+}
+.mm-drag {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 0.74rem;
+  color: var(--mm-mute);
+}
+.mm-simple .mm-seg {
+  margin-top: 8px;
+}
+.mm-simple-note {
+  margin: 8px 4px 0;
+  text-align: center;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--mm-mute);
+}
+.mm-simple-card {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--mm-line);
+  border-radius: 18px;
+  background: var(--mm-card);
+}
+.mm-simple-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mm-simple-pair div {
+  display: grid;
+  gap: 2px;
+}
+.mm-simple-k {
+  font-size: 0.74rem;
+  color: var(--mm-mute);
+}
+.mm-simple-pair b {
+  font-size: 1.12rem;
+  font-weight: 600;
+  color: var(--mm-ink);
+}
+.mm-simple-cap {
+  margin: 8px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--mm-mute);
+}
+.mm-simple-fingers {
+  display: grid;
+  gap: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mm-simple-fingers li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--mm-line);
+  font-size: 0.92rem;
+  color: var(--mm-ink-2);
+}
+.mm-simple-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mm-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mm-tag {
+  padding: 2px 8px;
+  border: 1px solid rgba(242, 193, 78, 0.55);
+  border-radius: 999px;
+  color: var(--mm-amber);
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mm-simple-def {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+.mm-seg--two {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 8px;
+}
+.mm-tag--est {
+  border-color: var(--mm-line-strong);
+  color: var(--mm-blue-hi);
+}
+.mm-simple-chip-row {
+  margin: 12px 0 0;
+}
+.mm-chip {
+  display: inline-block;
+  padding: 5px 12px;
+  border: 1px solid var(--mm-line-strong);
+  border-radius: 999px;
+  background: rgba(30, 64, 120, 0.3);
+  color: var(--mm-blue-hi);
+  font-size: 0.78rem;
+}
+.mm-simple .mm-fine {
+  margin: 10px 4px 0;
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mm-spinner {
     animation: none;

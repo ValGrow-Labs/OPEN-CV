@@ -43,6 +43,16 @@ export function chainBendDeg(points: Point[], chain: number[], use3d = false): n
   return total;
 }
 
+/** Angle (degrees) between a chain's end-to-end chord and the image plane, from 3D points whose z is depth (MediaPipe world
+ *  landmarks: the model's estimate). 0: the finger lies parallel to the picture. Mirror of landmarks.chain_elevation_deg. */
+export function chainElevationDeg(points: Point[], chain: number[]): number {
+  const a = points[chain[0]];
+  const b = points[chain[chain.length - 1]];
+  const v = [b.x - a.x, b.y - a.y, b.z - a.z];
+  const n = Math.hypot(...v);
+  return n < 1e-9 ? NaN : (Math.asin(Math.min(1, Math.abs(v[2]) / n)) * 180) / Math.PI;
+}
+
 /** Approximate palm-plane tilt from MediaPipe world landmarks (live gate only; the server is authoritative). */
 export function palmTiltDeg(world: Point[]): number {
   const p0 = world[0];

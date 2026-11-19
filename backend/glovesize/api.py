@@ -107,6 +107,7 @@ def public_config() -> dict:
         "finger_tip": {
             "enabled": cfg.finger_accuracy.outline_tip,
             "max_extension_frac": cfg.finger_accuracy.outline_tip_max_extension_frac,
+            "prior_frac": cfg.finger_accuracy.outline_tip_prior_frac,
         },
         "measurement_labels": {k: d.label for k, d in cfg.measurements.items()},
         "manual_measurement_sd_mm": cfg.uncertainty.manual_measurement_sd_mm,

@@ -112,10 +112,10 @@ export async function scanRemainingViews(page: Page, check: SheetCheck = {}): Pr
   }
 }
 
-/** The 3D Reconstruction step that follows an accepted scan: continue to the measurements page. */
+/** The simple results page that follows an accepted scan (the 3D hand and the numbers): open the detailed measurements page. */
 export async function continueFromRecon(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { level: 1, name: "3D Reconstruction" })).toBeVisible({ timeout: 180_000 });
-  await page.getByRole("button", { name: /See my measurements/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Your hand", exact: true })).toBeVisible({ timeout: 180_000 });
+  await page.getByRole("button", { name: /More details/ }).click();
 }
 
 /** The rules the next-angle sheet is built to: bottom-aligned, thumb-sized button, no scrolling. */

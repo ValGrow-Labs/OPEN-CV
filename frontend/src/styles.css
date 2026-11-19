@@ -2234,6 +2234,7 @@ code {
 
 .mrow-note,
 .mrow-sub,
+.mrow-crease,
 .mrow-reason {
   font-size: 0.82rem;
   color: var(--muted);
@@ -2273,7 +2274,8 @@ code {
   color: var(--muted);
 }
 
-.mrow-reason {
+.mrow-reason,
+.mrow-crease {
   max-width: 60ch;
 }
 

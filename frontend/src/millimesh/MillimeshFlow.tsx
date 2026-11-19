@@ -1,5 +1,5 @@
 // The MILLIMESH "Surface Swarm" scan: the live customer scan flow. Seven steps: Start, Select a Reference Coin, Allow Camera
-// Access, the three capture screens (Palm, Side, Back) and the 3D Reconstruction. What it hands on is exactly what the old
+// Access, the three capture screens (Palm, Side, Back) and the simple results page (the fitted 3D hand and the numbers). What it hands on is exactly what the old
 // scan screen handed on: a ScanResponse from the existing pipeline (measurements, recommendation) for the measurements screen.
 import { useCallback, useMemo, useState } from "react";
 import type { PublicConfig, ReferenceSelection, ScanResponse } from "../api/types";
@@ -8,7 +8,7 @@ import { hasSavedReference, markCoinConfirmed, referenceLabel } from "../ui/sett
 import { CaptureStep, type CaptureResult } from "./CaptureStep";
 import { fitHand, type FittedHand } from "./fitHand";
 import { orderedViews } from "./phases";
-import { ReconStep } from "./ReconStep";
+import { SimpleResults } from "./SimpleResults";
 import { CameraStep, CoinStep, StartStep } from "./steps";
 
 export type FlowStep = "start" | "coin" | "camera" | "capture" | "recon";
@@ -29,20 +29,19 @@ interface Props {
 export function MillimeshFlow({ config, chartId, reference, onChartChange, onReferenceChange, initialStep = "start", onResult, onCancel }: Props) {
   const [step, setStep] = useState<FlowStep>(initialStep);
   const [scanKey, setScanKey] = useState(0);
-  const [recon, setRecon] = useState<{ result: CaptureResult; fit: FittedHand } | null>(null);
+  const [recon, setRecon] = useState<{ result: CaptureResult; fit: FittedHand | null } | null>(null);
   const views = useMemo(() => orderedViews(config), [config]);
   const diameter = referenceLabel(config, reference).diameter;
 
   const onDone = useCallback(
     (result: CaptureResult) => {
-      // A scan the pipeline refused goes straight to the page that says what to correct: no model is shown for it.
+      // A scan the pipeline refused goes straight to the page that says what to correct: no model is shown for it. An accepted
+      // scan lands on the simple results page (the fitted 3D hand, when the views could be fitted, and the numbers).
       if (result.response.status === "accepted") {
         const fit = fitHand({ palm: result.frames.palm, side: result.frames.side, back: result.frames.back, referenceDiameterMm: diameter });
-        if (fit) {
-          setRecon({ result, fit });
-          setStep("recon");
-          return;
-        }
+        setRecon({ result, fit });
+        setStep("recon");
+        return;
       }
       onResult(result.response, result.mirrored, result.timing);
     },
@@ -71,9 +70,11 @@ export function MillimeshFlow({ config, chartId, reference, onChartChange, onRef
   }
   if (step === "recon" && recon) {
     return (
-      <ReconStep
+      <SimpleResults
         fit={recon.fit}
-        onContinue={() => onResult(recon.result.response, recon.result.mirrored, recon.result.timing)}
+        response={recon.result.response}
+        unvalidated={!config.calibration_validated}
+        onMore={() => onResult(recon.result.response, recon.result.mirrored, recon.result.timing)}
         onRescan={() => {
           setRecon(null);
           setScanKey((k) => k + 1);

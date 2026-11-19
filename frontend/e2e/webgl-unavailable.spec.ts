@@ -41,12 +41,12 @@ test("without WebGL the whole flow still ends in a result, with a flat drawing o
   await expect(page.locator(".mm-particles")).toHaveCount(1); // the 2D particles do not need WebGL
   await scanRemainingViews(page);
 
-  await expect(page.getByRole("heading", { level: 1, name: "3D Reconstruction" })).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Your hand", exact: true })).toBeVisible({ timeout: 180_000 });
   await expect(page.getByRole("note")).toContainText("not a measured scan");
   await expect(page.getByRole("img", { name: /flat drawing/ })).toBeVisible();
   await expect(page.getByText(/cannot draw in 3D/)).toBeVisible();
   await expect(page.locator(".mm-recon-canvas")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Reset view" })).toHaveCount(0);
+  await expect(page.getByText("Hand length")).toBeVisible(); // the numbers are there without 3D
   await page.getByRole("radio", { name: "Wireframe" }).click(); // the control still works
   await page.screenshot({ path: "test-results/webgl-unavailable-recon.png" });
   await continueFromRecon(page);

@@ -67,6 +67,37 @@ def dump_landmarks(out_dir: str) -> None:
             cv2.imwrite(str(dest / f"{photo}.png"), im)
 
 
+def dump_perturbed(out_dir: str, n: int) -> None:
+    """N perturbed copies of each photo (rotation +-5 deg, scale +-8%, noise) with the landmarks MediaPipe returns on each:
+    real model jitter on real pixels, for the repeatability evaluation of the outline fingertip
+    (frontend/src/vision/fingertip.repeat.eval.test.ts)."""
+    import json
+    from pathlib import Path
+
+    from validation.hand_tracking import HandTracker
+
+    media = REPO_ROOT / "frontend" / "e2e" / ".media"
+    dest = Path(out_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(21)
+    with HandTracker() as tracker:
+        for photo in PHOTOS:
+            im = cv2.imread(str(media / f"{photo}.png"))
+            meta = json.loads((media / f"{photo}.json").read_text(encoding="utf-8"))
+            k = 0
+            for _ in range(n * 2):
+                if k >= n:
+                    break
+                p = perturb(im, rng)
+                d = tracker.detect(p)
+                if d is None:
+                    continue
+                cv2.imwrite(str(dest / f"{photo}_{k}.png"), p)
+                (dest / f"{photo}_{k}.json").write_text(json.dumps({"landmarks": d.landmarks_px[:, :2].tolist()}), encoding="utf-8")
+                k += 1
+            (dest / f"{photo}_meta.json").write_text(json.dumps({"n": k, "px_per_mm_coin": meta["coin_diameter_px"] / 24.26}), encoding="utf-8")
+
+
 def draw_overlays(dir_: str) -> None:
     """Crops of each fingertip with the landmark tip (red) and the outline tip (green), from the eval's tips JSON."""
     import json
@@ -101,10 +132,14 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=60)
     ap.add_argument("--dump-landmarks", default="", help="write the landmarks of the two photos to this folder and stop")
+    ap.add_argument("--dump-perturbed", default="", help="write perturbed copies of the photos with their landmarks to this folder and stop")
     ap.add_argument("--overlay", default="", help="draw the outline-tip overlays from this folder's *_tips.json and stop")
     a = ap.parse_args()
     if a.dump_landmarks:
         dump_landmarks(a.dump_landmarks)
+        return
+    if a.dump_perturbed:
+        dump_perturbed(a.dump_perturbed, a.n)
         return
     if a.overlay:
         draw_overlays(a.overlay)

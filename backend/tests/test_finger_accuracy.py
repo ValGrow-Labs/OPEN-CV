@@ -223,3 +223,17 @@ def client_scan_response():
     r = TestClient(app).post("/api/scan", json=body)
     assert r.status_code == 200, r.text
     return r.json()
+
+
+def test_the_optional_depth_aware_thumb_recovers_a_thumb_turned_out_of_plane_in_simulation(cfg):
+    """SIMULATED, exact world depth: a thumb pitched 30 degrees out of the palm plane reads about 4.5 mm short with one coin scale;
+    the optional depth-aware thumb (default OFF) removes it. Fingers are untouched by the thumb flag."""
+    scene = Scene(hand_shape="photo", finger_pitch_deg={"thumb": 30.0})
+    truth = true_chain_lengths_mm(scene)["thumb"]
+    off = results_for(scene, cfg)[0].values
+    on = results_for(scene, with_flags(cfg, thumb_depth_aware=True))[0].values
+    assert truth - off["thumb_length_mm"] > 3.5
+    assert abs(on["thumb_length_mm"] - truth) < 0.8
+    for f in FINGERS:
+        assert on[f"{f}_length_mm"] == off[f"{f}_length_mm"]
+    assert cfg.finger_accuracy.thumb_depth_aware is False

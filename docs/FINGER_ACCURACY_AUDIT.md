@@ -245,3 +245,174 @@ numbers are right. These are back-of-hand photos on white (nails visible, no pol
 The outline tip against caliper tips (section 7's datum (b), and pad to nail edge), on palm and back views, several skin tones, nail polish, tables and lighting; the extension's
 spread over frames; whether the extension (5 to 7 mm here) is the same fraction of the distal segment on other hands. The worker path was exercised in Node only (the same pure
 functions), not in a browser on a phone.
+
+## 9. Repeatability: why the same hand read differently, and the fix (third round)
+
+The owner scanned the same hand twice and the numbers differed. **Nothing in the repository can reproduce that scan** (no records of it), so this is
+a quantification of the possible causes, not a post-mortem of one scan. Every table is labelled SIMULATED or REAL (model output, no truth).
+
+### What varies between two scans of one hand (SIMULATED, `scripts/repeatability_study.py`)
+
+Each simulated scan has its own landmark jitter (2 px) and per-scan landmark bias (1.5 px), a slightly different pose (fingers lifted 4 +- 4 deg, the thumb
+turned out of the palm plane 20 +- 8 deg, hand tilt up to ~3 deg), camera distance 330-420 mm and hand position +-15 mm, 16 frames through the real engine and the
+real MAD median. **All these sizes are ASSUMED**; the outline fingertip is found per finger with probability p (ASSUMED; the rendered-finger evaluation found it
+on 100% of clean backgrounds and 0% on skin-coloured ones, and no real phone data exist). The true extensions are the ones of the two real photos.
+
+Scan-to-scan **SD of the finger length, mm** (100 scans per row; thumb / index / middle / ring / little; hand length is 1.5-1.65 in every row and untouched):
+
+| p(found) | tip rule | thumb | index | middle | ring | little |
+|---|---|---|---|---|---|---|
+| any | **landmark tips only** (outline off) | 2.1-2.2 | 1.4-1.5 | 1.9 | 1.4 | 1.1 |
+| 1.0 | first version (a found finger uses its outline, else the landmark) | 2.23 | 1.65 | 2.07 | 1.63 | 1.31 |
+| 0.8 | first version | **3.27** | **2.95** | **3.43** | **3.90** | **2.69** |
+| 0.6 | first version | **3.61** | **3.42** | **3.71** | **4.12** | **3.21** |
+| 0.4 | first version | 3.47 | 3.41 | 3.55 | 4.06 | 3.00 |
+| 0.8 | **per-hand rule (now)** | 2.40 | 1.59 | 2.07 | 1.89 | 1.36 |
+| 0.6 | **per-hand rule (now)** | 2.51 | 1.67 | 2.08 | 1.84 | 1.37 |
+| 0.4 | **per-hand rule (now)** | 2.47 | 1.73 | 2.07 | 1.89 | 1.35 |
+| 0.2 | **per-hand rule (now)** | 2.53 | 1.74 | 2.15 | 1.71 | 1.39 |
+
+* **The prime suspect is confirmed in simulation:** a finger that is found on one scan and not on the next flips by its whole extension (5 to 7 mm), which lifts the
+  scan-to-scan SD of a finger from 1.1-2.2 mm to 2.7-4.1 mm whenever the outline is found only sometimes.
+* **What was not the cause (SIMULATED):** the median over frames, the MAD trimming, the coin position and tilt, the 4-sharpest-frame choice: with every tip method
+  fixed the SD is 1.1-2.2 mm, and most of that comes from the pose changes assumed above (the thumb is the most variable). Frame jitter alone gives about 0.2 mm.
+* **Not simulated:** a different tip method in different views of the same scan (the three views are averaged, so a palm view with outline tips and a back view
+  with landmark tips would shift a finger by about half the extension). The fix below prevents it by carrying the hand's extension from the first view to the next.
+
+### The fix: one tip method for the whole hand (`vision/handTips.ts`, `scan/tipCapture.ts`, `scanController`)
+
+* A finger whose outline was found keeps its own measured extension (it is real information and repeatable to about 0.3 mm).
+* The hand's extension is the median over the found fingers (at least 2, agreeing); every finger without a clear outline uses it, sent as `source: "estimated"`
+  (an estimate, not a measurement; counted apart in `tip_source`).
+* With fewer than two found fingers, the extension of an **earlier view of the same scan** is used, and failing that an **ASSUMED prior** of **0.27 of the distal segment**
+  (`finger_accuracy.outline_tip_prior_frac`; the mean of the two real photos, one hand, **not a population value**; `null` makes such a scan use landmark tips for every finger).
+  A scan therefore never switches method finger by finger, and never switches because of a lucky or unlucky frame.
+* Compared in the same simulation: also tried "all fingers use the hand's extension" and "no measurement at all, always the prior": SD at most 0.3 mm lower than the
+  chosen rule, but they discard the per-finger information (e.g. ring 0.345 vs thumb 0.21), so the per-finger values stay measured where found.
+* **Bias against the simulated length to the TRUE skin tip** (SIMULATED, p = 0.6, bias / RMSE mm, thumb / index / middle / ring / little): landmark tips -7.7 / -5.3 / -4.8 / -6.5 / -5.0 (RMSE 8.0 / 5.5 / 5.1 / 6.7 / 5.1);
+  first version -4.6 / -1.7 / -1.5 / -2.3 / -1.9 (RMSE 5.8 / 3.8 / 3.9 / 4.7 / 3.7); **per-hand rule** -1.2 / +0.6 / +1.8 / +0.3 / +0.4 (RMSE 2.8 / 1.8 / 2.7 / 1.9 / 1.4).
+  For a hand whose true extensions are 0.6x or 1.4x those of the photos (a hand unlike them) the per-hand rule's RMSE stays 1.6-3.0 mm (landmark tips 2.9-9.9 mm).
+* **REAL perturbed photos, many frame subsets** (`fingertip.repeat.eval.test.ts`, 40 perturbed copies of each of the two photos with real MediaPipe landmarks, a "scan" = 4 random
+  frames, 400 scans, NO ground truth; the outline was found on 100% of the crops of these clean white-background back-of-hand photos, so no flip occurs here): scan-to-scan **SD of the tip
+  extension, mm**, thumb / index / middle / ring / little: photo `hand` first version 0.53 / 0.38 / 0.24 / 0.41 / 0.31, per-hand rule 0.36 / 0.38 / 0.24 / 0.41 / 0.31; photo `hand_portrait`
+  0.25 / 0.34 / 0.67 / 0.39 / 0.29 and 0.25 / 0.34 / 0.57 / 0.39 / 0.29. Frame-to-frame SD of the measured ratio is 0.02-0.04 of the distal segment (0.4-0.9 mm). So when the outline
+  is found every time it is repeatable to a few tenths of a millimetre; the repeatability problem is the finding/not finding, which the rule removes. (A first version of the per-hand rule trusted a found finger
+  only within 0.12 of the hand's extension; on `hand_portrait` that flipped the thumb between its own value and the hand's, SD 1.78 mm, so the limit was widened to 0.25.)
+* **Judgement.** The per-hand rule is the one that brings the scan-to-scan SD back to the landmark-tip level (1.1-2.5 mm, dominated by pose changes) while keeping most of the 5-7 mm correction. If
+  the owner prefers repeatability above all and distrusts the prior, `finger_accuracy.outline_tip: false` gives landmark tips (lengths then read 5-7 mm shorter than the skin tip on the photos).
+* **Honesty hint on the page:** the simple results page says in one line where the fingertips came from, e.g. "Fingertips: found on the hand outline for 3, estimated for 2." (from the new
+  `tip_source` counts), so a rescan that differs can be compared.
+
+## 10. Thumb accuracy (third round)
+
+* **Fused three-view 3D thumb length: not used.** The fitted 3D hand (`millimesh/fitHand.ts`) is built from MediaPipe's world landmarks, whose chain **lengths** are not reliable: on the two real flat
+  hands the world chain length divided by the image chain length was 0.81-0.98 for index, middle, ring and little (a flat finger cannot be 16% shorter in depth) and 1.07 for the thumb. A thumb length
+  taken from that pose would inherit up to +-15% model error, which is worse than the foreshortening it would remove. No depth was invented.
+* **Optional depth-aware thumb, default OFF** (`finger_accuracy.thumb_depth_aware`, believes depth up to `thumb_max_elevation_deg` 45): the thumb's lateral length from the image and coin scale, its depth difference from
+  the world landmarks' relative z (the same method as `depth_aware_lengths`; palm and back view both go through it and are averaged). **SIMULATED** thumb length error, bias / SD / RMSE mm, 100 scans, world depth noise
+  matched to the photos' depth bend:
+
+| thumb pose | production | depth-aware thumb (optional) |
+|---|---|---|
+| in plane (0 deg) | +0.10 / 0.21 / 0.23 | +0.22 / 0.27 / 0.35 |
+| 10 deg out of plane | +0.41 / 0.21 / 0.46 | +0.20 / 0.23 / 0.31 |
+| 20 deg | -1.08 / 0.21 / 1.10 | +0.05 / 0.36 / 0.36 |
+| 30 deg | -4.47 / 0.22 / 4.47 | +0.02 / 0.59 / 0.58 |
+| 40 deg | -9.76 / 0.22 / 9.77 | +0.06 / 0.78 / 0.78 |
+| 20 deg, world depth noise x2 (6 mm) | -1.07 / 0.22 / 1.10 | +0.17 / 0.70 / 0.72 |
+| 20 deg, hand tilted 6 deg | -2.73 / 0.22 / 2.74 | -0.14 / 0.46 / 0.48 |
+
+  **REAL check, not supportive:** on the two real flat-hand photos the depth-aware thumb changed the length by only -0.4 mm (SD 0.2-0.6), although the model reads the thumb 13 and 23 degrees out of plane. The
+  simulation uses zero-mean depth noise; the real model's depth also has a systematic error (palm tilt 26-29 degrees on a flat hand), so nothing shows the correction is right on real thumbs. It stays OFF until a phone test with
+  a known thumb pose; **the thumb's reported sigma (about 7 mm, dominated by the 6 mm definition prior) was not reduced**: nothing measures that prior.
+* **Guidance (always on, advice only):** while the frames are otherwise fine and the thumb chord's elevation (world landmarks, median of the last 9 frames) is above 30 degrees (ASSUMED; the two real photos read 13 and 23 for
+  a relaxed thumb), the camera says "Spread your thumb out flat" in place of the usual hold-still line. It never blocks a frame, loosens or tightens a gate. **"Prefer in-plane frames" was not done:** choosing frames by the model's noisy thumb depth is a selection rule nobody has validated.
+
+## 11. The simple results page (third round)
+
+After the three scans an accepted scan lands on `millimesh/SimpleResults.tsx` (dark MILLIMESH look, 390 x 844 viewed in the e2e screenshots): the fitted 3D hand (the existing `ReconScene`, no capture markers or legend)
+with **Point Cloud | Solid | Wireframe** (that order, Point Cloud first) and "Drag to rotate" (only when 3D can be drawn; without WebGL the flat drawing and its note take its place), then one card: **Hand length** and **Hand width** in cm side by
+side, one row per finger in mm with "≈", the suggested size as one small chip (the existing recommendation, unchanged), the unvalidated-prototype line, **More details** (opens the current measurements page, which is kept) and
+Scan again. A refused scan still goes straight to the page that says what to correct.
+
+* **Width is knuckle to knuckle** (`mcp_span_mm`, index to little-finger MCP joint centres) and says so in a caption; the palm breadth is not shown as measured.
+* **Finger length is knuckle (MCP joint centre) to fingertip**, captioned "Finger length is from the knuckle joint to the fingertip." **No crease offset was invented**; the sample page's crease-to-tip numbers are about 30 to 40 mm shorter than ours.
+* Fingers are shown as whole millimetres (the sample's decimals would be false precision beside an uncertainty of about +-12 mm, stated in a caption). A finger the server hides shows its `info_value_mm` with a **"Very uncertain"** tag and "not used for your size".
+* The fingertip line states where the tips came from (see section 9).
+
+### Exact `config/measurement.json` changes (third round; earlier rounds unchanged)
+
+* `finger_accuracy.outline_tip_prior_frac`: **0.27** (new, ASSUMED; the mean extension of the two real photos; `null` = a scan with no found fingers uses landmark tips).
+* `finger_accuracy.thumb_depth_aware`: **false** (new, default OFF) and `finger_accuracy.thumb_max_elevation_deg`: **45.0** (new, used only when it is on).
+* `/api/config` `finger_tip` also carries `prior_frac`. No threshold was lowered or loosened; no gate, coin entry or `measurement_calibration.json` touched. `RefinedTip.source` also accepts `"estimated"` (additive).
+
+## 12. Crease-to-tip finger length: an ESTIMATE next to the knuckle-to-tip length (fourth round)
+
+The glove industry (EN ISO 21420 sizing, the founders' sample page) measures a finger from the palmar digital crease at its base to the tip. The camera has **no crease
+landmark**: its finger length runs from the knuckle (MCP joint centre) to the tip. The owner asked for the crease-to-tip length as an estimate beside ours. **It is an estimate
+resting on an ASSUMED proportion, not validated, and no real-world accuracy is claimed.**
+
+### Definition and where the proportion comes from
+
+`crease_to_tip = (knuckle-to-tip length) - t x |MCP to PIP|` per finger (the thumb: MCP to IP). The crease is taken at `MCP + t x (PIP - MCP)`. Config: `finger_accuracy.crease_t`.
+
+Sources actually read (Buffa et al. 2007) and what could **not** be verified:
+* **Buffa R, Marini E, Cabras S, Scalas G, Floris G. "Patterns of Hand Variation - New Data on a Sardinian Sample", Coll. Antropol. 31 (2007) 1: 325-330** (read in full; 63 men and 83 women, 21-31 years,
+  sliding caliper). Finger length = *proximal metacarpo-phalangeal flexion crease to fingertip* (the glove definition). Palm length = distal wrist crease to the 3rd interdigital space. Right-hand means, mm
+  (men / women): palm 105.3 / 96.1; thumb 63.0 / 56.9; index 71.4 / 66.4; middle 78.9 / 73.2; ring 73.3 / 67.8; little 60.1 / 55.2.
+* Hand length (wrist crease to middle fingertip) is not in that table; it is **approximated as palm + middle finger** (184.2 / 169.2 mm; **ASSUMED**: the interdigital space is not exactly at the crease). The
+  resulting finger-to-hand proportions are almost the same in both sexes: thumb .342 / .336, index .388 / .392, middle .429 / .432, ring .398 / .401, little .327 / .326 (mean **.339 / .390 / .430 / .399 / .326**).
+* Not read directly (a search summary only, not the paper's table): Lolli et al. 2017, Proc R Soc B, 154 men / 262 women, crease-to-tip index 73.8 / 67.8 mm and ring 75.3 / 68.3 (right hand), which is within
+  2-3 mm of Buffa's values; ANSUR II median hand length 193 mm men / 180 mm women (a third-party chart). A radiographic study of 53 hands (PubMed 8222413, abstract seen only through a search summary) reports the proximal digital crease
+  14-20 mm distal to the MCP joint (line). ISO 7250-1 and the ANSUR II per-digit tables could not be fetched, so **no claim is made about their wording**.
+
+### Deriving t, and what it is worth
+
+`t` per finger is the value that makes the estimated crease-to-tip equal the published proportion x the hand's landmark hand length, on the **real MediaPipe landmarks of the two real photos** (with the outline tip, the
+tip the product now uses). Implied t, photo `hand` / photo `hand_portrait`: thumb 0.05 / 0.05; index 0.59 / 0.59; middle 0.63 / 0.61; ring 0.62 / 0.66; little 0.60 / 0.62. **Chosen (ASSUMED, rounded): thumb 0.05, index 0.59, middle 0.62, ring 0.64, little 0.61.**
+Spread across the two photos is +-0.03; across hands unknown (both photos look like the same hand).
+
+* **This is in-sample:** the same photos supply the landmarks that t is fitted to, so the check below is a fit, not a test. On the photo landmark shape the estimate reproduces the published proportions to within 0.5 mm at hand lengths 169 and 184 mm
+  (thumb +0.5 / -0.4, index -0.4 / +0.4, middle -0.4 / +0.4, ring -0.3 / +0.2, little 0.0 / -0.1 mm).
+* **It inherits the landmark chain's proportions:** the same t on the simulation's synthetic canonical hand (whose landmark chains are 10-30% shorter than the model's chains on the photos; not a real hand) gives -8 to -18 mm for thumb, index, ring and little (middle -0.4 to -1.0).
+  So on a hand whose landmarks sit differently relative to its crease, the estimate is off by that much; this is the main reason for the large uncertainty below.
+* **Anatomy cross-check (disagrees):** a crease 14-20 mm distal to the MCP joint line is 0.33-0.45 of a 42-47 mm proximal phalanx, below the fitted 0.59-0.64. The MediaPipe MCP landmark is a knuckle (joint centre) that sits proximal of that joint line, so the fitted t also absorbs
+  that offset; using the anatomical t would give crease-to-tip values 8-10 mm longer. The +-20% position uncertainty below spans about half of that gap, not all of it.
+* **Plausibility only (not a target):** the founders' sample (hand 167 mm): thumb 55.0 (.329), index 56.3 (.337), middle 69.0 (.413), ring 66.2 (.396). Published proportions .339 / .390 / .430 / .399. Thumb, middle and ring agree; the sample's index is much shorter than the population proportion.
+* **Outline off:** t was derived with the outline tip (5-7 mm beyond the landmark). With `outline_tip: false` the estimate reads that much shorter.
+
+### What the server adds (additive fields; no existing value, status, uncertainty or recommendation changes: tests assert it)
+
+Per thumb and finger: `crease_to_tip_mm`, `crease_uncertainty_mm`, `crease_interval95_mm`, `crease_status`, `crease_t`. Per frame it is the chain length minus t x |MCP to PIP|, aggregated with the **same frames and outlier handling** as the value, with all the
+value's uncertainty terms plus **`crease_position`** (the crease may lie +-0.2 of the MCP-to-PIP segment, uniform: 0.2 x segment / sqrt 3, about 5 mm; ASSUMED) in quadrature. Its status uses the limits every length uses, so most
+crease estimates read "Very uncertain" (about +-15 mm on 55-75 mm). A finger the value hides still gets a crease estimate (information). Views are combined like the values.
+
+| finger | t (ASSUMED) | implied t, 2 photos | published crease-to-tip proportion of hand length | crease estimate on the photo landmarks, hand 178 mm (mm) |
+|---|---|---|---|---|
+| thumb | 0.05 | 0.05 / 0.05 | .339 | 60.5 |
+| index | 0.59 | 0.59 / 0.59 | .390 | 69.5 |
+| middle | 0.62 | 0.63 / 0.61 | .430 | 76.8 |
+| ring | 0.64 | 0.62 / 0.66 | .399 | 71.2 |
+| little | 0.61 | 0.60 / 0.62 | .326 | 58.2 |
+
+(The last column equals the published proportion by construction: it is the fit, not an independent check.)
+
+### Scan-to-scan repeatability of the crease values (SIMULATED, `scripts/repeatability_study.py`, 100 scans, the section 9 variation: jitter, per-scan bias, pose, distance, position; ASSUMED sizes)
+
+SD of the crease-to-tip estimate, mm (thumb / index / middle / ring / little): landmark tips 2.16 / 1.36 / 1.57 / 1.24 / 0.92; per-hand tip rule (now), outline found p = 1.0: 2.28 / 1.58 / 1.75 / 1.53 / 1.12, p = 0.6: 2.60 / 1.57 / 1.82 / 1.70 / 1.22;
+the first per-finger rule at p = 0.6: 3.60 / 3.29 / 3.42 / 4.01 / 3.16. The crease estimate is as repeatable as the knuckle-to-tip value (its SD is 0.03-0.23 mm lower: the MCP-to-PIP segment partly cancels); the fixed t adds no scan-to-scan variation.
+
+### UI
+
+The simple results page defaults to **Crease to tip (est.)**, tagged "estimate" with the caption "Finger length from the crease at the base of the finger to the tip, estimated from your knuckle joint with a standard hand proportion; not validated."; **Knuckle to tip** keeps today's numbers
+(with their own uncertainty). The detailed page adds a "Crease to tip (estimate): ≈ NN mm ±S (95%: a to b)" line under each finger and explains the proportion (ASSUMED, not validated) in "How it's measured". The live labels stay knuckle to tip; their note says "Live estimate, knuckle to tip".
+
+### Validating it
+
+The caliper protocol of section 7 already lists the palmar-crease-to-tip datum. For this estimate: measure it on every participant, **fit t on the development half and evaluate on the held-out half, never on the same people**; report bias, SD and RMSE of
+crease-to-tip per finger, by hand size and sex, with the outline tip on and off; then replace the ASSUMED `crease_t` and `crease_position_halfwidth_frac` with fitted values and their residual SD.
+
+### Exact `config/measurement.json` changes (fourth round)
+
+`finger_accuracy.crease_estimate`: **true** (additive fields only); `finger_accuracy.crease_t`: `{thumb 0.05, index 0.59, middle 0.62, ring 0.64, little 0.61}` (ASSUMED, sources above); `finger_accuracy.crease_position_halfwidth_frac`: **0.2** (ASSUMED).
+Nothing else; no threshold lowered or loosened; calibration file and coin entries untouched. A backend restart is needed for the new response fields.

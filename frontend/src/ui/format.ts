@@ -108,6 +108,23 @@ export const MANUAL_LABELS: Record<string, string> = {
   palm_breadth_mm: "Palm breadth (skin edge to skin edge)",
 };
 
+/** The crease-to-tip estimate line of a thumb or finger (detailed page), or undefined when the server sent none. */
+export function creaseLine(m: Measurement | undefined): string | undefined {
+  if (!m || !FINGER_KEY_RE.test(m.key) || m.crease_to_tip_mm == null) return undefined;
+  const [lo, hi] = m.crease_interval95_mm ?? [null, null];
+  const range = lo != null && hi != null ? ` (95%: ${Math.round(lo)} to ${Math.round(hi)} mm)` : "";
+  const sigma = m.crease_uncertainty_mm != null ? ` ±${m.crease_uncertainty_mm.toFixed(1)} mm` : "";
+  return `Crease to tip (estimate): ≈ ${Math.round(m.crease_to_tip_mm)} mm${sigma}${range}`;
+}
+
+/** What the crease estimate is, and what it rests on, for the "How it's measured" text. */
+export function creaseHow(m: Measurement | undefined): string | undefined {
+  if (!m || !FINGER_KEY_RE.test(m.key) || m.crease_to_tip_mm == null) return undefined;
+  const t = m.crease_t != null ? `${Math.round(m.crease_t * 100)}%` : "a fixed share";
+  const where = m.key.startsWith("thumb") ? "the thumb's knuckle-to-middle-joint segment" : "the knuckle-to-middle-joint segment of the finger";
+  return `Crease to tip is the glove-industry finger length. The camera has no crease point, so it is estimated: the knuckle-to-tip length minus ${t} of ${where}. That share is an ASSUMED standard hand proportion (fitted to published finger proportions on one hand's landmarks), not measured on you and not validated; its uncertainty (about ±20% of that segment) is included.`;
+}
+
 /** A thumb or finger the server would hide (status invalid) that still carries its number as information. The
  *  result page shows it with the wide interval and a "Very uncertain" tag; the size never uses it. */
 export function veryUncertainFinger(m: Measurement | undefined): { mm: number; sigma: number | null; interval: [number, number] | null; why: string } | null {
