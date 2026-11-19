@@ -1,7 +1,7 @@
 // Step 7, "3D Reconstruction": the fitted hand (an estimate), its three capture markers and the Solid / Wireframe / Point
 // Cloud control. Honest about what it is: fitted to the three views and scaled by the coin, not a measured scan, and the
 // markers show where each view looked from, not measured points.
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { webglAvailable } from "../hand3d/HandStage";
 import { BONES } from "../hand3d/handModel";
 import { ArrowRight, Wordmark } from "./Brand";
@@ -10,6 +10,21 @@ import { ESTIMATE_LABEL, type FittedHand } from "./fitHand";
 import type { ReconMode } from "./ReconScene";
 
 const Scene = lazy(() => import("./ReconScene"));
+
+/** If the 3D view cannot load or throws (a chunk that failed to download, a graphics error), the flat drawing of the
+ *  same fitted hand takes its place, so the stage is never left blank. */
+export class ReconBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error("3D reconstruction view failed; showing the flat drawing", error);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 const MODES: { id: ReconMode; label: string }[] = [
   { id: "solid", label: "Solid" },
@@ -83,13 +98,22 @@ export function ReconStep({ fit, onContinue, onRescan, continueLabel = "See my m
 
       <div className="mm-recon-stage">
         {gl ? (
-          <Suspense fallback={<FlatHand fit={fit} mode={mode} />}>
-            <Scene fit={fit} mode={mode} resetKey={resetKey} onUnavailable={onUnavailable} />
-          </Suspense>
+          <ReconBoundary
+            fallback={
+              <>
+                <FlatHand fit={fit} mode={mode} />
+                <p className="mm-flat-note small">This device cannot draw in 3D right now, so this is a flat drawing of the same fitted hand.</p>
+              </>
+            }
+          >
+            <Suspense fallback={<FlatHand fit={fit} mode={mode} />}>
+              <Scene fit={fit} mode={mode} resetKey={resetKey} onUnavailable={onUnavailable} />
+            </Suspense>
+          </ReconBoundary>
         ) : (
           <>
             <FlatHand fit={fit} mode={mode} />
-            <p className="mm-flat-note small">This browser cannot draw in 3D, so this is a flat drawing of the same fitted hand.</p>
+            <p className="mm-flat-note small">This device cannot draw in 3D right now, so this is a flat drawing of the same fitted hand.</p>
           </>
         )}
         <ul className="mm-legend" aria-label="Where each view was captured from">

@@ -132,6 +132,23 @@ function buildMarker(m: Marker): { group: THREE.Group; mats: THREE.Material[] } 
   return { group, mats: [core, halo] };
 }
 
+/** True when the last render left every pixel transparent: the 3D view drew nothing (a graphics driver that renders
+ *  nothing, a degenerate shape). Read straight after `render()`, while the drawing buffer is still valid. */
+function drewNothing(renderer: THREE.WebGLRenderer): boolean {
+  try {
+    const gl = renderer.getContext();
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    if (w < 8 || h < 8) return true;
+    const buf = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    for (let i = 3; i < buf.length; i += 64) if (buf[i] > 8) return false;
+    return true;
+  } catch {
+    return false; // could not read it back: do not judge
+  }
+}
+
 export default function ReconScene({ fit, mode, resetKey, onUnavailable }: ReconSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const api = useRef<{ setMode: (m: ReconMode) => void; reset: () => void } | null>(null);
@@ -141,6 +158,11 @@ export default function ReconScene({ fit, mode, resetKey, onUnavailable }: Recon
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    // A fit with a non-number in it cannot be drawn: use the flat drawing instead of an empty stage.
+    if (!fit.pose.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))) {
+      onUnavailable?.("The fitted hand had no usable shape.");
+      return;
+    }
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -292,6 +314,7 @@ export default function ReconScene({ fit, mode, resetKey, onUnavailable }: Recon
     let last = 0;
     let lastDraw = 0;
     let stopped = false;
+    let rendered = 0;
     const frame = (now: number) => {
       if (stopped) return;
       raf = requestAnimationFrame(frame);
@@ -337,6 +360,12 @@ export default function ReconScene({ fit, mode, resetKey, onUnavailable }: Recon
         for (const mat of k.mats) (mat as THREE.Material & { opacity: number }).opacity = o;
       }
       renderer.render(scene, camera);
+      rendered++;
+      if ((rendered === 1 || rendered === 30) && drewNothing(renderer)) {
+        stopped = true;
+        onUnavailable?.("The 3D view drew nothing on this device.");
+        return;
+      }
       guard.frame(performance.now() - t0);
     };
     raf = requestAnimationFrame(frame);
