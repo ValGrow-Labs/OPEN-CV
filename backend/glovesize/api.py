@@ -103,6 +103,11 @@ def public_config() -> dict:
         "capture": cfg.capture.model_dump(),
         "live_scan": cfg.live_scan.model_dump(),
         "calibration": cfg.calibration.model_dump(),
+        # Fingertip from the hand outline (the phone measures it; the server re-checks it).
+        "finger_tip": {
+            "enabled": cfg.finger_accuracy.outline_tip,
+            "max_extension_frac": cfg.finger_accuracy.outline_tip_max_extension_frac,
+        },
         "measurement_labels": {k: d.label for k, d in cfg.measurements.items()},
         "manual_measurement_sd_mm": cfg.uncertainty.manual_measurement_sd_mm,
         "assumed_hfov_deg": list(cfg.uncertainty.assumed_hfov_deg),

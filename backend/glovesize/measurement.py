@@ -21,11 +21,13 @@ from .coin_detection import CoinDetection, score_detection
 from .config import MeasurementCalibration, MeasurementConfig
 from .issues import ISSUES
 from .landmarks import (
+    ALL_CHAINS,
     LONG_FINGERS,
     MIDDLE_TIP,
     WRIST,
     bbox_size,
     chain_bend_deg,
+    chain_elevation_deg,
     inside_frame,
     palm_polygon,
     palm_tilt_deg,
@@ -61,6 +63,16 @@ class FrameResult:
     implied_hand_length_mm: float | None = None
     # Per finger: (in-image bend, depth bend) in degrees; the depth bend is None without world landmarks.
     bends: dict[str, tuple[float, float | None]] = field(default_factory=dict)
+    # Per chain (thumb and four fingers): elevation of its end-to-end chord above the image plane, degrees,
+    # from the model's world landmarks (an estimate); empty without world landmarks.
+    elevations: dict[str, float] = field(default_factory=dict)
+    # Per chain key (thumb and fingers): where the tip of the length came from ("outline": the skin tip found from
+    # the hand outline in the browser; "landmark": the model's tip point) and the extension beyond the landmark, mm.
+    tip_sources: dict[str, str] = field(default_factory=dict)
+    tip_ext_mm: dict[str, float] = field(default_factory=dict)
+    # Finger chain lengths of a usable frame BEFORE the finger-level exclusions (bent, implausible): only for the
+    # information shown for a finger the result would otherwise hide. Never used for a value, a status or a size.
+    info_values: dict[str, float] = field(default_factory=dict)
 
 
 def scan_finger_bends(results: list["FrameResult"]) -> dict[str, tuple[float, float | None]]:
@@ -111,6 +123,73 @@ def _chain_finger(chain: list[int]) -> str | None:
     return None
 
 
+def _chain_name(chain: list[int]) -> str | None:
+    """Like _chain_finger, but the thumb's chain counts too."""
+    for name, ch in ALL_CHAINS.items():
+        if tuple(chain) == ch:
+            return name
+    return None
+
+
+def refined_tip(entry, lm: np.ndarray, chain: list[int], fa, w: int, h: int, margin_fraction: float):
+    """The skin tip the browser found from the hand outline, if it passes the sanity checks, else None.
+
+    It must be flagged "outline", lie in the frame, and sit beyond the landmark tip along the distal segment's own
+    direction: extension between 0 and ``fa.outline_tip_max_extension_frac`` x the distal segment (DIP to tip), with
+    only a small sideways offset. A refined tip is never a reason to accept anything else about the frame.
+    """
+    if entry is None or entry.source != "outline":
+        return None
+    tip, dip = lm[chain[-1]], lm[chain[-2]]
+    axis = tip - dip
+    length = float(np.linalg.norm(axis))
+    if length < 3.0:
+        return None
+    axis = axis / length
+    rel = np.array([entry.x, entry.y]) - tip
+    along = float(rel @ axis)
+    side = abs(float(rel[0] * axis[1] - rel[1] * axis[0]))
+    if not (0.0 <= along <= fa.outline_tip_max_extension_frac * length) or side > 0.1 * length:
+        return None
+    pt = np.array([[entry.x, entry.y]])
+    if not inside_frame(pt, w, h, margin_fraction):
+        return None
+    return pt[0]
+
+
+def depth_aware_length_mm(
+    pts: np.ndarray,
+    chain: tuple[int, ...] | list[int],
+    world_z_mm: np.ndarray,
+    scale: FrameScale,
+    principal: tuple[float, float],
+    max_elevation_deg: float,
+) -> float:
+    """Length of a finger chain from the landmarks' RELATIVE depth (optional: config finger_accuracy).
+
+    The coin gives one scale, for the knuckle layer. A joint nearer to or farther from the camera than the
+    finger's own knuckle is at another distance, so its pixels mean other millimetres, and a finger tilted
+    out of the image plane is foreshortened. With the model's relative world z (smaller = nearer; an
+    ESTIMATE, noisy, never a measurement) each joint's lateral position is scaled by Z_i / Z_knuckle (about the image centre, where a pinhole camera's
+    perspective is centred) and the
+    chord's depth difference restores the foreshortening. The chord is used for the depth difference (its noise
+    enters squared and over a long baseline) and the depth is clipped at ``max_elevation_deg``.
+    """
+    idx = list(chain)
+    centre = np.asarray(principal)
+    z_layer = scale.distance_range_mm
+    z_layer = math.sqrt(z_layer[0] * z_layer[1]) / scale.depth_factor  # camera distance at the knuckle layer
+    dz = world_z_mm[idx] - world_z_mm[idx[0]]
+    xy = (pts[idx, :2] - centre) / scale.px_per_mm * (1.0 + dz / z_layer)[:, None]
+    seg = np.linalg.norm(np.diff(xy, axis=0), axis=1)
+    lateral = float(seg.sum())
+    chord = float(np.linalg.norm(xy[-1] - xy[0]))
+    if chord < 1e-9:
+        return lateral
+    dz_chord = float(np.clip(dz[-1], -chord * math.tan(math.radians(max_elevation_deg)), chord * math.tan(math.radians(max_elevation_deg))))
+    return lateral * math.sqrt(chord * chord + dz_chord * dz_chord) / chord
+
+
 def measure_frame(
     frame: FrameObservation,
     ref: ReferenceSpec,
@@ -157,6 +236,12 @@ def measure_frame(
             b3 is not None and not (b3 <= cap.max_finger_bend_deg_3d * cap.finger_bend_3d_frame_factor)
         ):
             bent.add(name)
+    elevations: dict[str, float] = {}
+    if world is not None:
+        for name, chain in ALL_CHAINS.items():
+            e = chain_elevation_deg(world, chain)
+            if np.isfinite(e):
+                elevations[name] = e
     if "middle" in bent:
         codes.append("fingers_bent")
     if world is not None and palm_tilt_deg(world) > (cap.max_palm_tilt_deg_model if max_palm_tilt_deg is None else max_palm_tilt_deg):
@@ -201,16 +286,33 @@ def measure_frame(
     pts = scale.rectify(lm)
     # MediaPipe runs the landmark model on a crop about `landmark_roi_scale` times the hand's size.
     sigma_lm_px = unc.landmark_sigma_model_px * unc.landmark_roi_scale * bbox_size(lm) / unc.landmark_model_input_px
-    result = FrameResult(True, [], scale=scale, bends=bends)
+    result = FrameResult(True, [], scale=scale, bends=bends, elevations=elevations)
+    fa = cfg.finger_accuracy
     for key, d in cfg.measurements.items():
+        finger = _chain_finger(d.landmarks)
         if d.kind == "straight":
             length_px = float(np.linalg.norm(pts[d.landmarks[-1]] - pts[d.landmarks[0]]))
             k = math.sqrt(2.0)
         else:
             length_px = path_length(pts, d.landmarks)
             k = math.sqrt(2.0 + 0.5 * (len(d.landmarks) - 2))
+        name = _chain_name(d.landmarks)
+        use = pts
+        tip_src, tip_ext_mm = "landmark", 0.0
+        if d.kind == "polyline" and fa.outline_tip and frame.refined_tips and name is not None and finger not in obscured and finger not in bent:
+            rp = refined_tip(frame.refined_tips.get(str(d.landmarks[-1])), lm, d.landmarks, fa, w, h, cap.edge_margin_fraction)
+            if rp is not None:
+                use = pts.copy()
+                use[d.landmarks[-1]] = scale.rectify(rp[None, :])[0]
+                length_px = path_length(use, d.landmarks)
+                tip_src = "outline"
+                tip_ext_mm = float(np.linalg.norm(use[d.landmarks[-1]] - pts[d.landmarks[-1]])) / scale.px_per_mm
         mm = length_px / scale.px_per_mm
-        finger = _chain_finger(d.landmarks)
+        if fa.depth_aware_lengths and finger is not None and world is not None and finger not in obscured:
+            mm = depth_aware_length_mm(use, d.landmarks, world[:, 2] * 1000.0, scale, (w / 2.0, h / 2.0), fa.max_elevation_deg)
+        if name is not None and d.kind == "polyline" and finger not in obscured:
+            result.info_values[key] = mm
+            result.landmark_sigma[key] = k * sigma_lm_px / scale.px_per_mm
         lo, hi = d.plausible_range_mm
         if finger in obscured:
             result.excluded[key] = "finger_obscured"
@@ -224,6 +326,9 @@ def measure_frame(
             result.excluded[key] = "implausible_value"
             continue
         result.values[key] = mm
+        if name is not None and d.kind == "polyline":
+            result.tip_sources[key] = tip_src
+            result.tip_ext_mm[key] = tip_ext_mm
         result.landmark_sigma[key] = k * sigma_lm_px / scale.px_per_mm
     return result
 
@@ -231,6 +336,24 @@ def measure_frame(
 # --------------------------------------------------------------------------- #
 # Aggregation
 # --------------------------------------------------------------------------- #
+
+
+def finger_tilt_rel_sigma(tilt_deg: float, fa, corrected: bool) -> float:
+    """Relative uncertainty from a finger tilted ``tilt_deg`` out of the image plane (optional term).
+
+    A finger tilted by theta looks 1 - cos(theta) shorter. The tilt is only known from the model's noisy world
+    landmarks (1 sigma ``fa.elevation_sigma_deg``, ASSUMED), so the true tilt is taken as the larger of the two:
+    the reading and its noise, and the foreshortening it can hide is treated as uniform over that range (the
+    same treatment as the coin tilt term). When the lengths are already depth-aware the foreshortening is
+    corrected, and what remains is the error of that correction, tan(theta) times the tilt's noise, with the
+    noise's own bias as a floor.
+    """
+    sig = math.radians(fa.elevation_sigma_deg)
+    floor = (1.0 / math.cos(sig) - 1.0) / math.sqrt(3.0)
+    theta = math.radians(min(tilt_deg, fa.max_elevation_deg))
+    if corrected:
+        return max(math.tan(theta) * sig, floor)
+    return (1.0 / math.cos(math.hypot(theta, sig)) - 1.0) / math.sqrt(3.0)
 
 
 def robust_inliers(values: np.ndarray, k: float = 3.5) -> np.ndarray:
@@ -298,6 +421,76 @@ def aggregate_measurements(
     return finish_aggregate(camera, cfg, calib, manual)
 
 
+def _estimate(key, d, accepted, idx, vals, cfg, calib):
+    """Median value and uncertainty components of one measurement from the chosen frames (after MAD rejection)."""
+    unc = cfg.uncertainty
+    calibrated = calib.status == "calibrated"
+    keep = robust_inliers(vals)
+    n_out = int((~keep).sum())
+    idx = [i for i, kpt in zip(idx, keep, strict=False) if kpt]
+    vals = vals[keep]
+    n = len(vals)
+    m = float(np.median(vals))
+    sd = float(np.std(vals, ddof=1)) if n > 1 else 0.0
+    scales = [accepted[i].scale for i in idx]
+    entry = calib.measurements.get(key)
+    cal_scale = entry.scale if entry else 1.0
+    cal_offset = entry.offset_mm if entry else 0.0
+    resid_sd = entry.residual_sd_mm if entry else 0.0
+    value = cal_scale * m + cal_offset
+    random = sd / math.sqrt(n)
+    if calibrated:
+        comps = {"calibration_residual": resid_sd, "frame_variation": random}
+    else:
+        comps = {
+            "frame_variation": random,
+            "landmark_localisation": float(np.median([accepted[i].landmark_sigma[key] for i in idx])),
+            "coin_scale": m * float(np.median([s.rel_sigma_systematic for s in scales])),
+            "tilt": m * float(np.median([s.rel_sigma_tilt for s in scales])),
+            "depth_layer": m * float(np.median([s.rel_sigma_depth for s in scales])),
+            "perspective_and_hand_flatness": m * unc.perspective_rel_sigma,
+            "landmark_definition_prior": resid_sd,
+        }
+    name = _chain_name(d.landmarks)
+    elevs = [accepted[i].elevations[name] for i in idx if name in accepted[i].elevations] if name else []
+    tilt_deg = float(np.median(elevs)) if elevs else None
+    tilted = False
+    fa = cfg.finger_accuracy
+    if fa.tilt_uncertainty and tilt_deg is not None:
+        tilted = tilt_deg > fa.flag_elevation_deg
+        if not calibrated:  # a fitted residual already includes the population's tilt
+            comps["finger_foreshortening"] = m * finger_tilt_rel_sigma(
+                tilt_deg, fa, corrected=fa.depth_aware_lengths and name != "thumb"
+            )
+    sigma = cal_scale * math.sqrt(sum(c * c for c in comps.values()))
+    return dict(idx=idx, n=n, n_out=n_out, m=m, sd=sd, value=value, sigma=sigma, comps=comps, cal_scale=cal_scale,
+                tilt_deg=tilt_deg, tilted=tilted)  # fmt: skip
+
+
+def _info_fields(key, d, accepted, cfg, calib, est=None) -> dict:
+    """The value, uncertainty and interval of a thumb or finger the result would hide (status invalid), as plain
+    additive fields. Same formulas as the shown value; the status, the reasons and the size are not touched.
+    ``est`` is an estimate already made from the usual frames; otherwise one is made from every usable frame."""
+    if _chain_name(d.landmarks) is None or d.kind != "polyline":
+        return {}
+    if est is None:
+        idx = [i for i, r in enumerate(accepted) if key in r.info_values]
+        if not idx:
+            return {}
+        est = _estimate(key, d, accepted, idx, np.array([accepted[i].info_values[key] for i in idx]), cfg, calib)
+    v, s = est["value"], est["sigma"]
+    return dict(info_value_mm=round(v, 1), info_uncertainty_mm=round(s, 1),
+                info_interval95_mm=(round(v - Z95 * s, 1), round(v + Z95 * s, 1)), info_frames=est["n"])  # fmt: skip
+
+
+def _tip_fields(key, d, accepted, idx) -> dict:
+    if _chain_name(d.landmarks) is None or d.kind != "polyline":
+        return {}
+    counts = Counter(accepted[i].tip_sources.get(key, "landmark") for i in idx)
+    ext = [accepted[i].tip_ext_mm[key] for i in idx if accepted[i].tip_sources.get(key) == "outline" and key in accepted[i].tip_ext_mm]
+    return dict(tip_source=dict(counts), tip_extension_mm=round(float(np.median(ext)), 1) if ext else None)
+
+
 def aggregate_camera(
     results: list[FrameResult],
     cfg: MeasurementConfig,
@@ -316,6 +509,7 @@ def aggregate_camera(
     raw_keys: dict[str, RawKey] = {}
 
     min_feature_frames = min(min_frames, max(4, len(accepted) // 2))
+    fa = cfg.finger_accuracy
     for key, d in cfg.measurements.items():
         idx = [i for i, r in enumerate(accepted) if key in r.values]
         base = dict(
@@ -328,51 +522,33 @@ def aggregate_camera(
             source="camera_landmarks",
         )
         req_frames = min_frames if key == HAND_LENGTH else min_feature_frames
+        excl = Counter(r.excluded[key] for r in accepted if key in r.excluded)
+        base["limitation"] = d.limitation or None
         if _chain_finger(d.landmarks) in bent_fingers:
             out.append(MeasurementOut(**base, value_mm=None, uncertainty_mm=None, interval95_mm=None,
-                                      status="invalid", frames_used=0, reasons=["finger_bent"]))  # fmt: skip
+                                      status="invalid", frames_used=0, reasons=["finger_bent"],
+                                      frame_exclusions=dict(excl), **_info_fields(key, d, accepted, cfg, calib)))  # fmt: skip
             continue
         if len(idx) < req_frames:
-            excl = Counter(r.excluded.get(key) for r in accepted if key in r.excluded)
             reason = excl.most_common(1)[0][0] if excl else "too_few_frames"
             out.append(MeasurementOut(**base, value_mm=None, uncertainty_mm=None, interval95_mm=None,
-                                      status="invalid", frames_used=len(idx), reasons=[reason]))  # fmt: skip
+                                      status="invalid", frames_used=len(idx), reasons=[reason],
+                                      frame_exclusions=dict(excl), **_info_fields(key, d, accepted, cfg, calib)))  # fmt: skip
             continue
 
-        vals = np.array([accepted[i].values[key] for i in idx])
-        keep = robust_inliers(vals)
-        idx = [i for i, kpt in zip(idx, keep, strict=False) if kpt]
-        vals = vals[keep]
-        n = len(vals)
-        m = float(np.median(vals))
-        sd = float(np.std(vals, ddof=1)) if n > 1 else 0.0
-        scales = [accepted[i].scale for i in idx]
-
-        entry = calib.measurements.get(key)
-        cal_scale = entry.scale if entry else 1.0
-        cal_offset = entry.offset_mm if entry else 0.0
-        resid_sd = entry.residual_sd_mm if entry else 0.0
-        value = cal_scale * m + cal_offset
-
-        random = sd / math.sqrt(n)
-        if calibrated:
-            comps = {"calibration_residual": resid_sd, "frame_variation": random}
-        else:
-            comps = {
-                "frame_variation": random,
-                "landmark_localisation": float(np.median([accepted[i].landmark_sigma[key] for i in idx])),
-                "coin_scale": m * float(np.median([s.rel_sigma_systematic for s in scales])),
-                "tilt": m * float(np.median([s.rel_sigma_tilt for s in scales])),
-                "depth_layer": m * float(np.median([s.rel_sigma_depth for s in scales])),
-                "perspective_and_hand_flatness": m * unc.perspective_rel_sigma,
-                "landmark_definition_prior": resid_sd,
-            }
-        sigma = cal_scale * math.sqrt(sum(c * c for c in comps.values()))
+        est = _estimate(key, d, accepted, idx, np.array([accepted[i].values[key] for i in idx]), cfg, calib)
+        if est["n_out"]:
+            excl["outlier_frame"] = est["n_out"]
+        idx, n, m, sd = est["idx"], est["n"], est["m"], est["sd"]
+        value, sigma, comps, cal_scale = est["value"], est["sigma"], est["comps"], est["cal_scale"]
+        tilt_deg, tilted = est["tilt_deg"], est["tilted"]
         status = classify(value, sigma, cfg, out_of_plane=d.out_of_plane)
         reasons: list[str] = []
         if d.out_of_plane and status in ("valid", "low_confidence"):
             status = "low_confidence"
             reasons.append("out_of_plane")
+        if tilted:
+            reasons.append("finger_tilted")
         lo, hi = d.plausible_range_mm
         if not lo <= value <= hi:
             status = "invalid"
@@ -395,6 +571,10 @@ def aggregate_camera(
                 frames_used=n,
                 uncertainty_components_mm={k: round(v, 2) for k, v in comps.items()},
                 reasons=reasons,
+                frame_exclusions=dict(excl),
+                finger_tilt_deg=None if tilt_deg is None else round(tilt_deg, 1),
+                **_tip_fields(key, d, accepted, idx),
+                **({} if show else _info_fields(key, d, accepted, cfg, calib, est)),
             )
         )
         if show:
@@ -510,6 +690,17 @@ def combine_views(views: list[CameraAgg], cfg: MeasurementConfig) -> CameraAgg:
                     frames_used=sum(r.n for r in raws),
                     uncertainty_components_mm={c: round(x, 2) for c, x in comps.items()},
                     reasons=reasons,
+                    frame_exclusions=_sum_counts([by_key[i][key].frame_exclusions for _, i in have]),
+                    finger_tilt_deg=_mean_or_none([by_key[i][key].finger_tilt_deg for _, i in have]),
+                    tip_source=_sum_counts([by_key[i][key].tip_source for _, i in have]),
+                    tip_extension_mm=_mean_or_none([by_key[i][key].tip_extension_mm for _, i in have]),
+                    **(
+                        {}
+                        if show or _chain_name(d.landmarks) is None or d.kind != "polyline"
+                        else dict(info_value_mm=round(value, 1), info_uncertainty_mm=round(sigma, 1),
+                                  info_interval95_mm=(round(value - Z95 * sigma, 1), round(value + Z95 * sigma, 1)),
+                                  info_frames=sum(r.n for r in raws))
+                    ),
                 )
             )
         )
@@ -519,6 +710,18 @@ def combine_views(views: list[CameraAgg], cfg: MeasurementConfig) -> CameraAgg:
             raw_out[key] = RawKey(value, comps, cal_scale, sum(r.n for r in raws), any(r.unstable for r in raws))
     codes = list(dict.fromkeys(c for v in views for c in v.issue_codes))
     return CameraAgg(out, codes, any(v.unstable for v in views), kept_values, kept_sigma, raw_out, primary.accepted)
+
+
+def _sum_counts(counts: list[dict[str, int]]) -> dict[str, int]:
+    out: Counter = Counter()
+    for c in counts:
+        out.update(c)
+    return dict(out)
+
+
+def _mean_or_none(values: list[float | None]) -> float | None:
+    have = [v for v in values if v is not None]
+    return None if not have else round(float(np.mean(have)), 1)
 
 
 def _derived_and_manual(

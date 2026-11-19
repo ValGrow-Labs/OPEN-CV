@@ -34,6 +34,10 @@ LONG_FINGERS: dict[str, tuple[int, int, int, int]] = {
     "little": (PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP),
 }
 
+# The thumb's measured chain (MCP -> IP -> tip) and all five chains by name.
+THUMB_CHAIN: tuple[int, int, int] = (THUMB_MCP, THUMB_IP, THUMB_TIP)
+ALL_CHAINS: dict[str, tuple[int, ...]] = {"thumb": THUMB_CHAIN, **LONG_FINGERS}
+
 # Outline of the palm, used to check that the coin rests on the palm.
 PALM_POLYGON = (WRIST, THUMB_CMC, THUMB_MCP, INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP)
 PALM_PLANE_POINTS = (WRIST, INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP)
@@ -76,6 +80,17 @@ def chain_bend_deg(points: np.ndarray, chain: tuple[int, ...] | list[int]) -> fl
     unit = seg / norms[:, None]
     cosines = np.clip(np.sum(unit[:-1] * unit[1:], axis=1), -1.0, 1.0)
     return float(np.degrees(np.arccos(cosines)).sum())
+
+
+def chain_elevation_deg(points: np.ndarray, chain: tuple[int, ...] | list[int]) -> float:
+    """Angle (degrees) between a chain's end-to-end chord and the image plane, from 3D points whose third
+    coordinate is depth (MediaPipe world landmarks: a model estimate, never a measurement). 0 means the finger
+    lies in a plane parallel to the image; a finger tilted by this angle looks shorter by 1 - cos(angle)."""
+    v = points[chain[-1], :3] - points[chain[0], :3]
+    n = float(np.linalg.norm(v))
+    if n < 1e-9:
+        return float("nan")
+    return float(np.degrees(np.arcsin(min(1.0, abs(float(v[2])) / n))))
 
 
 def palm_tilt_deg(world: np.ndarray) -> float:
