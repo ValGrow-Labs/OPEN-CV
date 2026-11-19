@@ -511,7 +511,7 @@ html[data-mm="on"] body {
   flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 20px;
   background: #02050a;
 }
 
@@ -538,39 +538,62 @@ html[data-mm="on"] body {
   pointer-events: none;
 }
 
+/* The note that goes with the live finger labels: they are rough estimates, the result comes after the scan. */
+.mm-live-note {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  max-width: calc(100% - 120px);
+  padding: 3px 10px;
+  border: 1px solid rgba(160, 228, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(5, 12, 24, 0.62);
+  color: var(--mm-ink-2);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .mm-corner {
   position: absolute;
   width: 28px;
   height: 28px;
-  border: 0 solid rgba(168, 212, 255, 0.9);
+  border: 0 solid rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.45));
   pointer-events: none;
 }
 .mm-corner--tl {
   top: 12px;
   left: 12px;
-  border-top-width: 2px;
-  border-left-width: 2px;
+  border-top-width: 1.5px;
+  border-left-width: 1.5px;
   border-top-left-radius: 6px;
 }
 .mm-corner--tr {
   top: 12px;
   right: 12px;
-  border-top-width: 2px;
-  border-right-width: 2px;
+  border-top-width: 1.5px;
+  border-right-width: 1.5px;
   border-top-right-radius: 6px;
 }
 .mm-corner--bl {
   bottom: 12px;
   left: 12px;
-  border-bottom-width: 2px;
-  border-left-width: 2px;
+  border-bottom-width: 1.5px;
+  border-left-width: 1.5px;
   border-bottom-left-radius: 6px;
 }
 .mm-corner--br {
   bottom: 12px;
   right: 12px;
-  border-bottom-width: 2px;
-  border-right-width: 2px;
+  border-bottom-width: 1.5px;
+  border-right-width: 1.5px;
   border-bottom-right-radius: 6px;
 }
 
@@ -698,16 +721,20 @@ html[data-mm="on"] body {
 }
 .mm-ring-track {
   fill: none;
-  stroke: rgba(130, 180, 255, 0.2);
-  stroke-width: 4;
+  stroke: rgba(90, 140, 220, 0.16);
+  stroke-width: 5;
 }
 .mm-ring-fill {
   fill: none;
-  stroke: var(--mm-blue-hi);
-  stroke-width: 4;
+  stroke: #6af4ff;
+  stroke-width: 5;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.35s ease;
-  filter: drop-shadow(0 0 4px rgba(108, 178, 255, 0.8));
+  filter: drop-shadow(0 0 3px rgba(90, 225, 255, 0.95)) drop-shadow(0 0 7px rgba(60, 130, 255, 0.7));
+}
+.mm-ring-head {
+  fill: #fff;
+  filter: drop-shadow(0 0 3px rgba(120, 240, 255, 1)) drop-shadow(0 0 6px rgba(70, 160, 255, 0.9));
 }
 .mm-ring-num {
   position: absolute;
@@ -1092,4 +1119,64 @@ html[data-mm="on"] body {
   background: rgba(10, 20, 38, 0.92);
   border-color: var(--mm-line-strong);
   color: var(--mm-ink-2);
+}
+
+/* ------------------------------------------------------------------ capture redesign: the 3D button and the camera switch */
+
+.mm-3d-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  gap: 0;
+  padding: 0;
+  line-height: 1;
+}
+.mm-3d-btn svg {
+  width: 15px;
+  height: 15px;
+}
+.mm-3d-btn span {
+  margin-top: -1px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.mm-3d-btn:not(.is-on) {
+  color: var(--mm-mute);
+}
+.mm-3d-btn.is-on {
+  border-color: rgba(120, 225, 255, 0.7);
+  box-shadow: 0 0 12px -2px rgba(90, 210, 255, 0.55);
+}
+
+.mm-cam-switch {
+  position: absolute;
+  top: 48px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(5, 12, 24, 0.55);
+  color: #e6f4ff;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.mm-cam-switch::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+.mm-cam-switch:disabled {
+  opacity: 0.4;
+}
+.mm-cam-switch svg {
+  width: 16px;
+  height: 16px;
 }
