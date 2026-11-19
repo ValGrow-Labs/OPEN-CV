@@ -1,4 +1,4 @@
-import type { ConfidenceLevel, MeasurementSource, MeasurementStatus } from "../api/types";
+import type { ConfidenceLevel, Measurement, MeasurementSource, MeasurementStatus } from "../api/types";
 
 export const MM_PER_INCH = 25.4;
 
@@ -50,7 +50,31 @@ export const REASONS: Record<string, string> = {
   implausible_value: "The value is outside the expected human range.",
   too_few_frames: "Too few good frames were available for this measurement.",
   requires_validated_model_or_manual_entry: "Needs a tape measurement (or a model validated on reference data).",
+  finger_tilted: "This finger looked tilted towards or away from the camera, which can make it look shorter.",
 };
+
+/** The thumb and the four fingers' length keys. */
+export const FINGER_KEY_RE = /^(thumb|index|middle|ring|little)_length_mm$/;
+
+const FRAME_EXCLUSION_WORDS: Record<string, string> = {
+  finger_bent: "bent",
+  finger_obscured: "hidden or poorly detected",
+  implausible_value: "outside the expected size",
+  outlier_frame: "far from the other frames",
+};
+
+/** Why frames did not count for a finger, and how to get a better reading. Advice only: nothing here changes
+ *  a gate, a value or a status. */
+export function fingerFrameDetail(m: Measurement | undefined): string | undefined {
+  if (!m || !FINGER_KEY_RE.test(m.key)) return undefined;
+  const left = Object.entries(m.frame_exclusions ?? {})
+    .filter(([k, n]) => n > 0 && FRAME_EXCLUSION_WORDS[k])
+    .map(([k, n]) => `${n} ${FRAME_EXCLUSION_WORDS[k]}`);
+  const flagged = m.reasons.some((r) => ["finger_tilted", "finger_bent", "finger_obscured", "too_few_frames"].includes(r));
+  if (left.length === 0 && !flagged) return undefined;
+  const lead = left.length ? `Frames left out for this finger: ${left.join(", ")}. ` : "";
+  return `${lead}For a better reading, keep your hand flat and still with your fingers straight and spread.`;
+}
 
 export const COMPONENTS: Record<string, string> = {
   frame_variation: "Frame-to-frame variation",
@@ -62,6 +86,7 @@ export const COMPONENTS: Record<string, string> = {
   landmark_definition_prior: "Anatomical definition (prior, unvalidated)",
   validated_residual: "Validated residual error",
   view_disagreement: "Disagreement between views",
+  finger_foreshortening: "Finger tilt (looks shorter when tilted)",
 };
 
 export const CONFIDENCE: Record<ConfidenceLevel, { label: string; text: string }> = {
@@ -82,3 +107,16 @@ export const MANUAL_LABELS: Record<string, string> = {
   hand_circumference_mm: "Hand circumference",
   palm_breadth_mm: "Palm breadth (skin edge to skin edge)",
 };
+
+/** A thumb or finger the server would hide (status invalid) that still carries its number as information. The
+ *  result page shows it with the wide interval and a "Very uncertain" tag; the size never uses it. */
+export function veryUncertainFinger(m: Measurement | undefined): { mm: number; sigma: number | null; interval: [number, number] | null; why: string } | null {
+  if (!m || !FINGER_KEY_RE.test(m.key) || m.status !== "invalid" || m.value_mm !== null || m.info_value_mm == null) return null;
+  const reason = m.reasons.map((r) => REASONS[r]).find(Boolean);
+  return {
+    mm: m.info_value_mm,
+    sigma: m.info_uncertainty_mm ?? null,
+    interval: m.info_interval95_mm ?? null,
+    why: `${reason ?? "The camera could not pin this finger down."} Shown for information; not used for your glove size.`,
+  };
+}

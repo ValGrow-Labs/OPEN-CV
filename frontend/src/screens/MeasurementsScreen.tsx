@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChartSummary, Measurement, PublicConfig, ScanResponse } from "../api/types";
 import type { ScanTimingBreakdown } from "../scan/scanController";
 import { Badge, HandDiagram } from "../ui/components";
-import { fingerBendDetail, MM_PER_INCH } from "../ui/format";
+import { fingerBendDetail, fingerFrameDetail, MM_PER_INCH } from "../ui/format";
 import { MeasureList } from "../ui/measureList";
 import { ButtonIcon, stagger } from "../ui/motion";
 import { hasViews, ViewsNotice, ViewsTable } from "../ui/viewsBlock";
@@ -51,7 +51,7 @@ export function MeasurementsScreen({ config, chart, result, mirrored, scanTiming
 
   const rec = result.recommendation;
   const asItems = (rows: Measurement[]) =>
-    rows.map((m) => ({ key: m.key, label: m.label, m, detail: fingerBendDetail(result.finger_bends, m.key, m.reasons) }));
+    rows.map((m) => ({ key: m.key, label: m.label, m, detail: [fingerBendDetail(result.finger_bends, m.key, m.reasons), fingerFrameDetail(m)].filter(Boolean).join(" ") || undefined }));
 
   return (
     <main className="page stack stack-lg">

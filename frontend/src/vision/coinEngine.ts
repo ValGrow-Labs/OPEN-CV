@@ -3,11 +3,15 @@
 import { runCoinJob, type CoinJob, type CoinJobResult } from "./coinJob";
 import type { CoinWorkerReply, CoinWorkerRequest } from "./coinWorker";
 import { loadOpenCV, OPENCV_URL, type CV } from "./opencv";
+import { runTipJob, type TipJob, type TipJobResult } from "./tipJob";
 
 export interface CoinEngine {
   readonly kind: "worker" | "page";
   /** Runs one search. The job's pixel buffer is handed over and must not be used afterwards. */
   run(job: CoinJob): Promise<CoinJobResult>;
+  /** Measures fingertips from the hand outline on crops of one frame (optional: an engine without it keeps the
+   *  landmark tips). The crops' pixel buffers are handed over. */
+  tips?(job: TipJob): Promise<TipJobResult>;
 }
 
 class PageEngine implements CoinEngine {
@@ -20,9 +24,16 @@ class PageEngine implements CoinEngine {
       return Promise.reject(err);
     }
   }
+  tips(job: TipJob): Promise<TipJobResult> {
+    try {
+      return Promise.resolve(runTipJob(job));
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
 }
 
-type Pending = { resolve: (r: CoinJobResult) => void; reject: (e: Error) => void };
+type Pending = { resolve: (r: never) => void; reject: (e: Error) => void };
 
 class WorkerEngine implements CoinEngine {
   readonly kind = "worker";
@@ -36,7 +47,7 @@ class WorkerEngine implements CoinEngine {
       const p = this.pending.get(msg.id);
       if (!p) return;
       this.pending.delete(msg.id);
-      if (msg.type === "result") p.resolve(msg.result);
+      if (msg.type === "result" || msg.type === "tips") (p.resolve as (r: unknown) => void)(msg.result);
       else p.reject(new Error(msg.message));
     };
     worker.onerror = (e) => {
@@ -50,6 +61,14 @@ class WorkerEngine implements CoinEngine {
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
       this.worker.postMessage({ type: "job", id, job } satisfies CoinWorkerRequest, [job.image.data.buffer]);
+    });
+  }
+
+  tips(job: TipJob): Promise<TipJobResult> {
+    return new Promise((resolve, reject) => {
+      const id = this.nextId++;
+      this.pending.set(id, { resolve, reject });
+      this.worker.postMessage({ type: "tips", id, job } satisfies CoinWorkerRequest, job.fingers.map((f) => f.image.data.buffer));
     });
   }
 }
