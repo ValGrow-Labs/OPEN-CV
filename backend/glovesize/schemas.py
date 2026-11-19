@@ -57,6 +57,23 @@ class CoinObservation(_Model):
         return self
 
 
+REFINED_TIP_LANDMARKS = ("4", "8", "12", "16", "20")
+
+
+class RefinedTip(_Model):
+    """A fingertip the browser measured from the hand outline (optional, additive). Numbers only: no pixels."""
+
+    x: float
+    y: float
+    extension_px: float = Field(ge=0, lt=1000, description="Distance beyond the landmark tip, image pixels.")
+    source: Literal["outline", "landmark"] = Field(
+        description="outline: the skin tip found from the hand outline; landmark: no clear outline, the model's tip."
+    )
+    reason: str | None = Field(default=None, max_length=40, description="Why the landmark tip was kept.")
+
+    _check = field_validator("x", "y", "extension_px")(_finite)
+
+
 class FrameObservation(_Model):
     timestamp_ms: float = Field(ge=0)
     image_width: int = Field(ge=64, le=8192)
@@ -72,6 +89,17 @@ class FrameObservation(_Model):
     coin: CoinObservation | None = None
     brightness: float | None = Field(default=None, ge=0, le=255)
     view: str = Field(default="palm", pattern=r"^[a-z][a-z0-9_]{0,15}$", description="Capture view id (config capture.views).")
+    refined_tips: dict[str, RefinedTip] | None = Field(
+        default=None,
+        description="Optional fingertips from the hand outline, by tip landmark index (4, 8, 12, 16, 20).",
+    )
+
+    @field_validator("refined_tips")
+    @classmethod
+    def _tip_keys(cls, v):
+        if v is not None and any(k not in REFINED_TIP_LANDMARKS for k in v):
+            raise ValueError("refined_tips keys must be tip landmark indices 4, 8, 12, 16, 20")
+        return v
 
 
 class ReferenceSelection(_Model):
@@ -192,6 +220,32 @@ class MeasurementOut(_Model):
     frames_used: int = 0
     uncertainty_components_mm: dict[str, float] = Field(default_factory=dict)
     reasons: list[str] = Field(default_factory=list)
+    # Additive diagnostics (never change a value, uncertainty or status):
+    frame_exclusions: dict[str, int] = Field(
+        default_factory=dict,
+        description="Accepted frames that did not contribute to this value, by reason (finger_bent, finger_obscured, "
+        "implausible_value, outlier_frame).",
+    )
+    finger_tilt_deg: float | None = Field(
+        default=None,
+        description="Median elevation of this finger's chord above the image plane, from the model's world landmarks "
+        "(an estimate, not a measurement); fingers and thumb only.",
+    )
+    limitation: str | None = Field(default=None, description="What this value is not (its definition gap).")
+    tip_source: dict[str, int] = Field(
+        default_factory=dict,
+        description="Frames behind this length by where the tip came from: outline (the skin tip found from the hand "
+        "outline) or landmark (the model's tip point).",
+    )
+    tip_extension_mm: float | None = Field(
+        default=None, description="Median distance the outline tip lies beyond the landmark tip, mm (frames that used it)."
+    )
+    # A thumb or finger whose value the result would hide (status invalid) still gets its number here, as
+    # information. The status, the reasons and the size recommendation are exactly what they were.
+    info_value_mm: float | None = None
+    info_uncertainty_mm: float | None = None
+    info_interval95_mm: tuple[float, float] | None = None
+    info_frames: int | None = None
 
 
 class CalibrationOut(_Model):

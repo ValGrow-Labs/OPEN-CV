@@ -43,11 +43,14 @@ export type LiveCode =
   | "wrong_side"
   | "hold_still";
 
+/** What the customer sees while a frame is fine: how to hold the hand so the fingers measure well. */
+export const HOLD_STILL_MESSAGE = "Hold still, fingers straight, spread and flat";
+
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
   no_hand: "Show your open palm to the camera",
   hand_out_of_frame: "Hand touches the edge. Move the phone further back",
   hand_too_small: "Bring your hand closer to the camera",
-  fingers_bent: "Straighten your fingers",
+  fingers_bent: "Straighten your fingers and keep them flat",
   index_finger_bent: "Straighten your index finger",
   fingers_touching: "Spread your fingers slightly",
   palm_not_flat: "Hold your palm flat, facing the camera",
@@ -102,7 +105,7 @@ export function evaluateBasicFrame(frame: FrameObservation | null, capture: Capt
 }
 
 function basicResult(codes: LiveCode[], view?: Pick<CaptureView, "messages"> | null): LiveResult {
-  return { ok: codes.length === 0, codes, message: codes.length ? liveMessage(codes[0], view) : "Hold still while we measure" };
+  return { ok: codes.length === 0, codes, message: codes.length ? liveMessage(codes[0], view) : HOLD_STILL_MESSAGE };
 }
 
 /** The guidance text for a live-check code in a capture view: the view's own wording when it has
@@ -257,5 +260,5 @@ export function evaluateFrame(
 }
 
 function result(codes: LiveCode[]): LiveResult {
-  return { ok: codes.length === 0, codes, message: codes.length ? LIVE_MESSAGES[codes[0]] : "Hold still while we measure" };
+  return { ok: codes.length === 0, codes, message: codes.length ? LIVE_MESSAGES[codes[0]] : HOLD_STILL_MESSAGE };
 }

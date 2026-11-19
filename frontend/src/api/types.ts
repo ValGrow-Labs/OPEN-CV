@@ -37,6 +37,20 @@ export interface FrameObservation {
   brightness: number | null;
   /** Capture view id (config capture.views); the server treats a missing one as the primary view. */
   view?: string;
+  /** Fingertips measured from the hand outline in the browser, by tip landmark index (4, 8, 12, 16, 20). Optional,
+   *  additive; the server re-checks each one and falls back to the landmark tip. */
+  refined_tips?: Record<string, RefinedTip>;
+}
+
+export interface RefinedTip {
+  x: number;
+  y: number;
+  /** Distance beyond the landmark tip, image pixels. */
+  extension_px: number;
+  /** "outline": the skin tip found from the hand outline; "landmark": no clear outline, the model's tip point. */
+  source: "outline" | "landmark";
+  /** Why the landmark tip was kept. */
+  reason?: string;
 }
 
 export interface ReferenceSelection {
@@ -88,6 +102,21 @@ export interface Measurement {
   frames_used: number;
   uncertainty_components_mm: Record<string, number>;
   reasons: string[];
+  /** Accepted frames that did not count for this value, by reason (finger_bent, finger_obscured, ...). Additive. */
+  frame_exclusions?: Record<string, number>;
+  /** Frames behind a finger length by where the tip came from: "outline" (skin tip) or "landmark". Additive. */
+  tip_source?: Record<string, number>;
+  /** Median distance the outline tip lies beyond the landmark tip, mm. Additive. */
+  tip_extension_mm?: number | null;
+  /** A thumb or finger the result would hide still carries its number here, as information only. Additive. */
+  info_value_mm?: number | null;
+  info_uncertainty_mm?: number | null;
+  info_interval95_mm?: [number, number] | null;
+  info_frames?: number | null;
+  /** Median elevation of this finger above the image plane from the model's depth estimate (degrees). Additive. */
+  finger_tilt_deg?: number | null;
+  /** What this value is not (its definition gap). Additive. */
+  limitation?: string | null;
 }
 
 export interface CalibrationSummary {
@@ -386,6 +415,9 @@ export interface PublicConfig {
   capture: CaptureParams;
   live_scan: LiveScanParams;
   calibration: CalibrationParams;
+  /** Fingertip from the hand outline: whether the phone measures it, and the largest believable extension as a
+   *  fraction of the distal segment. Absent on an older server (the phone then sends no refined tips). */
+  finger_tip?: { enabled: boolean; max_extension_frac: number };
   measurement_labels: Record<string, string>;
   manual_measurement_sd_mm: number;
   assumed_hfov_deg: [number, number];

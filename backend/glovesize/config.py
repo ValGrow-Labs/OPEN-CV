@@ -323,6 +323,33 @@ class DepthModelParams(_Strict):
     landmark_layer_depth_sd_mm: float = Field(ge=0, lt=40)
 
 
+class FingerAccuracyParams(_Strict):
+    """Optional, default-OFF finger refinements (docs/FINGER_ACCURACY_AUDIT.md). Each one changes numbers a
+    customer sees, so none is on until the owner has reviewed it; improved in simulation, not validated on
+    real hands. The always-on finger diagnostics (frame exclusions, finger tilt, limitation text) never change
+    a value, an uncertainty or a status."""
+
+    # Add an uncertainty term for a finger that is tilted towards or away from the camera (its chord's elevation
+    # from the model's world landmarks), and flag a clearly tilted finger with the reason ``finger_tilted``.
+    tilt_uncertainty: bool = False
+    # Lengths of the four fingers from the landmarks' RELATIVE depth (the model's world z, relative to each
+    # finger's own knuckle) instead of one scale for every landmark. Never applied to the thumb.
+    depth_aware_lengths: bool = False
+    # Assumed 1 sigma of the model's elevation estimate of a finger chord. ASSUMED: on two real flat-hand photos
+    # the model read 1-4 degrees for the four fingers (truth about 0), so 4 is not generous.
+    elevation_sigma_deg: float = Field(default=4.0, ge=0, lt=45)
+    # The median chord elevation above which a finger is flagged ``finger_tilted`` (when tilt_uncertainty is on).
+    flag_elevation_deg: float = Field(default=12.0, gt=0, lt=60)
+    # A chord depth difference beyond this elevation is not believed (the model's z is noisy): clipped.
+    max_elevation_deg: float = Field(default=30.0, gt=0, lt=60)
+    # The fingertip from the hand outline (found in the browser, sent as numbers): the model's tip landmark sits
+    # inside the fingertip, so a chain to it reads short. A refined tip is used only when it lies beyond the
+    # landmark tip along the distal segment by at most this fraction of that segment (DIP to tip). ON by default:
+    # it lengthens finger values (not the hand length). Not validated on real hands.
+    outline_tip: bool = True
+    outline_tip_max_extension_frac: float = Field(default=0.5, gt=0, le=1)
+
+
 class AcceptanceParams(_Strict):
     max_rel_u95_valid: float = Field(gt=0)
     max_rel_u95_low_confidence: float = Field(gt=0)
@@ -335,6 +362,8 @@ class MeasurementDef(_Strict):
     definition: str
     out_of_plane: bool = False
     plausible_range_mm: tuple[float, float]
+    # What this value is NOT (shown with the measurement): its anatomical definition gap. Additive text.
+    limitation: str = ""
 
     @field_validator("landmarks")
     @classmethod
@@ -353,6 +382,7 @@ class MeasurementConfig(_Strict):
     uncertainty: UncertaintyParams
     depth_model: DepthModelParams
     acceptance: AcceptanceParams
+    finger_accuracy: FingerAccuracyParams = FingerAccuracyParams()
     measurements: dict[str, MeasurementDef]
     # What a customer may enter with a tape measure (mm): wide enough for every hand, small children
     # to very large adults. Used by the server's input checks and shown to the phone.

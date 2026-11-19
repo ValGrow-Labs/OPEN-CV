@@ -201,6 +201,15 @@
     "max_rel_u95_valid": 0.08,
     "max_rel_u95_low_confidence": 0.22
   },
+  "finger_accuracy": {
+    "tilt_uncertainty": false,
+    "depth_aware_lengths": false,
+    "elevation_sigma_deg": 4.0,
+    "flag_elevation_deg": 12.0,
+    "max_elevation_deg": 30.0,
+    "outline_tip": true,
+    "outline_tip_max_extension_frac": 0.5
+  },
   "manual_entry_range_mm": {
     "hand_length_mm": [60, 300],
     "hand_circumference_mm": [80, 450],
@@ -262,7 +271,8 @@
       "plausible_range_mm": [
         20,
         115
-      ]
+      ],
+      "limitation": "Length of the joint chain from the thumb's MCP joint centre to the thumb tip: the skin tip found from the hand outline when it was clear (see tip_source), otherwise the model's tip point, which lies inside the tip. The thumb turns out of the palm plane, so one coin scale mis-scales it and it is foreshortened by an unknown angle; it is never better than low confidence. Not the crease-to-tip length; not calibrated, not validated."
     },
     "index_length_mm": {
       "label": "Index finger length",
@@ -278,7 +288,8 @@
       "plausible_range_mm": [
         30,
         145
-      ]
+      ],
+      "limitation": "Length of the joint chain from the knuckle (MCP) joint centre to the fingertip. The tip is the skin tip found from the hand outline when the outline was clear (see tip_source), otherwise the model's tip point, which lies inside the fingertip. It is NOT the crease-to-tip length used by glove makers (the chain starts at the knuckle joint centre, proximal to the finger crease, so it reads longer). The offsets are unknown until a caliper study; not calibrated, not validated."
     },
     "middle_length_mm": {
       "label": "Middle finger length",
@@ -294,7 +305,8 @@
       "plausible_range_mm": [
         33,
         155
-      ]
+      ],
+      "limitation": "Length of the joint chain from the knuckle (MCP) joint centre to the fingertip. The tip is the skin tip found from the hand outline when the outline was clear (see tip_source), otherwise the model's tip point, which lies inside the fingertip. It is NOT the crease-to-tip length used by glove makers (the chain starts at the knuckle joint centre, proximal to the finger crease, so it reads longer). The offsets are unknown until a caliper study; not calibrated, not validated."
     },
     "ring_length_mm": {
       "label": "Ring finger length",
@@ -310,7 +322,8 @@
       "plausible_range_mm": [
         30,
         150
-      ]
+      ],
+      "limitation": "Length of the joint chain from the knuckle (MCP) joint centre to the fingertip. The tip is the skin tip found from the hand outline when the outline was clear (see tip_source), otherwise the model's tip point, which lies inside the fingertip. It is NOT the crease-to-tip length used by glove makers (the chain starts at the knuckle joint centre, proximal to the finger crease, so it reads longer). The offsets are unknown until a caliper study; not calibrated, not validated."
     },
     "little_length_mm": {
       "label": "Little finger length",
@@ -326,7 +339,8 @@
       "plausible_range_mm": [
         22,
         125
-      ]
+      ],
+      "limitation": "Length of the joint chain from the knuckle (MCP) joint centre to the fingertip. The tip is the skin tip found from the hand outline when the outline was clear (see tip_source), otherwise the model's tip point, which lies inside the fingertip. It is NOT the crease-to-tip length used by glove makers (the chain starts at the knuckle joint centre, proximal to the finger crease, so it reads longer). The offsets are unknown until a caliper study; not calibrated, not validated."
     }
   }
 }

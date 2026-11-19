@@ -3,11 +3,16 @@
 // the live guidance keep up with the camera while OpenCV works.
 import { runCoinJob, type CoinJob } from "./coinJob";
 import { initOpenCV, type CV } from "./opencv";
+import { runTipJob, type TipJob, type TipJobResult } from "./tipJob";
 
-export type CoinWorkerRequest = { type: "load"; url: string } | { type: "job"; id: number; job: CoinJob };
+export type CoinWorkerRequest =
+  | { type: "load"; url: string }
+  | { type: "job"; id: number; job: CoinJob }
+  | { type: "tips"; id: number; job: TipJob };
 export type CoinWorkerReply =
   | { type: "ready" }
   | { type: "result"; id: number; result: ReturnType<typeof runCoinJob> }
+  | { type: "tips"; id: number; result: TipJobResult }
   | { type: "error"; id: number | null; message: string };
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -32,6 +37,15 @@ scope.onmessage = async (e: MessageEvent<CoinWorkerRequest>) => {
       scope.postMessage({ type: "ready" } satisfies CoinWorkerReply);
     } catch (err) {
       scope.postMessage({ type: "error", id: null, message: String(err) } satisfies CoinWorkerReply);
+    }
+    return;
+  }
+  if (msg.type === "tips") {
+    // Fingertips from the hand outline: plain typed-array code, no OpenCV needed, but it runs here so the page stays free.
+    try {
+      scope.postMessage({ type: "tips", id: msg.id, result: runTipJob(msg.job) } satisfies CoinWorkerReply);
+    } catch (err) {
+      scope.postMessage({ type: "error", id: msg.id, message: String(err) } satisfies CoinWorkerReply);
     }
     return;
   }

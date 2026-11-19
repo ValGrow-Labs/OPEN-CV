@@ -363,6 +363,18 @@ Assumptions shared by every camera measurement:
   * The response lists each finger's median bends against the limits (`finger_bends`), and a finger
     that is refused shows them, so a refusal can be checked against real numbers.
 
+* **Finger accuracy audit.** `docs/FINGER_ACCURACY_AUDIT.md` quantifies, in simulation and on two real
+  photos (no caliper data exists), what limits each finger length, why no finger can reach "valid" while
+  uncalibrated, and which values can come back hidden. Each finger now also reports, as additive and
+  always-on diagnostics, `frame_exclusions` (frames left out, by reason), `finger_tilt_deg` (the model's
+  estimate of how far the finger is tilted out of the image plane) and `limitation` (what the value is not).
+  The tip of a finger length is now, when the hand outline is clear, the skin tip found in the browser (`refined_tips`, `tip_source`,
+  `tip_extension_mm`; `finger_accuracy.outline_tip`, ON by default; otherwise the model's tip landmark, which lies inside the fingertip);
+  the hand length still ends on the landmark tip. A finger the result would hide also carries `info_value_mm` (shown as "Very uncertain",
+  never used for the size). Both are described in `docs/FINGER_ACCURACY_AUDIT.md`, section 8.
+  Two refinements are **off by default** (`finger_accuracy.tilt_uncertainty`, `finger_accuracy.depth_aware_lengths`
+  in `config/measurement.json`); they are improved in simulation, not validated on real hands.
+
 ### Proportions
 
 Ratios of raw landmark distances. They do not depend on the coin scale. They are diagnostic

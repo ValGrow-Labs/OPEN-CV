@@ -15,11 +15,12 @@ import { dist, handTurn, insideFrame, medianHandTurn, medianOf, MIDDLE_TIP, PALM
 import { computeHandOutline } from "../vision/handOutline";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
 import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
-import { evaluateBasicFrame, evaluateFrame, liveMessage, notSideOnTurn, sameSideTurn, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
+import { evaluateBasicFrame, evaluateFrame, HOLD_STILL_MESSAGE, liveMessage, notSideOnTurn, sameSideTurn, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
 import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
 import { dominantIssue, GuidanceDebouncer, type IssueSample } from "./guidance";
+import { TipCapture, type TipCrop } from "./tipCapture";
 import { viewFrameTarget } from "./views";
 import { visibilityAction } from "./visibility";
 
@@ -191,6 +192,8 @@ export class ScanController {
   private framesSinceFullSearch = 0;
   private smoother = new LandmarkSmoother();
   private roiCanvas: HTMLCanvasElement;
+  private tips = new TipCapture(); // fingertips from the hand outline (scan/tipCapture.ts)
+  private completeSeq = 0; // bumped by resetCollection so a finishing view that was reset is not delivered
   private facing: Facing;
   private status: ScanStatus;
 
@@ -366,6 +369,8 @@ export class ScanController {
 
   resetCollection(): void {
     this.generation++;
+    this.completeSeq++;
+    this.tips.reset();
     this.frames = [];
     this.recentTurns = [];
     this.trackedCoin = null;
@@ -551,7 +556,7 @@ export class ScanController {
         totalScanMs: tDone - this.startScanMs,
       };
       this.rememberSide();
-      this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request), timingInfo);
+      this.deliver(timingInfo);
     } else {
       // Not enough frames — show an error.
       this.stop();
@@ -659,6 +664,8 @@ export class ScanController {
     const seed = this.trackedCoin && this.framesSinceFullSearch < ls.full_coin_search_every ? this.trackedCoin : null;
     const local = (p: { x: number; y: number }) => ({ x: p.x - roi.x, y: p.y - roi.y, z: 0 });
     const prevLandmarks = this.lastLandmarks; // the jitter reference, as for the live guidance
+    // Crops around the fingertips of this very video frame; kept only if its frame is accepted (onCoin).
+    const tipCrops = this.tipsOn ? this.tips.grab(this.video, hand.landmarks, w, h) : null;
     const generation = this.generation;
     const t0 = performance.now();
     this.coinBusy = true;
@@ -676,7 +683,7 @@ export class ScanController {
       .then((res) => {
         if (generation !== this.generation || !this.running) return;
         this.timing.coinMs = 0.8 * this.timing.coinMs + 0.2 * (performance.now() - t0);
-        this.onCoin(res, roi, { hand, now, w, h, brightness, prevLandmarks });
+        this.onCoin(res, roi, { hand, now, w, h, brightness, prevLandmarks, tipCrops });
       })
       .catch((err) => console.error("coin search failed", err))
       .finally(() => {
@@ -687,7 +694,7 @@ export class ScanController {
   private onCoin(
     res: CoinJobResult,
     roi: { x: number; y: number },
-    snap: { hand: HandFrame; now: number; w: number; h: number; brightness: number; prevLandmarks: Point[] | null },
+    snap: { hand: HandFrame; now: number; w: number; h: number; brightness: number; prevLandmarks: Point[] | null; tipCrops?: TipCrop[] | null },
   ): void {
     const coin = res.coin;
     if (coin.found) {
@@ -715,6 +722,7 @@ export class ScanController {
     if (live.ok && snap.now - this.lastAcceptMs >= ls.min_frame_interval_ms) {
       if (this.frames.length === 0) this.tFirstFrameCollected = snap.now;
       this.frames.push(frame);
+      if (snap.tipCrops) this.tips.keep(snap.tipCrops);
       this.lastAcceptMs = snap.now;
       try {
         this.opts.onFrameAccepted?.(frame);
@@ -785,7 +793,7 @@ export class ScanController {
    *  debouncer (frames are still collected only when the per-frame result is ok). */
   private shown(live: LiveResult, now: number): LiveResult {
     const code = this.guidance.update(now, live.codes);
-    if (code === null) return { ok: true, codes: [], message: "Hold still while we measure" };
+    if (code === null) return { ok: true, codes: [], message: HOLD_STILL_MESSAGE };
     return { ok: false, codes: [code, ...live.codes.filter((c) => c !== code)], message: liveMessage(code, this.view) };
   }
 
@@ -925,7 +933,29 @@ export class ScanController {
       totalScanMs: tDone - this.startScanMs,
     };
     this.rememberSide();
-    this.opts.onComplete?.(this.frames.slice(0, this.config.capture.max_frames_per_request), timingInfo);
+    this.deliver(timingInfo);
+  }
+
+  /** Whether the phone measures fingertips from the hand outline in this view (config finger_tip, size-used views). */
+  private get tipsOn(): boolean {
+    return this.opts.mode === "scan" && this.config.finger_tip?.enabled === true && !this.captureOnly && !!this.engine?.tips;
+  }
+
+  /** Hand the collected frames to the page. First the fingertips are measured once, in the worker, and written on
+   *  the frames (a fixed small cost per view; on any failure the landmark tips stay). */
+  private deliver(timingInfo: ScanTimingInfo): void {
+    const frames = this.frames.slice(0, this.config.capture.max_frames_per_request);
+    const seq = this.completeSeq;
+    const maxFrac = this.config.finger_tip?.max_extension_frac ?? 0.5;
+    if (!this.tipsOn) {
+      this.opts.onComplete?.(frames, timingInfo); // nothing to measure: delivered at once, as before
+      return;
+    }
+    void this.tips.finalize(this.engine, frames, maxFrac).then((summary) => {
+      if (IS_DEBUG && summary) console.log(`[tips] ${summary.usedFrames} frames in ${summary.ms.toFixed(0)}ms`, summary.byFinger);
+      if (this.disposed || seq !== this.completeSeq) return;
+      this.opts.onComplete?.(frames, timingInfo);
+    });
   }
 
   /** Note which side of the hand the view that just finished showed. */

@@ -1,7 +1,7 @@
 import type { Measurement, Recommendation, ScanResponse } from "../api/types";
 import { HandStage, type HandStageTag } from "../hand3d/HandStage";
 import { Badge } from "../ui/components";
-import { CONFIDENCE, fingerBendDetail, fmtMm } from "../ui/format";
+import { CONFIDENCE, fingerBendDetail, fingerFrameDetail, fmtMm } from "../ui/format";
 import { MeasureList, type MeasureItem } from "../ui/measureList";
 import { stagger } from "../ui/motion";
 import { hasViews, ViewsNotice, ViewsTable } from "../ui/viewsBlock";
@@ -93,7 +93,7 @@ export function ResultsScreen({ recommendation: rec, result, extraMeasurements, 
   const items = (defs: Omit<MeasureItem, "m">[]) =>
     defs.map((d) => {
       const m = byKey.get(d.key);
-      return { ...d, m, detail: fingerBendDetail(result.finger_bends, d.key, m?.reasons ?? []) };
+      return { ...d, m, detail: [fingerBendDetail(result.finger_bends, d.key, m?.reasons ?? []), fingerFrameDetail(m)].filter(Boolean).join(" ") || undefined };
     });
 
   return (
