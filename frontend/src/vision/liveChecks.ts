@@ -46,10 +46,11 @@ export type LiveCode =
 /** What the customer sees while a frame is fine: how to hold the hand so the fingers measure well. */
 export const HOLD_STILL_MESSAGE = "Hold still, fingers straight, spread and flat";
 
-/** The thumb turned clearly out of the palm plane (towards or away from the camera) looks shorter. Advice only: it never
- *  blocks a frame or loosens a gate. The two real flat-hand photos read 13 and 23 degrees for a relaxed open thumb, so the limit
- *  is well above that (ASSUMED, not validated). */
-export const THUMB_HINT_DEG = 30;
+/** The thumb turned clearly out of the palm plane (towards or away from the camera) looks shorter (1 - cos: 6% at 20 degrees, 18% at
+ *  35) and makes the thumb the least repeatable value. Advice only: it never blocks a frame or loosens a gate. A relaxed open thumb
+ *  reads 13 and 23 degrees on the two flat-hand photos and about 30 in the e2e video of the sample hand, so the limit sits above
+ *  what an ordinary open hand reads (ASSUMED, not validated). The results page uses the same limit for its per-scan hint. */
+export const THUMB_HINT_DEG = 35;
 export const THUMB_MESSAGE = "Spread your thumb out flat";
 
 export const LIVE_MESSAGES: Record<LiveCode, string> = {

@@ -16,6 +16,7 @@ import type { Measurement, Recommendation, ScanResponse } from "../api/types";
 import { webglAvailable } from "../hand3d/HandStage";
 import { veryUncertainFinger } from "../ui/format";
 import { ArrowRight, Wordmark } from "./Brand";
+import { copyText, nextSteps, summaryText, thumbHint } from "./nextSteps";
 import { ESTIMATE_LABEL, type FittedHand } from "./fitHand";
 import type { ReconMode } from "./ReconScene";
 import { FlatHand, ReconBoundary } from "./ReconStep";
@@ -153,11 +154,23 @@ export interface SimpleResultsProps {
 export function SimpleResults({ fit, response, unvalidated = true, onMore, onRescan }: SimpleResultsProps) {
   const [mode, setMode] = useState<ReconMode>("points");
   const [wanted, setWanted] = useState<FingerDefinition>("crease");
+  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [gl, setGl] = useState(() => webglAvailable());
   const h1 = useRef<HTMLHeadingElement>(null);
   const onUnavailable = useCallback(() => setGl(false), []);
   useEffect(() => h1.current?.focus({ preventScroll: true }), []);
   const n = simpleNumbers(response, wanted);
+  const hint = thumbHint(response);
+  const steps = nextSteps(response);
+  const summary = summaryText(n, n.sizeChip);
+  useEffect(() => () => void (copyTimer.current && clearTimeout(copyTimer.current)), []);
+  const onCopy = async () => {
+    const ok = await copyText(summary);
+    setCopied(ok ? "done" : "failed");
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied("idle"), 4000);
+  };
   // The markers of the three captures are dropped here: a plain hand, as in the sample.
   const plain = fit ? { ...fit, markers: [] } : null;
   const noGl = (
@@ -255,11 +268,33 @@ export function SimpleResults({ fit, response, unvalidated = true, onMore, onRes
           {n.fingers.some((f) => f.veryUncertain) && " Very uncertain values are shown for information; they are not used for your size."}
         </p>
         {n.tipLine && <p className="mm-simple-cap">{n.tipLine}</p>}
+        {hint && (
+          <p className="mm-simple-hint" role="note" data-testid="thumb-hint">
+            {hint}
+          </p>
+        )}
         <p className="mm-simple-chip-row">
           <span className="mm-chip" data-testid="size-chip">
             {n.sizeChip}
           </span>
         </p>
+      </section>
+
+      <section className="mm-steps" aria-label="Next steps">
+        <h2>Next steps</h2>
+        <ol>
+          {steps.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+        <button className="mm-btn mm-btn--ghost mm-copy" onClick={() => void onCopy()}>
+          Copy results
+        </button>
+        <p className="mm-copied" role="status" aria-live="polite">
+          {copied === "done" && "Copied"}
+          {copied === "failed" && "Copying is not available here. Select the text below and copy it."}
+        </p>
+        {copied === "failed" && <textarea className="mm-copy-text" readOnly value={summary} rows={9} aria-label="Results summary" onFocus={(e) => e.currentTarget.select()} />}
       </section>
 
       <p className="mm-fine">{unvalidated ? "Unvalidated prototype · camera-based estimate" : "Camera-based estimate"} · not a guarantee of fit</p>

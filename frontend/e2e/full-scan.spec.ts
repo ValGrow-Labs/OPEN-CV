@@ -46,7 +46,7 @@ async function fullScan(page: Page, tag: string) {
   // hand video for every phase.
   await scanRemainingViews(page);
   // An accepted scan ends in the estimated 3D reconstruction, then the measurements page.
-  await expect(page.getByRole("note")).toContainText("not a measured scan", { timeout: 180_000 });
+  await expect(page.locator(".mm-simple-note")).toContainText("not a measured scan", { timeout: 180_000 });
   await continueFromRecon(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your hand measurements", { timeout: 120_000 });
 

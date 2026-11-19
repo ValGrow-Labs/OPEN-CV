@@ -42,7 +42,7 @@ test("without WebGL the whole flow still ends in a result, with a flat drawing o
   await scanRemainingViews(page);
 
   await expect(page.getByRole("heading", { level: 1, name: "Your hand", exact: true })).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByRole("note")).toContainText("not a measured scan");
+  await expect(page.locator(".mm-simple-note")).toContainText("not a measured scan");
   await expect(page.getByRole("img", { name: /flat drawing/ })).toBeVisible();
   await expect(page.getByText(/cannot draw in 3D/)).toBeVisible();
   await expect(page.locator(".mm-recon-canvas")).toHaveCount(0);

@@ -210,7 +210,7 @@
     "crease_estimate": true,
     "crease_t": { "thumb": 0.05, "index": 0.59, "middle": 0.62, "ring": 0.64, "little": 0.61 },
     "crease_position_halfwidth_frac": 0.2,
-    "thumb_depth_aware": false,
+    "thumb_depth_aware": true,
     "thumb_max_elevation_deg": 45.0,
     "outline_tip": true,
     "outline_tip_max_extension_frac": 0.5,

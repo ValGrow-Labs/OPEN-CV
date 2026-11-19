@@ -184,7 +184,7 @@ test("the seven steps, with real coverage and the estimated 3D model", async ({ 
 
   // 7. The simple results page: the 3D estimate (an estimate, labelled as one, in three renderings) and the numbers.
   await expect(page.getByRole("heading", { level: 1, name: "Your hand", exact: true })).toBeVisible({ timeout: 240_000 });
-  await expect(page.getByRole("note")).toHaveText("Estimated 3D model — fitted to your three views, not a measured scan");
+  await expect(page.locator(".mm-simple-note")).toHaveText("Estimated 3D model — fitted to your three views, not a measured scan");
   const canvas = page.locator(".mm-recon-canvas");
   await expect(canvas).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Drag to rotate")).toBeVisible();
@@ -205,6 +205,9 @@ test("the seven steps, with real coverage and the estimated 3D model", async ({ 
   await expect(page.getByText("Finger length is from the knuckle joint to the fingertip.")).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/7-simple-results-knuckle.png`, fullPage: true });
   await page.getByRole("radio", { name: "Crease to tip (est.)" }).click();
+  await expect(page.getByRole("region", { name: "Next steps" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy results" })).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/7-simple-results-crease-again.png`, fullPage: true });
 
   // Solid, Wireframe and Point Cloud are three different pictures of the one model.
   const shots: Record<string, Buffer> = {};

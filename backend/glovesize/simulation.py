@@ -79,6 +79,9 @@ class Scene:
     # Noise added to the model-style world landmarks (mm, per axis; z is the depth axis). ASSUMED; see
     # scripts/finger_accuracy_study.py for how it was matched to what MediaPipe did on two real photos.
     world_noise_mm: float = 0.0
+    # A rigid pitch error of the model's whole world frame about the image x axis (degrees): a constant bias of the depth estimate
+    # (the real model reads a flat hand's palm 26-29 degrees tilted). ASSUMED sizes; used to test what survives a systematic bias.
+    world_pitch_bias_deg: float = 0.0
     world_z_noise_mm: float = 0.0
     # Fraction of frames whose landmarks are displaced by ``outlier_px`` (motion blur, a mis-placed tip).
     outlier_fraction: float = 0.0
@@ -171,6 +174,10 @@ def simulate_frame(s: Scene, rng: np.random.Generator | None = None) -> dict:
     major, minor = (aw, ah) if aw >= ah else (ah, aw)
     angle = ang if aw >= ah else ang + 90.0
     world = (lm3 - lm3.mean(axis=0)) / 1000.0  # metres, model-style world landmarks
+    if s.world_pitch_bias_deg:
+        b = math.radians(s.world_pitch_bias_deg)
+        y, z = world[:, 1].copy(), world[:, 2].copy()
+        world[:, 1], world[:, 2] = y * math.cos(b) - z * math.sin(b), y * math.sin(b) + z * math.cos(b)
     if s.world_noise_mm or s.world_z_noise_mm:
         sd = np.array([s.world_noise_mm, s.world_noise_mm, s.world_z_noise_mm or s.world_noise_mm]) / 1000.0
         world = world + rng.normal(0, 1.0, world.shape) * sd
