@@ -416,3 +416,55 @@ crease-to-tip per finger, by hand size and sex, with the outline tip on and off;
 
 `finger_accuracy.crease_estimate`: **true** (additive fields only); `finger_accuracy.crease_t`: `{thumb 0.05, index 0.59, middle 0.62, ring 0.64, little 0.61}` (ASSUMED, sources above); `finger_accuracy.crease_position_halfwidth_frac`: **0.2** (ASSUMED).
 Nothing else; no threshold lowered or loosened; calibration file and coin entries untouched. A backend restart is needed for the new response fields.
+
+## 13. Thumb: why it changes most between scans, and what was done (fifth round)
+
+The owner scanned the same hand again and the **thumb** changed clearly. Everything below is SIMULATED (`scripts/thumb_repeat_study.py`: pinhole camera, the real engine, the model's landmark hand shape from the two real photos, world-landmark noise
+matched to those photos' depth bend) unless marked REAL (model output on the two photos, no ground truth).
+
+### Why: the thumb's own pose changes between scans (foreshortening)
+
+A relaxed thumb sits 10 to 40 degrees out of the palm plane and its chain reads shorter by 1 - cos(angle): 10 deg 1.5% (0.9 mm of a 59 mm thumb), 20 deg 6% (3.6 mm), 30 deg 13% (7.9 mm), 40 deg 23% (13.8 mm). One coin scale cannot see that, and the angle is
+different every time the hand is put down. Simulated scan-to-scan SD of the thumb length, mm, 60 scans per row (jitter 2 px, per-scan landmark bias 1.5 px, distance, position, fingers' pose, the outline tip found per finger with p = 0.8, all ASSUMED), thumb pitch ~ N(20, sigma) degrees:
+
+| thumb pose variation between scans (sigma) | now (before) | own thumb tip rule | flattest-half frames | **depth-aware thumb (now ON)** | depth + flattest half | all three |
+|---|---|---|---|---|---|---|
+| 0 deg | 0.89 | 0.76 | 0.97 | 0.89 | 0.90 | 0.73 |
+| 5 deg | 1.61 | 1.53 | 1.69 | **0.95** | 1.16 | 0.99 |
+| 10 deg | 2.92 | 2.88 | 2.97 | **1.12** | 1.51 | 1.36 |
+| 15 deg | 3.89 | 3.89 | 3.90 | **1.19** | 1.65 | 1.53 |
+| 10 deg + 4 deg drift between frames of a scan | 2.98 | 2.95 | 2.77 | **1.09** | 1.40 | 1.29 |
+
+(At sigma 10 the thumb's crease-to-tip estimate has the same SD as its value: 2.85 now, 1.07 with the depth-aware thumb.) The other fingers, whose pose varies little, read 1.1-2.2 mm in the same setting (section 9): the thumb is the least repeatable value because its pose is.
+Bias of the thumb against the true skin-tip length (mm, same rows): -1.30 / -1.72 / -2.56 / -3.50 before, -0.54 / -0.62 / -0.78 / -0.96 with the depth-aware thumb.
+
+### What each suspect gave
+
+* **(a) Natural pose change: the cause**, confirmed by the table (SD 0.89 with no pose change, 3.89 with +-15 degrees).
+* **(b) The thumb's tip handling in the per-hand rule:** letting the thumb use its own found extension, else its own prior (0.21 of its distal segment, ASSUMED from the two photos), changes the SD by at most 0.2 mm (2.92 -> 2.88) and adds an assumed thumb number that is wrong for a hand with a different thumb (true extensions x 1.4: bias -2.95 instead of -2.36). **Not adopted.**
+* **(c) Frames chosen by low thumb elevation within a scan:** a ranking in the model's world landmarks cancels a constant depth bias (with an 8 degree world-frame bias the flattest-half rule gives bias +0.04 mm), but it does not reduce the scan-to-scan SD (2.97 against 2.92) because the pose is the same in every frame of a scan, and it hurts the depth-aware thumb (1.51 against 1.12: fewer frames, more noise). Only with drift between frames does it help a little (2.98 -> 2.77). Left as an option, **off** (`finger_accuracy.thumb_best_frames_frac` 1.0, counted in `frame_exclusions` as `thumb_not_flattest` when on).
+* **(d) Palm and back combine:** unchanged (mean of the views' values; each view's thumb goes through the same correction).
+* **(e) Crease-to-tip thumb (t 0.05):** inherits the thumb value's SD; nothing separate.
+* **What worked: the depth-aware thumb** (`finger_accuracy.thumb_depth_aware`, now **true** by the owner's decision). The thumb's lateral length from the image and the coin scale, its depth difference from the model's relative world z (section 5, believed up to 45 degrees). It cuts the scan-to-scan SD by 62-69% at +-10 to +-15 degrees (2.92 -> 1.12, 3.89 -> 1.19) and the foreshortening bias with it.
+
+### What is and is not known about it on real thumbs
+
+* It relies on the model's depth being **consistent between scans**. With a constant 8 degree error of the model's whole depth frame (ASSUMED, a rigid pitch of the world landmarks) the thumb stays repeatable (SD 0.97 / 1.05 mm) but reads +1.1 / +0.9 mm too long (over-corrected); a random depth error between scans adds noise instead.
+* **REAL (model output):** on the two flat photos the model's thumb elevation varied 2.6-3.7 degrees (SD) between perturbed copies, and the depth-aware thumb length varied only 0.2-0.6 mm (SD) and moved -0.4 mm on average, so the model's random depth noise adds well under 1 mm. Those photos cannot show pose variation or whether the corrected number is right. No caliper thumb exists.
+* The thumb's uncertainty is **not reduced** (sigma about 7 mm, dominated by its 6 mm definition prior): nothing measures that prior. The thumb stays "Low confidence" by construction.
+* **Switching it off** (`thumb_depth_aware: false`) returns the plain 2D thumb: 2-4 mm of scan-to-scan variation under realistic pose change, and 1-14 mm too short at 10-40 degrees.
+
+### Guidance (advice only, no gate touched)
+
+* **Live:** "Spread your thumb out flat" appears while the frames are otherwise fine and the thumb chord's elevation (median of the last 9 frames) is at or above **35 degrees** (was 30; ASSUMED). A relaxed open thumb read 13 and 23 degrees on the two real flat photos and **about 30 degrees in the e2e video of the sample hand**, which fired the hint when it was 25: an ordinary open hand must not be told off, so the limit now sits above that reading. 35 degrees is 18% foreshortening (10 mm).
+* **On the results page:** when the response's median thumb elevation (`finger_tilt_deg` of the thumb) is at least 35 degrees (the same ASSUMED limit): "Your thumb was turned about N° out of the palm plane in this scan (a rough depth estimate), which makes the thumb reading less reliable. Spread it flat and scan again." (N rounded to 5.)
+
+### Exact `config/measurement.json` changes (fifth round)
+
+`finger_accuracy.thumb_depth_aware`: **true** (was false; changes the thumb value customers see; switch back to false to undo). `thumb_best_frames_frac` is a code default 1.0 (off), not in the JSON. No threshold lowered or loosened; calibration file and coin entries untouched. The simulation gained `Scene.world_pitch_bias_deg`. **A backend restart is needed** for the new thumb default.
+
+## 14. Next steps on the simple results page (fifth round)
+
+Between the finger card and "More details": a numbered list of 3 or 4 plain steps that adapt to the scan: (1) the existing recommendation in one sentence, never firmer than it is ("estimated size M (not a firm size)", "close to L (borderline...)", "closest size S ... too uncertain to pick one", "cannot pick a size for this chart"); (2) only when the recommendation says it needs a measurement:
+the soft-tape knuckle circumference or a ruler hand length, entered under More details; (3) scan again with the hand flat, fingers spread, thumb out and the whole coin visible, two scans agreeing within a few millimetres; (4) More details shows how each value was measured. A **Copy results** button puts a plain-text summary (hand length and width, the five finger lengths in the chosen definition,
+the size chip, the date, "estimate, not validated") on the clipboard and shows "Copied"; without the clipboard API it uses the selection trick, and if that also fails it shows the text in a box to copy by hand. No shop integration, no firm size.

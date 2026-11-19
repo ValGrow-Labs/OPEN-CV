@@ -346,10 +346,13 @@ class FingerAccuracyParams(_Strict):
     # inside the fingertip, so a chain to it reads short. A refined tip is used only when it lies beyond the
     # landmark tip along the distal segment by at most this fraction of that segment (DIP to tip). ON by default:
     # it lengthens finger values (not the hand length). Not validated on real hands.
-    # The thumb's length from the model's relative depth as well (the thumb turns out of the palm plane and is foreshortened:
-    # SIMULATED -17% at 40 degrees). OFF: on two real flat-hand photos it changed the thumb by only about -0.4 mm, so nothing
-    # shows it is right on real thumbs. Needs depth_aware_lengths' assumptions (world z sign, centred principal point).
-    thumb_depth_aware: bool = False
+    # The thumb's length from the model's relative depth as well (the thumb turns out of the palm plane and is foreshortened by
+    # 1 - cos(angle): SIMULATED -17% at 40 degrees, and a relaxed thumb's angle changes from scan to scan, which made the thumb the
+    # least repeatable value: scan-to-scan SD 2.9 mm -> 1.1 mm at +-10 degrees of pose change, docs/FINGER_ACCURACY_AUDIT.md section 13).
+    # ON by the owner's decision. Real evidence is only that on two real flat-hand photos it changed the thumb by about -0.4 mm
+    # (SD 0.2-0.6 mm): the model's depth may also be biased, which keeps the thumb repeatable but not necessarily right. Needs
+    # depth_aware_lengths' assumptions (world z sign, centred principal point). Set false to go back to the plain 2D thumb.
+    thumb_depth_aware: bool = True
     # The thumb really turns further out of the palm plane than a finger, so its depth is believed up to this elevation.
     thumb_max_elevation_deg: float = Field(default=45.0, gt=0, lt=60)
     # CREASE-TO-TIP finger length (the glove-industry definition: from the palmar digital crease at the base of the finger to the
@@ -361,6 +364,10 @@ class FingerAccuracyParams(_Strict):
     crease_t: dict[str, float] = Field(default_factory=lambda: {"thumb": 0.05, "index": 0.59, "middle": 0.62, "ring": 0.64, "little": 0.61})
     # Uncertainty of that position: the crease may lie +- this fraction of the MCP-to-PIP segment away (uniform, ASSUMED).
     crease_position_halfwidth_frac: float = Field(default=0.2, ge=0, le=1)
+    # The thumb's value from the frames of a scan in which its chord lies flattest (lowest elevation in the model's world landmarks),
+    # this fraction of the usable frames (at least the frames a finger needs; 1.0 = all frames, off). A RANKING inside one scan: a
+    # constant bias of the depth estimate cancels. Never fewer frames than the usual minimum, no gate involved.
+    thumb_best_frames_frac: float = Field(default=1.0, gt=0, le=1)
     outline_tip: bool = True
     outline_tip_max_extension_frac: float = Field(default=0.5, gt=0, le=1)
     # The extension (fraction of the distal segment) the phone assumes for a hand whose outline was found on fewer than 2 fingers

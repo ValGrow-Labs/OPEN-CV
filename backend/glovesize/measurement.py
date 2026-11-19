@@ -589,6 +589,14 @@ def aggregate_camera(
                                       **_crease_fields(key, d, accepted, [i for i, r in enumerate(accepted) if key in r.info_values], cfg, calib, True)[0]))  # fmt: skip
             continue
 
+        thumb_pick = None
+        if fa.thumb_best_frames_frac < 1.0 and _chain_name(d.landmarks) == "thumb" and sum("thumb" in accepted[i].elevations for i in idx) == len(idx):
+            ranked = sorted(idx, key=lambda i: accepted[i].elevations["thumb"])
+            keep_n = min(len(idx), max(req_frames, math.ceil(fa.thumb_best_frames_frac * len(idx))))
+            thumb_pick = sorted(ranked[:keep_n])
+            if len(thumb_pick) < len(idx):
+                excl["thumb_not_flattest"] = len(idx) - len(thumb_pick)
+                idx = thumb_pick
         est = _estimate(key, d, accepted, idx, np.array([accepted[i].values[key] for i in idx]), cfg, calib)
         if est["n_out"]:
             excl["outlier_frame"] = est["n_out"]

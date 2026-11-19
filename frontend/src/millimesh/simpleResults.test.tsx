@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Measurement, Recommendation, ScanResponse } from "../api/types";
 import { fitHand } from "./fitHand";
@@ -188,5 +188,42 @@ describe("the simple results page", () => {
     expect(simpleNumbers(r, "knuckle").fingers[3]).toMatchObject({ mm: null, veryUncertain: false });
     render(<SimpleResults fit={null} response={r} onMore={() => {}} onRescan={() => {}} />);
     expect(document.querySelector('[data-finger="ring_length_mm"]')?.textContent).toBe("Ringnot measured");
+  });
+});
+
+describe("next steps, the thumb hint and Copy results on the page", () => {
+  it("has a short numbered Next steps section between the card and More details, in plain words", () => {
+    render(<SimpleResults fit={fit} response={response()} onMore={() => {}} onRescan={() => {}} />);
+    const section = screen.getByRole("region", { name: "Next steps" });
+    const items = [...section.querySelectorAll("ol li")].map((li) => li.textContent);
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatch(/^Your estimated size is M \(not a firm size\)/);
+    expect(items[2]).toMatch(/Tap More details/);
+    expect(section.compareDocumentPosition(screen.getByRole("button", { name: /More details/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Your measurements" }).compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId("thumb-hint")).toBeNull();
+  });
+
+  it("shows the thumb hint when the thumb was turned out of the palm plane in this scan", () => {
+    const r = response({ measurements: response().measurements.map((x) => (x.key === "thumb_length_mm" ? { ...x, finger_tilt_deg: 41 } : x)) });
+    render(<SimpleResults fit={fit} response={r} onMore={() => {}} onRescan={() => {}} />);
+    expect(screen.getByTestId("thumb-hint").textContent).toMatch(/turned about 40° out of the palm plane.*Spread it flat and scan again/);
+  });
+
+  it("copies a summary and says Copied; when copying is impossible it shows the text to copy by hand", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<SimpleResults fit={null} response={response()} onMore={() => {}} onRescan={() => {}} />);
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Copy results" })));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(String(writeText.mock.calls[0][0])).toContain("Hand length: ≈ 16.7 cm");
+    expect(screen.getByRole("status").textContent).toBe("Copied");
+    cleanup();
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    Object.defineProperty(document, "execCommand", { value: () => false, configurable: true });
+    render(<SimpleResults fit={null} response={response()} onMore={() => {}} onRescan={() => {}} />);
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Copy results" })));
+    expect(screen.getByRole("status").textContent).toMatch(/not available/);
+    expect((screen.getByLabelText("Results summary") as HTMLTextAreaElement).value).toContain("Hand length");
   });
 });

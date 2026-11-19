@@ -230,10 +230,41 @@ def test_the_optional_depth_aware_thumb_recovers_a_thumb_turned_out_of_plane_in_
     the optional depth-aware thumb (default OFF) removes it. Fingers are untouched by the thumb flag."""
     scene = Scene(hand_shape="photo", finger_pitch_deg={"thumb": 30.0})
     truth = true_chain_lengths_mm(scene)["thumb"]
-    off = results_for(scene, cfg)[0].values
-    on = results_for(scene, with_flags(cfg, thumb_depth_aware=True))[0].values
+    off = results_for(scene, with_flags(cfg, thumb_depth_aware=False))[0].values
+    on = results_for(scene, cfg)[0].values
     assert truth - off["thumb_length_mm"] > 3.5
     assert abs(on["thumb_length_mm"] - truth) < 0.8
     for f in FINGERS:
         assert on[f"{f}_length_mm"] == off[f"{f}_length_mm"]
-    assert cfg.finger_accuracy.thumb_depth_aware is False
+    assert cfg.finger_accuracy.thumb_depth_aware is True  # the owner's decision (docs/FINGER_ACCURACY_AUDIT.md section 13)
+
+
+def test_the_depth_aware_thumb_makes_the_thumb_repeatable_when_its_pose_changes_between_scans(cfg, calib):
+    """SIMULATED: the same hand scanned 10 times with the thumb turned out of the palm plane by 10 to 40 degrees (a relaxed thumb
+    does that). With one coin scale the thumb length follows the pose (foreshortening 1 - cos); with the depth-aware thumb it does not."""
+    pitches = np.linspace(10, 40, 10)
+    plain, depth = [], []
+    for k, pitch in enumerate(pitches):
+        scene = Scene(hand_shape="photo", finger_pitch_deg={"thumb": float(pitch)})
+        plain.append(results_for(scene, with_flags(cfg, thumb_depth_aware=False), seed=k + 1)[0].values["thumb_length_mm"])
+        depth.append(results_for(scene, cfg, seed=k + 1)[0].values["thumb_length_mm"])
+    assert np.std(plain, ddof=1) > 3.0
+    assert np.std(depth, ddof=1) < 0.35 * np.std(plain, ddof=1)
+
+
+def test_thumb_best_frames_uses_the_flattest_frames_of_the_scan_and_is_off_by_default(cfg, calib):
+    assert cfg.finger_accuracy.thumb_best_frames_frac == 1.0
+    res = results_for(Scene(hand_shape="photo"), with_flags(cfg, thumb_depth_aware=False), n=12)
+    for i, r in enumerate(res):  # frames 0-5 flat, 6-11 turned: their thumb values differ and their elevations say so
+        r.elevations["thumb"] = 5.0 if i < 6 else 35.0
+        r.values["thumb_length_mm"] = 60.0 if i < 6 else 50.0
+    everything = by_key_of(aggregate_camera(res, cfg, calib))["thumb_length_mm"]
+    best = with_flags(cfg, thumb_best_frames_frac=0.5)
+    picked = by_key_of(aggregate_camera(res, best, calib))["thumb_length_mm"]
+    assert everything.value_mm == pytest.approx(55.0, abs=5.1)
+    assert picked.value_mm == pytest.approx(60.0, abs=0.01)
+    assert picked.frame_exclusions.get("thumb_not_flattest") == 6 and picked.frames_used == 6
+
+
+def by_key_of(cam):
+    return {m.key: m for m in cam.out}

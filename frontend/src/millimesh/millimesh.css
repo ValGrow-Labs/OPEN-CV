@@ -992,6 +992,63 @@ html[data-mm="on"] body {
   border-color: var(--mm-line-strong);
   color: var(--mm-blue-hi);
 }
+.mm-simple-hint {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(242, 193, 78, 0.45);
+  border-radius: 12px;
+  background: rgba(242, 193, 78, 0.08);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--mm-amber);
+}
+.mm-steps {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--mm-line);
+  border-radius: 18px;
+  background: var(--mm-card);
+}
+.mm-steps h2 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mm-ink);
+}
+.mm-steps ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 8px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--mm-ink-2);
+}
+.mm-copy {
+  margin-top: 12px;
+  min-height: 42px;
+  font-size: 0.85rem;
+  color: var(--mm-ink);
+  border-color: var(--mm-line-strong);
+}
+.mm-copied {
+  min-height: 1.2em;
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--mm-green);
+}
+.mm-copy-text {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--mm-line);
+  border-radius: 10px;
+  background: rgba(4, 7, 13, 0.7);
+  color: var(--mm-ink-2);
+  font: inherit;
+  font-size: 0.72rem;
+}
 .mm-simple-chip-row {
   margin: 12px 0 0;
 }
