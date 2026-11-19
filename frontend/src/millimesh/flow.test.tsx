@@ -170,6 +170,34 @@ describe("the flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Allow Camera Access" })).toBeTruthy());
   });
+
+  const toCapture = async (devices?: { kind: string }[]) => {
+    Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+    const getUserMedia = vi.fn(() => Promise.reject(Object.assign(new Error("denied"), { name: "NotAllowedError" })));
+    Object.defineProperty(navigator, "mediaDevices", { value: devices ? { getUserMedia, enumerateDevices: async () => devices } : { getUserMedia }, configurable: true });
+    flow({ initialStep: "capture" });
+    await screen.findByRole("alert");
+  };
+
+  it("the capture screen has a round 3D button that turns the mesh on and off, and the close button", async () => {
+    await toCapture();
+    const mesh = screen.getByRole("button", { name: "3D mesh on/off" });
+    expect(mesh.getAttribute("aria-pressed")).toBe("true"); // the full mesh is the default
+    expect(mesh.textContent).toContain("3D");
+    fireEvent.click(mesh);
+    expect(mesh.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(mesh);
+    expect(mesh.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Cancel scan" })).toBeTruthy();
+  });
+
+  it("offers the camera switch only on a device with more than one camera", async () => {
+    await toCapture([{ kind: "videoinput" }, { kind: "audioinput" }]);
+    expect(screen.queryByRole("button", { name: "Switch camera" })).toBeNull(); // one camera
+    cleanup();
+    await toCapture([{ kind: "videoinput" }, { kind: "videoinput" }]);
+    expect(await screen.findByRole("button", { name: "Switch camera" })).toBeTruthy();
+  });
 });
 
 describe("7. 3D Reconstruction", () => {

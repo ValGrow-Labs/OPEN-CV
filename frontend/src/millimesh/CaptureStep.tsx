@@ -12,10 +12,11 @@ import { preloadScanTools, ScanController, type ScanStatus, type ScanTimingBreak
 import { nextView, tagFrames, withViewFrames } from "../scan/views";
 import { ScanDebug } from "../screens/ScanDebug";
 import { referenceLabel } from "../ui/settings";
-import { ArrowRight, CloseIcon, PhoneIcon, Ring, SwitchIcon, Wordmark } from "./Brand";
+import { ArrowRight, CloseIcon, OrbitIcon, PhoneIcon, Ring, SwitchIcon, Wordmark } from "./Brand";
 import { angleHint, computeCoverage, palmZSignOf, type Coverage, type PhaseId } from "./coverage";
 import { guidanceText, isPhase, PHASE_ORDER, PHASES } from "./phases";
 import { ParticleField } from "./ParticleField";
+import type { FingerLengths } from "./fingerLabels";
 
 /** Most accepted frames one view collects while it waits for the phone to have seen the hand from enough angles. Three
  *  views stay well inside the server's 240-frame request limit. */
@@ -68,6 +69,10 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const poseRef = useRef<readonly Landmark[] | null>(null);
   const frameRef = useRef<{ width: number; height: number } | null>(null);
   const coverageRef = useRef(0);
+  // The per-finger lengths of the current frame (scan/scanController.ts: vision/liveLengths.ts, scaled by the coin), only
+  // while the coin is accepted. The particle layer smooths and labels them: rough live estimates, not the result.
+  const lengthsRef = useRef<{ mm: FingerLengths | null; at: number }>({ mm: null, at: 0 });
+  const [labelsShown, setLabelsShown] = useState(false);
   const acceptedRef = useRef<FrameObservation[]>([]);
   const readyRef = useRef(false);
   const phaseFramesRef = useRef<Record<PhaseId, FrameObservation[]>>(emptyFrames());
@@ -86,12 +91,33 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const [pendingFrames, setPendingFrames] = useState<FrameObservation[] | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [degraded, setDegraded] = useState(false);
+  // The 3D mesh over the hand: the full mesh, or a light version so the hand can be seen plainly.
+  const [meshOn, setMeshOn] = useState(true);
+  // The camera switch is offered only on a device that has more than one camera.
+  const [cameraCount, setCameraCount] = useState(1);
   const debug = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
 
   useEffect(() => {
     preloadScanTools("scan");
     warmupService();
   }, []);
+
+  useEffect(() => {
+    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+    if (!md?.enumerateDevices) return;
+    let alive = true;
+    const count = () =>
+      md
+        .enumerateDevices()
+        .then((list) => alive && setCameraCount(list.filter((d) => d.kind === "videoinput").length))
+        .catch(() => undefined);
+    void count();
+    md.addEventListener?.("devicechange", count);
+    return () => {
+      alive = false;
+      md.removeEventListener?.("devicechange", count);
+    };
+  }, [status?.phase]);
 
   /** Coverage of the view being scanned, from the frames the live checks accepted. */
   const coverageNow = useCallback(
@@ -242,6 +268,10 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
     setCov(null);
   };
 
+  useEffect(() => {
+    lengthsRef.current = { mm: status?.liveMm?.fingersMm ?? null, at: performance.now() };
+  }, [status?.liveMm]);
+
   // Coverage, recomputed a few times a second from the accepted frames (not from time).
   useEffect(() => {
     if (status?.phase !== "running") return;
@@ -278,8 +308,9 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         <span className="mm-top-slot" />
         <Wordmark size="sm" />
         <span className="mm-top-slot mm-top-actions">
-          <button className="mm-icon-btn" onClick={switchCamera} aria-label="Switch camera" disabled={phaseRunning !== "running"}>
-            <SwitchIcon />
+          <button className={`mm-icon-btn mm-3d-btn ${meshOn ? "is-on" : ""}`} onClick={() => setMeshOn((on) => !on)} aria-label="3D mesh on/off" aria-pressed={meshOn}>
+            <OrbitIcon />
+            <span aria-hidden="true">3D</span>
           </button>
           <button className="mm-icon-btn" onClick={onCancel} aria-label="Cancel scan">
             <CloseIcon />
@@ -300,12 +331,22 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className="mm-cam-draw" aria-hidden="true" />
         {!degraded && phaseRunning === "running" && !submitting && (
-          <ParticleField poseRef={poseRef} frameRef={frameRef} coverageRef={coverageRef} mirror={status?.mirrored ?? false} onDegrade={() => setDegraded(true)} />
+          <ParticleField poseRef={poseRef} frameRef={frameRef} coverageRef={coverageRef} lengthsRef={lengthsRef} onLabels={setLabelsShown} mirror={status?.mirrored ?? false} mesh={meshOn} onDegrade={() => setDegraded(true)} />
+        )}
+        {labelsShown && phaseRunning === "running" && !between && !submitting && (
+          <span className="mm-live-note" aria-hidden="true">
+            Live estimate · final result after the scan
+          </span>
         )}
         <i className="mm-corner mm-corner--tl" aria-hidden="true" />
         <i className="mm-corner mm-corner--tr" aria-hidden="true" />
         <i className="mm-corner mm-corner--bl" aria-hidden="true" />
         <i className="mm-corner mm-corner--br" aria-hidden="true" />
+        {cameraCount > 1 && (
+          <button className="mm-cam-switch" onClick={switchCamera} aria-label="Switch camera" disabled={phaseRunning !== "running"}>
+            <SwitchIcon />
+          </button>
+        )}
 
         {phaseRunning === "running" && guidance && !between && !submitting && !submitError && (
           <div className={`mm-pill ${live?.ok ? "is-ok" : ""}`} aria-hidden="true">

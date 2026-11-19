@@ -42,6 +42,28 @@ const ink = (page: Page, selector: string) =>
     return n;
   }, selector);
 
+/** Pixels of the particle layer that are clearly drawn (not the faint glass fill of the scan frame). */
+const inkStrong = (page: Page) =>
+  page.evaluate(() => {
+    const c = document.querySelector<HTMLCanvasElement>(".mm-particles");
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx) return -1;
+    const px = ctx.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] > 60) n++;
+    return n;
+  });
+
+/** What the particle layer reports about itself (read-only diagnostics): dots drawn, live finger labels shown and their text. */
+const meshStats = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __MESH_STATS__?: { dots?: number; labels?: number; labelText?: string } }).__MESH_STATS__ ?? {});
+
+/** The "Live estimate" note is on the screen exactly when finger labels are (never left over from the previous view). */
+const expectNoteMatchesLabels = (page: Page) =>
+  expect
+    .poll(async () => (((await meshStats(page)).labels ?? 0) > 0) === ((await page.locator(".mm-live-note").count()) > 0), { timeout: 20_000 })
+    .toBe(true);
+
 /** How many pixels differ between two PNG screenshots of the same size (decoded in the page). */
 const differing = (page: Page, a: Buffer, b: Buffer) =>
   page.evaluate(
@@ -128,6 +150,8 @@ test("the seven steps, with real coverage and the estimated 3D model", async ({ 
   // the ring says the same number as the screen's own figure (read together, so a tick between them cannot differ)
   const both = await page.locator(".mm-capture").evaluate((el) => ({ figure: (el as HTMLElement).dataset.coverage, ring: el.querySelector(".mm-ring-num")?.textContent }));
   expect(both.ring).toBe(`${both.figure}%`);
+  // the live finger labels (the fake camera has a coin in the palm view): five "~NN mm" estimates beside the fingertips
+  await expect.poll(async () => (await meshStats(page)).labels ?? 0, { timeout: 60_000 }).toBe(5);
   await page.screenshot({ path: `${SHOTS}/4-palm.png` });
 
   // The sheet between phases says how much of the palm was really covered.
@@ -144,6 +168,7 @@ test("the seven steps, with real coverage and the estimated 3D model", async ({ 
   await expect.poll(() => framesIn(page), { timeout: 120_000 }).toBeGreaterThan(5);
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${SHOTS}/5-side.png` });
+  await expectNoteMatchesLabels(page);
   const back = page.getByRole("button", { name: "Start back scan" });
   await expect(back).toBeVisible({ timeout: 240_000 });
   await showSide(page, "back");
@@ -155,6 +180,7 @@ test("the seven steps, with real coverage and the estimated 3D model", async ({ 
   await expect.poll(() => framesIn(page), { timeout: 120_000 }).toBeGreaterThan(5);
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${SHOTS}/6-back.png` });
+  await expectNoteMatchesLabels(page);
 
   // 7. 3D Reconstruction: an estimate, labelled as one, in three renderings.
   await expect(page.getByRole("heading", { level: 1, name: "3D Reconstruction" })).toBeVisible({ timeout: 240_000 });
@@ -279,4 +305,42 @@ test("reduced motion: no drifting particles, the scan still works", async ({ pag
   // the ring does not animate: the app's reduced-motion rules leave a transition of (effectively) zero length
   const seconds = await page.locator(".mm-ring-fill").evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
   expect(seconds).toBeLessThan(0.001);
+});
+
+test("the 3D button turns the mesh over the hand into a light version and back", async ({ page }) => {
+  test.setTimeout(240_000);
+  await routeConfig(page, { timing: "hold" });
+  await startCustomerScan(page);
+  await expect(page.getByRole("heading", { level: 2, name: "Palm Scan" })).toBeVisible({ timeout: 120_000 });
+  await expect.poll(() => framesIn(page), { timeout: 120_000 }).toBeGreaterThan(5);
+  const button = page.getByRole("button", { name: "3D mesh on/off" });
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  // the full mesh: thousands of dots, contour lines, the scan frame and the scan line
+  await expect.poll(() => inkStrong(page), { timeout: 30_000 }).toBeGreaterThan(8000);
+  const full = await inkStrong(page);
+  await page.screenshot({ path: `${SHOTS}/4-palm-mesh-full.png` });
+  // what the layer costs (software-rendered headless Chrome, not a phone): logged for the report, and bounded
+  await page.waitForTimeout(1500);
+  const stats = await page.evaluate(() => (window as unknown as { __MESH_STATS__?: Record<string, number> }).__MESH_STATS__);
+  console.log(`mesh stats: ${JSON.stringify(stats)}`);
+  expect(stats?.dots ?? 0).toBeGreaterThan(1500);
+  // the live finger labels: one per finger, "~NN mm" (a live estimate, not the result), with the note that says so
+  await expect.poll(async () => (await meshStats(page)).labels ?? 0, { timeout: 60_000 }).toBe(5);
+  const text = (await meshStats(page)).labelText ?? "";
+  for (const f of ["thumb", "index", "middle", "ring", "little"]) expect(text).toMatch(new RegExp(`${f}:~[0-9]{2,3} mm`));
+  await expect(page.locator(".mm-live-note")).toHaveText(/Live estimate/);
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "false");
+  // the light version: far fewer pixels drawn, so the hand shows plainly (the frame stays)
+  await expect.poll(() => inkStrong(page), { timeout: 15_000 }).toBeLessThan(full * 0.6);
+  await expect.poll(() => inkStrong(page)).toBeGreaterThan(300);
+  await page.screenshot({ path: `${SHOTS}/4-palm-mesh-light.png` });
+  // the labels stay in the light version too
+  expect((await meshStats(page)).labels ?? 0).toBe(5);
+  await expect(page.locator(".mm-live-note")).toBeVisible();
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => inkStrong(page), { timeout: 15_000 }).toBeGreaterThan(full * 0.8);
+  // the camera switch is not shown with the single fake camera
+  await expect(page.getByRole("button", { name: "Switch camera" })).toHaveCount(0);
 });

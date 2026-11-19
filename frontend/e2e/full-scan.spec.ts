@@ -57,7 +57,7 @@ async function fullScan(page: Page, tag: string) {
   expect([...new Set(body.frames.map((f: { view: string }) => f.view))].sort()).toEqual(["back", "palm", "side"]);
   expect(bodies[0]).not.toMatch(/data:image|base64/);
   expect(Object.keys(body.frames[0]).sort()).toEqual(
-    ["brightness", "coin", "handedness", "handedness_score", "image_height", "image_width", "landmarks", "timestamp_ms", "view", "world_landmarks"].sort(),
+    ["brightness", "coin", "handedness", "handedness_score", "image_height", "image_width", "landmarks", "refined_tips", "timestamp_ms", "view", "world_landmarks"].sort(), // refined_tips: fingertip positions only (numbers, no image)
   );
 
   // The value counts up on screen; data-value holds the final number.

@@ -91,16 +91,35 @@ export const SwitchIcon = () => (
   </svg>
 );
 
-/** The circular progress ring with a percentage (the capture card). */
+/** Small orbit arrows: the 3D mesh button. */
+export const OrbitIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+    <path d="M4 12a8 8 0 0 1 13.7-5.6" />
+    <path d="M17.7 3.2v3.2h-3.2" />
+    <path d="M6.3 20.8v-3.2h3.2" />
+  </svg>
+);
+
+/** The circular progress ring with a percentage (the capture card): a glowing cyan-to-blue arc round a dark ring. */
 export function Ring({ percent, label }: { percent: number; label: string }) {
+  const id = useId().replace(/:/g, "");
   const r = 26;
   const c = 2 * Math.PI * r;
   const p = Math.max(0, Math.min(100, percent));
+  const angle = (-90 + 3.6 * p) * (Math.PI / 180);
   return (
     <div className="mm-ring" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p)}>
       <svg viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id={`${id}-arc`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#6af4ff" />
+            <stop offset="1" stopColor="#3f78ff" />
+          </linearGradient>
+        </defs>
         <circle cx="32" cy="32" r={r} className="mm-ring-track" />
-        <circle cx="32" cy="32" r={r} className="mm-ring-fill" strokeDasharray={c} strokeDashoffset={c * (1 - p / 100)} transform="rotate(-90 32 32)" />
+        <circle cx="32" cy="32" r={r} className="mm-ring-fill" stroke={`url(#${id}-arc)`} strokeDasharray={c} strokeDashoffset={c * (1 - p / 100)} transform="rotate(-90 32 32)" />
+        {p > 1 && p < 99 && <circle cx={32 + r * Math.cos(angle)} cy={32 + r * Math.sin(angle)} r="2.4" className="mm-ring-head" />}
       </svg>
       <span className="mm-ring-num">{Math.round(p)}%</span>
     </div>
