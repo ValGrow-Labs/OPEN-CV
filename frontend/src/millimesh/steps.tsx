@@ -14,23 +14,17 @@ function useHeadingFocus() {
   return ref;
 }
 
-const BASIS_NAMES: Record<string, string> = {
-  hand_length_mm: "hand length",
-  hand_circumference_mm: "hand circumference",
-  palm_breadth_mm: "palm breadth",
-};
-const sizingBasis = (keys: string[]) => keys.map((k) => BASIS_NAMES[k] ?? k).join(" and ");
-
 // ---------------------------------------------------------------------------------------------------- 1. Start
 
 export interface StartProps {
   config: PublicConfig;
+  /** The size chart in use (the saved or default one). The start screen no longer offers a choice of product. */
   chartId: string;
-  onChartChange: (id: string) => void;
+  onChartChange?: (id: string) => void;
   onStart: () => void;
 }
 
-export function StartStep({ config, chartId, onChartChange, onStart }: StartProps) {
+export function StartStep({ config, chartId, onStart }: StartProps) {
   const h1 = useHeadingFocus();
   const chart = config.charts.find((c) => c.chart_id === chartId) ?? config.charts[0];
   return (
@@ -45,19 +39,6 @@ export function StartStep({ config, chartId, onChartChange, onStart }: StartProp
         </h1>
         <p className="mm-lead">Capture your hand in 3 views using a reference coin.</p>
 
-        {config.charts.length > 1 && (
-          <div className="mm-field">
-            <label htmlFor="mm-chart">Your product</label>
-            <select id="mm-chart" className="mm-select" value={chart.chart_id} onChange={(e) => onChartChange(e.target.value)}>
-              {config.charts.map((c) => (
-                <option key={c.chart_id} value={c.chart_id}>
-                  {c.product_model ?? c.chart_id}
-                  {c.manufacturer ? `, ${c.manufacturer}` : ""} (sized by {sizingBasis(c.measurements)})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
         {chart.is_demo && (
           <p className="mm-fine" role="note">
             <strong>Demo size chart.</strong> The size boundaries are placeholders for testing, not a real product chart.
