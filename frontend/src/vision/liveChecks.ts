@@ -46,6 +46,12 @@ export type LiveCode =
 /** What the customer sees while a frame is fine: how to hold the hand so the fingers measure well. */
 export const HOLD_STILL_MESSAGE = "Hold still, fingers straight, spread and flat";
 
+/** The thumb turned clearly out of the palm plane (towards or away from the camera) looks shorter. Advice only: it never
+ *  blocks a frame or loosens a gate. The two real flat-hand photos read 13 and 23 degrees for a relaxed open thumb, so the limit
+ *  is well above that (ASSUMED, not validated). */
+export const THUMB_HINT_DEG = 30;
+export const THUMB_MESSAGE = "Spread your thumb out flat";
+
 export const LIVE_MESSAGES: Record<LiveCode, string> = {
   no_hand: "Show your open palm to the camera",
   hand_out_of_frame: "Hand touches the edge. Move the phone further back",

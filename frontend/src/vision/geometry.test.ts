@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { captureParams, goodFrame } from "../test/fixtures";
-import { chainBendDeg, handTurn, jitterFraction, LONG_FINGERS, PALM_POLYGON, palmCentre, medianHandTurn, medianOf, palmTiltDeg, pointInPolygon } from "./geometry";
+import { chainBendDeg, chainElevationDeg, handTurn, jitterFraction, LONG_FINGERS, PALM_POLYGON, palmCentre, medianHandTurn, medianOf, palmTiltDeg, pointInPolygon } from "./geometry";
 
 describe("geometry", () => {
   it("measures finger bend", () => {
@@ -94,5 +94,15 @@ describe("hand turn (which way up the hand is)", () => {
     expect(medianHandTurn(frames)).toBeCloseTo(handTurn(f.landmarks), 9);
     expect(medianHandTurn([f, flipped])).toBeCloseTo(0, 9); // even count: mean of the middle two
     expect(medianHandTurn([])).toBe(0);
+  });
+});
+
+describe("chainElevationDeg (the thumb advice and the server's finger tilt use the same angle)", () => {
+  const pts = (tip: { x: number; y: number; z: number }) => Array.from({ length: 21 }, (_, i) => (i === 4 ? tip : { x: 0, y: 0, z: 0 }));
+  it("is 0 for a chord parallel to the picture and the angle to the picture plane otherwise, nearer or farther alike", () => {
+    expect(chainElevationDeg(pts({ x: 0, y: -0.1, z: 0 }), [2, 3, 4])).toBeCloseTo(0, 6);
+    expect(chainElevationDeg(pts({ x: 0, y: -0.1, z: 0.0176327 }), [2, 3, 4])).toBeCloseTo(10, 2);
+    expect(chainElevationDeg(pts({ x: 0, y: -0.1, z: -0.0176327 }), [2, 3, 4])).toBeCloseTo(10, 2);
+    expect(Number.isNaN(chainElevationDeg(pts({ x: 0, y: 0, z: 0 }), [2, 3, 4]))).toBe(true);
   });
 });

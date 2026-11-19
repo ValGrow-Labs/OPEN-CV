@@ -346,8 +346,27 @@ class FingerAccuracyParams(_Strict):
     # inside the fingertip, so a chain to it reads short. A refined tip is used only when it lies beyond the
     # landmark tip along the distal segment by at most this fraction of that segment (DIP to tip). ON by default:
     # it lengthens finger values (not the hand length). Not validated on real hands.
+    # The thumb's length from the model's relative depth as well (the thumb turns out of the palm plane and is foreshortened:
+    # SIMULATED -17% at 40 degrees). OFF: on two real flat-hand photos it changed the thumb by only about -0.4 mm, so nothing
+    # shows it is right on real thumbs. Needs depth_aware_lengths' assumptions (world z sign, centred principal point).
+    thumb_depth_aware: bool = False
+    # The thumb really turns further out of the palm plane than a finger, so its depth is believed up to this elevation.
+    thumb_max_elevation_deg: float = Field(default=45.0, gt=0, lt=60)
+    # CREASE-TO-TIP finger length (the glove-industry definition: from the palmar digital crease at the base of the finger to the
+    # tip), an ESTIMATE added next to the knuckle-to-tip length (additive fields; no existing value changes). There is no crease
+    # landmark: the crease is taken at MCP + t x (PIP - MCP) per finger (the thumb: IP), so crease-to-tip = the chain length minus
+    # t x |MCP to PIP|. t is ASSUMED: fitted to the published crease-to-tip finger proportions (Buffa et al. 2007) on the landmark
+    # shape of two real photos (docs/FINGER_ACCURACY_AUDIT.md section 12), never to caliper data of this system. Not validated.
+    crease_estimate: bool = True
+    crease_t: dict[str, float] = Field(default_factory=lambda: {"thumb": 0.05, "index": 0.59, "middle": 0.62, "ring": 0.64, "little": 0.61})
+    # Uncertainty of that position: the crease may lie +- this fraction of the MCP-to-PIP segment away (uniform, ASSUMED).
+    crease_position_halfwidth_frac: float = Field(default=0.2, ge=0, le=1)
     outline_tip: bool = True
     outline_tip_max_extension_frac: float = Field(default=0.5, gt=0, le=1)
+    # The extension (fraction of the distal segment) the phone assumes for a hand whose outline was found on fewer than 2 fingers
+    # in every view, so the same hand does not read a method-dependent 5-7 mm differently on each scan. ASSUMED: the mean of the
+    # two real photos (ONE hand); null: such a scan uses the landmark tips for every finger instead.
+    outline_tip_prior_frac: float | None = Field(default=0.27, gt=0, le=1)
 
 
 class AcceptanceParams(_Strict):

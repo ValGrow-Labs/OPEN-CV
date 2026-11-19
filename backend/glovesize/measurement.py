@@ -67,12 +67,17 @@ class FrameResult:
     # from the model's world landmarks (an estimate); empty without world landmarks.
     elevations: dict[str, float] = field(default_factory=dict)
     # Per chain key (thumb and fingers): where the tip of the length came from ("outline": the skin tip found from
-    # the hand outline in the browser; "landmark": the model's tip point) and the extension beyond the landmark, mm.
+    # the hand outline in the browser; "estimated": the hand's extension; "landmark": the model's tip point) and the extension, mm.
     tip_sources: dict[str, str] = field(default_factory=dict)
     tip_ext_mm: dict[str, float] = field(default_factory=dict)
     # Finger chain lengths of a usable frame BEFORE the finger-level exclusions (bent, implausible): only for the
     # information shown for a finger the result would otherwise hide. Never used for a value, a status or a size.
     info_values: dict[str, float] = field(default_factory=dict)
+    # Crease-to-tip estimate per chain key for the frames that have the value, and for every usable frame (information), mm, and the
+    # MCP-to-PIP segment of the frame, mm.
+    crease_values: dict[str, float] = field(default_factory=dict)
+    crease_info_values: dict[str, float] = field(default_factory=dict)
+    prox_mm: dict[str, float] = field(default_factory=dict)
 
 
 def scan_finger_bends(results: list["FrameResult"]) -> dict[str, tuple[float, float | None]]:
@@ -138,7 +143,7 @@ def refined_tip(entry, lm: np.ndarray, chain: list[int], fa, w: int, h: int, mar
     direction: extension between 0 and ``fa.outline_tip_max_extension_frac`` x the distal segment (DIP to tip), with
     only a small sideways offset. A refined tip is never a reason to accept anything else about the frame.
     """
-    if entry is None or entry.source != "outline":
+    if entry is None or entry.source not in ("outline", "estimated"):
         return None
     tip, dip = lm[chain[-1]], lm[chain[-2]]
     axis = tip - dip
@@ -300,19 +305,27 @@ def measure_frame(
         use = pts
         tip_src, tip_ext_mm = "landmark", 0.0
         if d.kind == "polyline" and fa.outline_tip and frame.refined_tips and name is not None and finger not in obscured and finger not in bent:
-            rp = refined_tip(frame.refined_tips.get(str(d.landmarks[-1])), lm, d.landmarks, fa, w, h, cap.edge_margin_fraction)
+            entry = frame.refined_tips.get(str(d.landmarks[-1]))
+            rp = refined_tip(entry, lm, d.landmarks, fa, w, h, cap.edge_margin_fraction)
             if rp is not None:
                 use = pts.copy()
                 use[d.landmarks[-1]] = scale.rectify(rp[None, :])[0]
                 length_px = path_length(use, d.landmarks)
-                tip_src = "outline"
+                tip_src = entry.source
                 tip_ext_mm = float(np.linalg.norm(use[d.landmarks[-1]] - pts[d.landmarks[-1]])) / scale.px_per_mm
         mm = length_px / scale.px_per_mm
-        if fa.depth_aware_lengths and finger is not None and world is not None and finger not in obscured:
-            mm = depth_aware_length_mm(use, d.landmarks, world[:, 2] * 1000.0, scale, (w / 2.0, h / 2.0), fa.max_elevation_deg)
+        thumb_da = fa.thumb_depth_aware and name == "thumb"
+        if (thumb_da or (fa.depth_aware_lengths and finger is not None)) and world is not None and finger not in obscured:
+            mm = depth_aware_length_mm(use, d.landmarks, world[:, 2] * 1000.0, scale, (w / 2.0, h / 2.0), fa.thumb_max_elevation_deg if name == "thumb" else fa.max_elevation_deg)
+        crease = None
         if name is not None and d.kind == "polyline" and finger not in obscured:
             result.info_values[key] = mm
             result.landmark_sigma[key] = k * sigma_lm_px / scale.px_per_mm
+            prox = float(np.linalg.norm(use[d.landmarks[1]] - use[d.landmarks[0]])) / scale.px_per_mm
+            result.prox_mm[key] = prox
+            if fa.crease_estimate and name in fa.crease_t:
+                crease = mm - fa.crease_t[name] * prox
+                result.crease_info_values[key] = crease
         lo, hi = d.plausible_range_mm
         if finger in obscured:
             result.excluded[key] = "finger_obscured"
@@ -326,6 +339,8 @@ def measure_frame(
             result.excluded[key] = "implausible_value"
             continue
         result.values[key] = mm
+        if crease is not None:
+            result.crease_values[key] = crease
         if name is not None and d.kind == "polyline":
             result.tip_sources[key] = tip_src
             result.tip_ext_mm[key] = tip_ext_mm
@@ -408,6 +423,7 @@ class CameraAgg:
     kept_sigma: dict[str, float]
     raw: dict[str, RawKey]
     accepted: list[FrameResult]
+    raw_crease: dict[str, RawKey] = field(default_factory=dict)
 
 
 def aggregate_measurements(
@@ -421,11 +437,13 @@ def aggregate_measurements(
     return finish_aggregate(camera, cfg, calib, manual)
 
 
-def _estimate(key, d, accepted, idx, vals, cfg, calib):
-    """Median value and uncertainty components of one measurement from the chosen frames (after MAD rejection)."""
+def _estimate(key, d, accepted, idx, vals, cfg, calib, trim=True, calibrate=True):
+    """Median value and uncertainty components of one measurement from the chosen frames (after MAD rejection, unless
+    ``trim`` is off). ``calibrate`` off: the calibration entry of the key is not applied (the crease-to-tip estimate is a
+    different quantity from the chain length that entry was fitted to)."""
     unc = cfg.uncertainty
     calibrated = calib.status == "calibrated"
-    keep = robust_inliers(vals)
+    keep = robust_inliers(vals) if trim else np.ones(len(vals), dtype=bool)
     n_out = int((~keep).sum())
     idx = [i for i, kpt in zip(idx, keep, strict=False) if kpt]
     vals = vals[keep]
@@ -434,8 +452,8 @@ def _estimate(key, d, accepted, idx, vals, cfg, calib):
     sd = float(np.std(vals, ddof=1)) if n > 1 else 0.0
     scales = [accepted[i].scale for i in idx]
     entry = calib.measurements.get(key)
-    cal_scale = entry.scale if entry else 1.0
-    cal_offset = entry.offset_mm if entry else 0.0
+    cal_scale = entry.scale if (entry and calibrate) else 1.0
+    cal_offset = entry.offset_mm if (entry and calibrate) else 0.0
     resid_sd = entry.residual_sd_mm if entry else 0.0
     value = cal_scale * m + cal_offset
     random = sd / math.sqrt(n)
@@ -460,7 +478,7 @@ def _estimate(key, d, accepted, idx, vals, cfg, calib):
         tilted = tilt_deg > fa.flag_elevation_deg
         if not calibrated:  # a fitted residual already includes the population's tilt
             comps["finger_foreshortening"] = m * finger_tilt_rel_sigma(
-                tilt_deg, fa, corrected=fa.depth_aware_lengths and name != "thumb"
+                tilt_deg, fa, corrected=(fa.depth_aware_lengths and name != "thumb") or (fa.thumb_depth_aware and name == "thumb")
             )
     sigma = cal_scale * math.sqrt(sum(c * c for c in comps.values()))
     return dict(idx=idx, n=n, n_out=n_out, m=m, sd=sd, value=value, sigma=sigma, comps=comps, cal_scale=cal_scale,
@@ -487,8 +505,40 @@ def _tip_fields(key, d, accepted, idx) -> dict:
     if _chain_name(d.landmarks) is None or d.kind != "polyline":
         return {}
     counts = Counter(accepted[i].tip_sources.get(key, "landmark") for i in idx)
-    ext = [accepted[i].tip_ext_mm[key] for i in idx if accepted[i].tip_sources.get(key) == "outline" and key in accepted[i].tip_ext_mm]
+    ext = [accepted[i].tip_ext_mm[key] for i in idx if accepted[i].tip_sources.get(key, "landmark") != "landmark" and key in accepted[i].tip_ext_mm]
     return dict(tip_source=dict(counts), tip_extension_mm=round(float(np.median(ext)), 1) if ext else None)
+
+
+def _crease_fields(key, d, accepted, idx, cfg, calib, trim) -> tuple[dict, RawKey | None]:
+    """The crease-to-tip ESTIMATE of a thumb or finger as additive fields (and the raw numbers for combining views).
+
+    Per frame it is the chain length minus t x |MCP to PIP| (measure_frame); here it is aggregated like the value (median of the same
+    frames; when ``trim`` is off the frames are exactly the ones the value used), with the same uncertainty terms plus
+    ``crease_position`` for where the crease really lies (+- ``crease_position_halfwidth_frac`` of the MCP-to-PIP segment,
+    uniform, ASSUMED). Its status uses the same limits as every length, so a value over them is called invalid (shown as
+    "Very uncertain"), never hidden. Nothing here changes a value, a status or the size."""
+    fa = cfg.finger_accuracy
+    name = _chain_name(d.landmarks)
+    if not fa.crease_estimate or name is None or d.kind != "polyline" or name not in fa.crease_t:
+        return {}, None
+    source = "crease_values" if not trim else "crease_info_values"
+    use_idx = [i for i in idx if key in getattr(accepted[i], source)]
+    if not use_idx:
+        return {}, None
+    vals = np.array([getattr(accepted[i], source)[key] for i in use_idx])
+    est = _estimate(key, d, accepted, use_idx, vals, cfg, calib, trim=trim, calibrate=False)
+    prox = float(np.median([accepted[i].prox_mm[key] for i in est["idx"]]))
+    comps = dict(est["comps"])
+    comps["crease_position"] = fa.crease_position_halfwidth_frac * prox / math.sqrt(3.0)
+    sigma = math.sqrt(sum(c * c for c in comps.values()))
+    value = est["value"]
+    status = classify(value, sigma, cfg, out_of_plane=d.out_of_plane)
+    fields = dict(
+        crease_to_tip_mm=round(value, 1), crease_uncertainty_mm=round(sigma, 1),
+        crease_interval95_mm=(round(value - Z95 * sigma, 1), round(value + Z95 * sigma, 1)),
+        crease_status=status, crease_t=fa.crease_t[name],
+    )  # fmt: skip
+    return fields, RawKey(value=value, comps=comps, cal_scale=1.0, n=est["n"], unstable=False)
 
 
 def aggregate_camera(
@@ -507,6 +557,7 @@ def aggregate_camera(
     kept_values: dict[str, float] = {}
     kept_sigma: dict[str, float] = {}
     raw_keys: dict[str, RawKey] = {}
+    raw_crease: dict[str, RawKey] = {}
 
     min_feature_frames = min(min_frames, max(4, len(accepted) // 2))
     fa = cfg.finger_accuracy
@@ -527,13 +578,15 @@ def aggregate_camera(
         if _chain_finger(d.landmarks) in bent_fingers:
             out.append(MeasurementOut(**base, value_mm=None, uncertainty_mm=None, interval95_mm=None,
                                       status="invalid", frames_used=0, reasons=["finger_bent"],
-                                      frame_exclusions=dict(excl), **_info_fields(key, d, accepted, cfg, calib)))  # fmt: skip
+                                      frame_exclusions=dict(excl), **_info_fields(key, d, accepted, cfg, calib),
+                                      **_crease_fields(key, d, accepted, [i for i, r in enumerate(accepted) if key in r.info_values], cfg, calib, True)[0]))  # fmt: skip
             continue
         if len(idx) < req_frames:
             reason = excl.most_common(1)[0][0] if excl else "too_few_frames"
             out.append(MeasurementOut(**base, value_mm=None, uncertainty_mm=None, interval95_mm=None,
                                       status="invalid", frames_used=len(idx), reasons=[reason],
-                                      frame_exclusions=dict(excl), **_info_fields(key, d, accepted, cfg, calib)))  # fmt: skip
+                                      frame_exclusions=dict(excl), **_info_fields(key, d, accepted, cfg, calib),
+                                      **_crease_fields(key, d, accepted, [i for i, r in enumerate(accepted) if key in r.info_values], cfg, calib, True)[0]))  # fmt: skip
             continue
 
         est = _estimate(key, d, accepted, idx, np.array([accepted[i].values[key] for i in idx]), cfg, calib)
@@ -561,6 +614,7 @@ def aggregate_camera(
             reasons.append("uncertainty_too_large")
 
         show = status != "invalid"
+        crease_f, crease_raw = _crease_fields(key, d, accepted, idx, cfg, calib, False)
         out.append(
             MeasurementOut(
                 **base,
@@ -575,8 +629,11 @@ def aggregate_camera(
                 finger_tilt_deg=None if tilt_deg is None else round(tilt_deg, 1),
                 **_tip_fields(key, d, accepted, idx),
                 **({} if show else _info_fields(key, d, accepted, cfg, calib, est)),
+                **crease_f,
             )
         )
+        if crease_raw is not None:
+            raw_crease[key] = crease_raw
         if show:
             kept_values[key] = value
             kept_sigma[key] = sigma
@@ -584,7 +641,7 @@ def aggregate_camera(
 
     if unstable:
         issue_codes.append("measurement_unstable")
-    return CameraAgg(out, issue_codes, unstable, kept_values, kept_sigma, raw_keys, accepted)
+    return CameraAgg(out, issue_codes, unstable, kept_values, kept_sigma, raw_keys, accepted, raw_crease)
 
 
 def finish_aggregate(
@@ -708,8 +765,42 @@ def combine_views(views: list[CameraAgg], cfg: MeasurementConfig) -> CameraAgg:
             kept_values[key] = value
             kept_sigma[key] = sigma
             raw_out[key] = RawKey(value, comps, cal_scale, sum(r.n for r in raws), any(r.unstable for r in raws))
+    out, raw_crease_out = _combine_crease(views, out, by_key, cfg)
     codes = list(dict.fromkeys(c for v in views for c in v.issue_codes))
-    return CameraAgg(out, codes, any(v.unstable for v in views), kept_values, kept_sigma, raw_out, primary.accepted)
+    return CameraAgg(out, codes, any(v.unstable for v in views), kept_values, kept_sigma, raw_out, primary.accepted, raw_crease_out)
+
+
+def _combine_crease(views, out, by_key, cfg):
+    """The crease-to-tip estimate of each finger over several views: the mean of the views' values, each uncertainty term
+    averaged, plus the disagreement of the views, exactly as the value is combined (view votes, not frame votes)."""
+    raw_out: dict[str, RawKey] = {}
+    result = []
+    for m in out:
+        d = cfg.measurements[m.key]
+        have = [(v, i) for i, v in enumerate(views) if m.key in v.raw_crease]
+        if not have:
+            result.append(m)
+            continue
+        if len(have) == 1:
+            v, i = have[0]
+            src = by_key[i][m.key]
+            raw_out[m.key] = v.raw_crease[m.key]
+            result.append(m.model_copy(update=dict(
+                crease_to_tip_mm=src.crease_to_tip_mm, crease_uncertainty_mm=src.crease_uncertainty_mm,
+                crease_interval95_mm=src.crease_interval95_mm, crease_status=src.crease_status, crease_t=src.crease_t)))  # fmt: skip
+            continue
+        raws = [v.raw_crease[m.key] for v, _ in have]
+        vals = np.array([r.value for r in raws])
+        comps = {c: float(np.mean([r.comps.get(c, 0.0) for r in raws])) for c in raws[0].comps}
+        comps["view_disagreement"] = float(np.std(vals, ddof=1) / math.sqrt(len(raws)))
+        sigma = math.sqrt(sum(c * c for c in comps.values()))
+        value = float(np.mean(vals))
+        raw_out[m.key] = RawKey(value, comps, 1.0, sum(r.n for r in raws), False)
+        result.append(m.model_copy(update=dict(
+            crease_to_tip_mm=round(value, 1), crease_uncertainty_mm=round(sigma, 1),
+            crease_interval95_mm=(round(value - Z95 * sigma, 1), round(value + Z95 * sigma, 1)),
+            crease_status=classify(value, sigma, cfg, out_of_plane=d.out_of_plane), crease_t=by_key[have[0][1]][m.key].crease_t)))  # fmt: skip
+    return result, raw_out
 
 
 def _sum_counts(counts: list[dict[str, int]]) -> dict[str, int]:

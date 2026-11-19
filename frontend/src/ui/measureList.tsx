@@ -1,7 +1,7 @@
 // Measurements as a list that reads well on a phone: the name and the value on one line, then how
 // sure we are and where the number came from (the customer's tape or the camera).
 import type { Measurement } from "../api/types";
-import { COMPONENTS, fmtIn, fmtMm, REASONS, SOURCE, STATUS, veryUncertainFinger, type Tone } from "./format";
+import { COMPONENTS, creaseHow, creaseLine, fmtIn, fmtMm, REASONS, SOURCE, STATUS, veryUncertainFinger, type Tone } from "./format";
 import { CountUp, stagger } from "./motion";
 
 export interface MeasureItem {
@@ -95,12 +95,18 @@ function MeasureRow({ item, index, showHow, countUp }: { item: MeasureItem; inde
         m && m.reasons.length > 0 && <p className="mrow-reason">{m.reasons.map((r) => REASONS[r] ?? r).join(" ")}</p>
       )}
       {item.detail && <p className="mrow-reason">{item.detail}</p>}
+      {creaseLine(m) && (
+        <p className="mrow-crease" data-crease={m?.key}>
+          {creaseLine(m)}
+        </p>
+      )}
       {showHow && m && (
         <details className="disclosure">
           <summary>How it's measured</summary>
           <p className="small muted">{m.definition}</p>
           <p className="small muted">{SOURCE[m.source]}.</p>
           {m.limitation && <p className="small muted">{m.limitation}</p>}
+          {creaseHow(m) && <p className="small muted">{creaseHow(m)}</p>}
           {Object.keys(m.uncertainty_components_mm).length > 0 && (
             <dl className="kv small">
               {Object.entries(m.uncertainty_components_mm).map(([k, v]) => (

@@ -26,13 +26,13 @@ describe("1. Start", () => {
     expect(onStart).toHaveBeenCalled();
   });
 
-  it("keeps the product picker when there is more than one product", () => {
+  it("offers no product picker, even when there is more than one product", () => {
     const base = publicConfig();
     const config = publicConfig({ charts: [...base.charts, { ...base.charts[0], chart_id: "fitted", product_model: "Fitted Glove", measurements: ["hand_circumference_mm", "hand_length_mm"] }] });
-    const onChartChange = vi.fn();
-    render(<StartStep config={config} chartId="demo-length-v1" onChartChange={onChartChange} onStart={() => {}} />);
-    fireEvent.change(screen.getByLabelText("Your product"), { target: { value: "fitted" } });
-    expect(onChartChange).toHaveBeenCalledWith("fitted");
+    render(<StartStep config={config} chartId="demo-length-v1" onStart={() => {}} />);
+    expect(screen.queryByLabelText("Your product")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("button", { name: /Start Scan/ })).toBeTruthy();
   });
 
   it("links to the operator screens", () => {

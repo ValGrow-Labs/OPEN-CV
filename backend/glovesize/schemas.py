@@ -66,8 +66,9 @@ class RefinedTip(_Model):
     x: float
     y: float
     extension_px: float = Field(ge=0, lt=1000, description="Distance beyond the landmark tip, image pixels.")
-    source: Literal["outline", "landmark"] = Field(
-        description="outline: the skin tip found from the hand outline; landmark: no clear outline, the model's tip."
+    source: Literal["outline", "estimated", "landmark"] = Field(
+        description="outline: the skin tip found from this finger's outline; estimated: the hand's extension taken from its "
+        "other fingers or an assumed prior (an estimate, not a measurement); landmark: the model's tip."
     )
     reason: str | None = Field(default=None, max_length=40, description="Why the landmark tip was kept.")
 
@@ -240,6 +241,14 @@ class MeasurementOut(_Model):
     tip_extension_mm: float | None = Field(
         default=None, description="Median distance the outline tip lies beyond the landmark tip, mm (frames that used it)."
     )
+    # Crease-to-tip length ESTIMATE (glove-industry definition) of a thumb or finger, additive: the chain length minus an ASSUMED
+    # share t of the MCP-to-PIP segment (the crease is not a landmark). Same frames and outlier handling as the value; for a finger
+    # whose value is hidden it is still given (information). Never used for the size.
+    crease_to_tip_mm: float | None = None
+    crease_uncertainty_mm: float | None = None
+    crease_interval95_mm: tuple[float, float] | None = None
+    crease_status: Literal["valid", "low_confidence", "invalid"] | None = None
+    crease_t: float | None = Field(default=None, description="The assumed crease position along MCP to PIP (0 = at the MCP).")
     # A thumb or finger whose value the result would hide (status invalid) still gets its number here, as
     # information. The status, the reasons and the size recommendation are exactly what they were.
     info_value_mm: float | None = None

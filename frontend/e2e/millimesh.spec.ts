@@ -182,16 +182,29 @@ test("the seven steps, with real coverage and the estimated 3D model", async ({ 
   await page.screenshot({ path: `${SHOTS}/6-back.png` });
   await expectNoteMatchesLabels(page);
 
-  // 7. 3D Reconstruction: an estimate, labelled as one, in three renderings.
-  await expect(page.getByRole("heading", { level: 1, name: "3D Reconstruction" })).toBeVisible({ timeout: 240_000 });
+  // 7. The simple results page: the 3D estimate (an estimate, labelled as one, in three renderings) and the numbers.
+  await expect(page.getByRole("heading", { level: 1, name: "Your hand", exact: true })).toBeVisible({ timeout: 240_000 });
   await expect(page.getByRole("note")).toHaveText("Estimated 3D model — fitted to your three views, not a measured scan");
   const canvas = page.locator(".mm-recon-canvas");
   await expect(canvas).toBeVisible({ timeout: 60_000 });
-  for (const l of ["Palm Capture", "Side Capture", "Back Capture"]) await expect(page.getByText(l)).toBeVisible();
+  await expect(page.getByText("Drag to rotate")).toBeVisible();
+  expect(await page.getByRole("radiogroup", { name: "How to draw the model" }).getByRole("radio").allTextContents()).toEqual(["Point Cloud", "Solid", "Wireframe"]);
+  expect(await page.getByRole("radiogroup", { name: "Finger length definition" }).getByRole("radio").allTextContents()).toEqual(["Crease to tip (est.)", "Knuckle to tip"]);
+  await expect(page.getByRole("radio", { name: "Crease to tip (est.)" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("estimate", { exact: true })).toBeVisible();
+  await expect(page.locator(".mm-legend")).toHaveCount(0);
+  await expect(page.getByTestId("hand-length")).toContainText("cm");
+  await expect(page.getByTestId("hand-width")).toContainText("cm");
+  await expect(page.locator(".mm-simple-fingers li")).toHaveCount(5);
+  await expect(page.getByTestId("size-chip")).toBeVisible();
   await page.waitForTimeout(1500);
   const stage = (await page.locator(".mm-recon-stage").boundingBox())!;
   const clip = { x: stage.x, y: stage.y, width: stage.width, height: Math.min(stage.height, 520) };
-  await page.screenshot({ path: `${SHOTS}/7-reconstruction.png` });
+  await page.screenshot({ path: `${SHOTS}/7-simple-results.png`, fullPage: true });
+  await page.getByRole("radio", { name: "Knuckle to tip" }).click();
+  await expect(page.getByText("Finger length is from the knuckle joint to the fingertip.")).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/7-simple-results-knuckle.png`, fullPage: true });
+  await page.getByRole("radio", { name: "Crease to tip (est.)" }).click();
 
   // Solid, Wireframe and Point Cloud are three different pictures of the one model.
   const shots: Record<string, Buffer> = {};

@@ -11,11 +11,11 @@ import type { CoinJobResult } from "../vision/coinJob";
 import { clear, COLORS, drawCoin, drawCoinPulse, drawHandOutline, drawRoi, drawSkeleton, drawTag } from "../vision/draw";
 import { drawFocusMask, maskCanvasSize, nextFocusAlpha, type FocusMaskParams, type FocusShape } from "../vision/focusMask";
 import { buildObservation, coinSearchWindow, meanBrightness, type SearchWindow } from "../vision/frameAnalysis";
-import { dist, handTurn, insideFrame, medianHandTurn, medianOf, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
+import { chainElevationDeg, dist, handTurn, insideFrame, medianHandTurn, medianOf, MIDDLE_TIP, PALM_POLYGON, WRIST } from "../vision/geometry";
 import { computeHandOutline } from "../vision/handOutline";
 import { actualHandedness, getHandTracker, type HandFrame, type HandTracker } from "../vision/handTracker";
 import { coinTiltDeg, smoothedTiltDeg } from "../vision/coinTilt";
-import { evaluateBasicFrame, evaluateFrame, HOLD_STILL_MESSAGE, liveMessage, notSideOnTurn, sameSideTurn, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
+import { evaluateBasicFrame, evaluateFrame, HOLD_STILL_MESSAGE, liveMessage, notSideOnTurn, sameSideTurn, THUMB_HINT_DEG, THUMB_MESSAGE, withWrongSide, type LiveCode, type LiveResult } from "../vision/liveChecks";
 import { FINGER_TIPS, labelAnchor, liveLengths, type FingerName, type LiveLengths } from "../vision/liveLengths";
 import { loadOpenCV, type CV } from "../vision/opencv";
 import { LandmarkSmoother } from "../vision/smoothing";
@@ -193,6 +193,8 @@ export class ScanController {
   private smoother = new LandmarkSmoother();
   private roiCanvas: HTMLCanvasElement;
   private tips = new TipCapture(); // fingertips from the hand outline (scan/tipCapture.ts)
+  private thumbElev: number[] = []; // the thumb chord's elevation over the last frames (advice only)
+  private scanTipRatio: number | null = null; // the hand's measured tip extension from an earlier view of this scan
   private completeSeq = 0; // bumped by resetCollection so a finishing view that was reset is not delivered
   private facing: Facing;
   private status: ScanStatus;
@@ -789,11 +791,26 @@ export class ScanController {
     );
   }
 
+  /** Track the thumb's elevation from the model's world landmarks, to tell the customer to open the thumb out flat. */
+  private noteThumb(world: Point[] | null): void {
+    if (!world || world.length < 21) {
+      this.thumbElev = [];
+      return;
+    }
+    const e = chainElevationDeg(world, [2, 3, 4]);
+    if (Number.isFinite(e)) this.thumbElev.push(e);
+    while (this.thumbElev.length > 9) this.thumbElev.shift();
+  }
+
+  private thumbOut(): boolean {
+    return !this.captureOnly && this.thumbElev.length >= 5 && medianOf(this.thumbElev) > THUMB_HINT_DEG;
+  }
+
   /** What the customer is told: the per-frame result with its message settled by the guidance
    *  debouncer (frames are still collected only when the per-frame result is ok). */
   private shown(live: LiveResult, now: number): LiveResult {
     const code = this.guidance.update(now, live.codes);
-    if (code === null) return { ok: true, codes: [], message: HOLD_STILL_MESSAGE };
+    if (code === null) return { ok: true, codes: [], message: this.thumbOut() ? THUMB_MESSAGE : HOLD_STILL_MESSAGE };
     return { ok: false, codes: [code, ...live.codes.filter((c) => c !== code)], message: liveMessage(code, this.view) };
   }
 
@@ -806,6 +823,7 @@ export class ScanController {
     const now = performance.now();
     const fps = this.trackFps(now);
     const hand = this.tracker.detect(this.video, now);
+    this.noteThumb(hand?.world ?? null);
     this.timing.handMs = 0.8 * this.timing.handMs + 0.2 * (performance.now() - now);
 
     let smoothed: Point[] | null = null;
@@ -951,8 +969,11 @@ export class ScanController {
       this.opts.onComplete?.(frames, timingInfo); // nothing to measure: delivered at once, as before
       return;
     }
-    void this.tips.finalize(this.engine, frames, maxFrac).then((summary) => {
-      if (IS_DEBUG && summary) console.log(`[tips] ${summary.usedFrames} frames in ${summary.ms.toFixed(0)}ms`, summary.byFinger);
+    const prior = this.config.finger_tip?.prior_frac ?? null;
+    void this.tips.finalize(this.engine, frames, maxFrac, { carry: this.scanTipRatio, prior }).then((summary) => {
+      // The hand's measured extension is carried to the next views of this scan, so views never use different methods.
+      if (summary?.plan.measuredRatio != null) this.scanTipRatio = summary.plan.measuredRatio;
+      if (IS_DEBUG && summary) console.log(`[tips] ${summary.usedFrames} frames in ${summary.ms.toFixed(0)}ms`, summary.plan);
       if (this.disposed || seq !== this.completeSeq) return;
       this.opts.onComplete?.(frames, timingInfo);
     });

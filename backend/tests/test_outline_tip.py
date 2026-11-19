@@ -188,7 +188,7 @@ def test_schema_accepts_refined_tips_and_rejects_bad_ones():
 
 def test_public_config_tells_the_phone_about_the_outline_tip():
     cfg = TestClient(app).get("/api/config").json()
-    assert cfg["finger_tip"] == {"enabled": True, "max_extension_frac": 0.5}
+    assert cfg["finger_tip"] == {"enabled": True, "max_extension_frac": 0.5, "prior_frac": 0.27}
 
 
 def test_a_scan_with_refined_tips_goes_through_the_api():
@@ -206,3 +206,23 @@ def test_a_scan_with_refined_tips_goes_through_the_api():
     index = next(m for m in r.json()["measurements"] if m["key"] == "index_length_mm")
     assert index["tip_source"].get("outline", 0) >= 10
     assert index["tip_extension_mm"] and index["tip_extension_mm"] > 1.0
+
+
+def test_an_estimated_tip_is_used_like_an_outline_tip_but_counted_apart(cfg, calib):
+    base = results(frames_for(SC), cfg)[0]
+    est = results(frames_for(SC, ratio=0.25, source="estimated"), cfg)[0]
+    out = results(frames_for(SC, ratio=0.25, source="outline"), cfg)[0]
+    assert est.tip_sources["index_length_mm"] == "estimated"
+    assert est.values["index_length_mm"] == pytest.approx(out.values["index_length_mm"])
+    assert est.values["index_length_mm"] > base.values["index_length_mm"] + 3.0
+    cam = aggregate_camera(results(frames_for(SC, n=12, ratio=0.25, source="estimated"), cfg), cfg, calib)
+    index = next(m for m in cam.out if m.key == "index_length_mm")
+    assert index.tip_source == {"estimated": 12}
+    assert index.tip_extension_mm is not None and index.tip_extension_mm > 3.0
+
+
+def test_the_estimated_extension_still_obeys_the_cap(cfg):
+    base = results(frames_for(SC), cfg)[0]
+    far = results(frames_for(SC, ratio=0.8, source="estimated"), cfg)[0]
+    assert far.values["index_length_mm"] == pytest.approx(base.values["index_length_mm"])
+    assert far.tip_sources["index_length_mm"] == "landmark"

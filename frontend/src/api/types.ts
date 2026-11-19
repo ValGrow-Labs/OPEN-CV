@@ -47,8 +47,9 @@ export interface RefinedTip {
   y: number;
   /** Distance beyond the landmark tip, image pixels. */
   extension_px: number;
-  /** "outline": the skin tip found from the hand outline; "landmark": no clear outline, the model's tip point. */
-  source: "outline" | "landmark";
+  /** "outline": the skin tip found from this finger's outline; "estimated": the hand's extension from its other
+   *  fingers (or an assumed prior), an estimate not a measurement; "landmark": the model's tip point. */
+  source: "outline" | "estimated" | "landmark";
   /** Why the landmark tip was kept. */
   reason?: string;
 }
@@ -104,7 +105,16 @@ export interface Measurement {
   reasons: string[];
   /** Accepted frames that did not count for this value, by reason (finger_bent, finger_obscured, ...). Additive. */
   frame_exclusions?: Record<string, number>;
-  /** Frames behind a finger length by where the tip came from: "outline" (skin tip) or "landmark". Additive. */
+  /** Crease-to-tip finger length ESTIMATE (the glove-industry definition) of a thumb or finger: the knuckle-to-tip length minus an
+   *  ASSUMED share of the knuckle-to-middle-joint segment (the crease is not a landmark). Additive; never used for the size. */
+  crease_to_tip_mm?: number | null;
+  crease_uncertainty_mm?: number | null;
+  crease_interval95_mm?: [number, number] | null;
+  crease_status?: "valid" | "low_confidence" | "invalid" | null;
+  /** The assumed crease position along knuckle to middle joint (0 = at the knuckle). */
+  crease_t?: number | null;
+  /** Frames behind a finger length by where the tip came from: "outline" (its own skin tip), "estimated" (the hand's
+   *  extension) or "landmark". Additive. */
   tip_source?: Record<string, number>;
   /** Median distance the outline tip lies beyond the landmark tip, mm. Additive. */
   tip_extension_mm?: number | null;
@@ -417,7 +427,7 @@ export interface PublicConfig {
   calibration: CalibrationParams;
   /** Fingertip from the hand outline: whether the phone measures it, and the largest believable extension as a
    *  fraction of the distal segment. Absent on an older server (the phone then sends no refined tips). */
-  finger_tip?: { enabled: boolean; max_extension_frac: number };
+  finger_tip?: { enabled: boolean; max_extension_frac: number; prior_frac?: number | null };
   measurement_labels: Record<string, string>;
   manual_measurement_sd_mm: number;
   assumed_hfov_deg: [number, number];

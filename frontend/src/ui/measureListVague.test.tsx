@@ -62,3 +62,37 @@ describe("every finger is shown (the server's status and the size rules are unch
     expect(container.textContent).not.toContain("Very uncertain");
   });
 });
+
+describe("the crease-to-tip estimate on the detailed page", () => {
+  const withCrease: Measurement = {
+    ...hidden,
+    value_mm: 91,
+    status: "low_confidence",
+    reasons: [],
+    info_value_mm: null,
+    crease_to_tip_mm: 66.2,
+    crease_uncertainty_mm: 7.7,
+    crease_interval95_mm: [51.1, 81.3],
+    crease_status: "invalid",
+    crease_t: 0.64,
+  };
+
+  it("adds a crease-to-tip line under a finger, and explains the assumed proportion in How it's measured", () => {
+    const { container } = render(<MeasureList showHow items={[{ key: withCrease.key, label: "Ring finger", m: withCrease }]} />);
+    expect(container.querySelector('[data-crease="ring_length_mm"]')?.textContent).toBe("Crease to tip (estimate): ≈ 66 mm ±7.7 mm (95%: 51 to 81 mm)");
+    const how = container.textContent ?? "";
+    expect(how).toContain("glove-industry finger length");
+    expect(how).toContain("64% of the knuckle-to-middle-joint segment");
+    expect(how).toContain("ASSUMED");
+    expect(how).toContain("not validated");
+    expect(how).toContain("91 mm"); // today's knuckle-to-tip value is still the headline
+  });
+
+  it("says nothing for a finger without it, or for a hand value", () => {
+    const none = render(<MeasureList items={[{ key: hidden.key, label: "Ring finger", m: { ...hidden, value_mm: 90, status: "low_confidence" } }]} />);
+    expect(none.container.querySelector("[data-crease]")).toBeNull();
+    cleanup();
+    const hand = render(<MeasureList items={[{ key: "hand_length_mm", label: "Hand length", m: { ...withCrease, key: "hand_length_mm" } }]} />);
+    expect(hand.container.querySelector("[data-crease]")).toBeNull();
+  });
+});

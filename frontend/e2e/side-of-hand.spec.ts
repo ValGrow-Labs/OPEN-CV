@@ -44,7 +44,7 @@ test("the back phase refuses the palm shown again, and goes on once the hand is 
 
   await expect(page.getByText("That is your palm. Turn your hand over to show the back of your hand").first()).toBeVisible({ timeout: 60_000 });
   await page.waitForTimeout(8_000);
-  await expect(page.getByRole("heading", { level: 1, name: "3D Reconstruction" })).toHaveCount(0); // not finished
+  await expect(page.getByRole("heading", { level: 1, name: "Your hand", exact: true })).toHaveCount(0); // not finished
 
   // Turning the hand over (the mirrored picture) lets the scan finish.
   await showSide(page, "back");

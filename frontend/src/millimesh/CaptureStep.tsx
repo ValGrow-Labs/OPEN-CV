@@ -14,6 +14,7 @@ import { ScanDebug } from "../screens/ScanDebug";
 import { referenceLabel } from "../ui/settings";
 import { ArrowRight, CloseIcon, OrbitIcon, PhoneIcon, Ring, SwitchIcon, Wordmark } from "./Brand";
 import { angleHint, computeCoverage, palmZSignOf, type Coverage, type PhaseId } from "./coverage";
+import { THUMB_MESSAGE } from "../vision/liveChecks";
 import { guidanceText, isPhase, PHASE_ORDER, PHASES } from "./phases";
 import { ParticleField } from "./ParticleField";
 import type { FingerLengths } from "./fingerLabels";
@@ -290,6 +291,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
     if (!live) return "";
     if (!live.ok) return guidanceText(code, phase, live.message);
     if (cov?.complete) return "Coverage complete";
+    if (live.message === THUMB_MESSAGE) return THUMB_MESSAGE; // advice only: the frames are fine, the thumb reads shorter turned away
     return (cov && cov.frames >= 3 ? angleHint(phase, cov.nextCell) : null) ?? "Slowly move your phone around your hand";
   })();
   useEffect(() => {
@@ -335,7 +337,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         )}
         {labelsShown && phaseRunning === "running" && !between && !submitting && (
           <span className="mm-live-note" aria-hidden="true">
-            Live estimate · final result after the scan
+            Live estimate, knuckle to tip · final result after the scan
           </span>
         )}
         <i className="mm-corner mm-corner--tl" aria-hidden="true" />

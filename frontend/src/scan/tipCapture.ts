@@ -10,6 +10,7 @@
 import type { FrameObservation, Point } from "../api/types";
 import type { CoinEngine } from "../vision/coinEngine";
 import { combineTipResults, sharpness, type FingerTipResult, type TipEstimate } from "../vision/fingertip";
+import { planHandTips, type HandTipPlan, type PlannedTip } from "../vision/handTips";
 import type { TipJobFinger } from "../vision/tipJob";
 
 /** Tip landmark and the joint before it (the DIP; the thumb's IP), MediaPipe indices. */
@@ -36,6 +37,8 @@ export interface TipCropSet {
 
 export interface TipSummary {
   byFinger: Record<number, FingerTipResult>;
+  /** What every finger of the view got: its own outline, the hand's extension (estimated) or the landmark. */
+  plan: HandTipPlan;
   ms: number;
   usedFrames: number;
 }
@@ -99,49 +102,61 @@ export class TipCapture {
     if (this.kept.length > TIP_FRAMES_KEPT) this.kept.length = TIP_FRAMES_KEPT;
   }
 
-  /** Measure the kept crops once, combine them per finger and write `refined_tips` on every frame of the view.
-   *  Never throws: on any failure or timeout the frames are left as they were (landmark tips). */
-  async finalize(engine: CoinEngine | null, frames: FrameObservation[], maxExtFrac: number, budgetMs = TIP_BUDGET_MS): Promise<TipSummary | null> {
+  /** Measure the kept crops once, combine them per finger, decide ONE extension for the whole hand (vision/handTips.ts) and
+   *  write `refined_tips` on every frame of the view. Never throws: when measuring fails or times out, the fingers are
+   *  planned from `carry` (an earlier view of this scan) or the assumed `prior`, so a scan does not switch method.
+   *  Returns null when nothing was written. */
+  async finalize(
+    engine: CoinEngine | null,
+    frames: FrameObservation[],
+    maxExtFrac: number,
+    opts: { carry?: number | null; prior?: number | null; budgetMs?: number } = {},
+  ): Promise<TipSummary | null> {
     const sets = this.kept;
     this.kept = [];
-    if (!engine?.tips || sets.length === 0 || frames.length === 0) return null;
+    if (frames.length === 0) return null;
     const t0 = performance.now();
-    try {
-      const run = Promise.all(sets.map((s) => engine.tips!({ fingers: s.crops.map((c): TipJobFinger => ({ tipIndex: c.tipIndex, image: c.image, dip: c.dip, tip: c.tip })), maxExtFrac })));
-      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs));
-      const results = await Promise.race([run, timeout]);
-      if (!results) return null;
-      const per = new Map<number, TipEstimate[]>();
-      for (const r of results) for (const f of r.fingers) per.set(f.tipIndex, [...(per.get(f.tipIndex) ?? []), f.est]);
-      const byFinger: Record<number, FingerTipResult> = {};
-      for (const { tip } of TIP_FINGERS) if (per.has(tip)) byFinger[tip] = combineTipResults(per.get(tip)!);
-      applyRefinedTips(frames, byFinger, maxExtFrac);
-      return { byFinger, ms: performance.now() - t0, usedFrames: sets.length };
-    } catch (err) {
-      console.error("fingertip measurement failed; landmark tips are used", err);
-      return null;
+    const byFinger: Record<number, FingerTipResult> = {};
+    if (engine?.tips && sets.length > 0) {
+      try {
+        const run = Promise.all(sets.map((s) => engine.tips!({ fingers: s.crops.map((c): TipJobFinger => ({ tipIndex: c.tipIndex, image: c.image, dip: c.dip, tip: c.tip })), maxExtFrac })));
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), opts.budgetMs ?? TIP_BUDGET_MS));
+        const results = await Promise.race([run, timeout]);
+        if (results) {
+          const per = new Map<number, TipEstimate[]>();
+          for (const r of results) for (const f of r.fingers) per.set(f.tipIndex, [...(per.get(f.tipIndex) ?? []), f.est]);
+          for (const { tip } of TIP_FINGERS) if (per.has(tip)) byFinger[tip] = combineTipResults(per.get(tip)!);
+        }
+      } catch (err) {
+        console.error("fingertip measurement failed; the hand's extension is estimated instead", err);
+      }
     }
+    const plan = planHandTips(byFinger, TIP_FINGERS.map((f) => f.tip), opts.carry ?? null, opts.prior ?? null);
+    if (plan.basis === "none") return null; // landmark tips everywhere: nothing to write
+    applyRefinedTips(frames, plan.tips, maxExtFrac);
+    return { byFinger, plan, ms: performance.now() - t0, usedFrames: sets.length };
   }
 }
 
-/** Write `refined_tips` on every frame: the tip landmark moved outward along its own distal segment by the finger's
- *  extension ratio (outline), or left where it is with the reason (landmark). Exported for the tests. */
-export function applyRefinedTips(frames: FrameObservation[], byFinger: Record<number, FingerTipResult>, maxExtFrac: number): void {
+/** Write `refined_tips` on every frame: each tip landmark moved outward along its own distal segment by the planned extension
+ *  ratio ("outline": the finger's own; "estimated": the hand's), or left where it is with the reason ("landmark").
+ *  Exported for the tests. */
+export function applyRefinedTips(frames: FrameObservation[], planned: Record<number, PlannedTip>, maxExtFrac: number): void {
   for (const f of frames) {
     const tips: NonNullable<FrameObservation["refined_tips"]> = {};
     for (const { tip, dip } of TIP_FINGERS) {
-      const res = byFinger[tip];
+      const res = planned[tip];
       if (!res) continue;
       const T = f.landmarks[tip];
       const D = f.landmarks[dip];
-      if (!res.ok) {
+      if (res.source === "landmark") {
         tips[String(tip)] = { x: T.x, y: T.y, extension_px: 0, source: "landmark", reason: res.reason };
         continue;
       }
       const ratio = Math.min(res.ratio, maxExtFrac * 0.98);
       const dx = T.x - D.x;
       const dy = T.y - D.y;
-      tips[String(tip)] = { x: T.x + ratio * dx, y: T.y + ratio * dy, extension_px: ratio * Math.hypot(dx, dy), source: "outline" };
+      tips[String(tip)] = { x: T.x + ratio * dx, y: T.y + ratio * dy, extension_px: ratio * Math.hypot(dx, dy), source: res.source, ...(res.reason ? { reason: res.reason } : {}) };
     }
     if (Object.keys(tips).length) f.refined_tips = tips;
   }
