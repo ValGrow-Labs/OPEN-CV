@@ -76,7 +76,8 @@ export interface AlignResult {
   hint: AlignHint;
 }
 
-export const NO_HAND: AlignResult = { corners: { tl: false, tr: false, bl: false, br: false }, aligned: false, hint: "show_hand" };
+export const NO_CORNERS: Record<Corner, boolean> = { tl: false, tr: false, bl: false, br: false };
+export const NO_HAND: AlignResult = { corners: NO_CORNERS, aligned: false, hint: "show_hand" };
 
 export interface AlignInput {
   /** The box around the hand in view pixels, or null while no hand is tracked. */
