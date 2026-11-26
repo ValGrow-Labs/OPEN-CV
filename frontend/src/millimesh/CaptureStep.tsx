@@ -16,6 +16,8 @@ import { ArrowRight, CloseIcon, OrbitIcon, PhoneIcon, Ring, SwitchIcon, Wordmark
 import { angleHint, computeCoverage, palmZSignOf, type Coverage, type PhaseId } from "./coverage";
 import { THUMB_MESSAGE } from "../vision/liveChecks";
 import { guidanceText, isPhase, PHASE_ORDER, PHASES } from "./phases";
+import { AlignGuide } from "./AlignGuide";
+import { ALIGN_MESSAGES, NO_HAND, type AlignResult } from "./alignment";
 import { ParticleField } from "./ParticleField";
 import type { FingerLengths } from "./fingerLabels";
 
@@ -92,6 +94,8 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const [pendingFrames, setPendingFrames] = useState<FrameObservation[] | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [degraded, setDegraded] = useState(false);
+  // Whether the hand is lined up with the guide box (arrows at its four corners). Feedback only: nothing is gated on it.
+  const [align, setAlign] = useState<AlignResult>(NO_HAND);
   // The 3D mesh over the hand: the full mesh, or a light version so the hand can be seen plainly.
   const [meshOn, setMeshOn] = useState(true);
   // The camera switch is offered only on a device that has more than one camera.
@@ -287,10 +291,13 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const phaseRunning = status?.phase ?? "starting";
   const live = status?.live ?? null;
   const code = live?.codes?.[0];
+  const settingUp = (cov?.frames ?? 0) < 3;
   const guidance = (() => {
     if (!live) return "";
     if (!live.ok) return guidanceText(code, phase, live.message);
     if (cov?.complete) return "Coverage complete";
+    // Before the scan has collected anything, help the customer line the hand up with the box first.
+    if (settingUp) return ALIGN_MESSAGES[align.hint];
     if (live.message === THUMB_MESSAGE) return THUMB_MESSAGE; // advice only: the frames are fine, the thumb reads shorter turned away
     return (cov && cov.frames >= 3 ? angleHint(phase, cov.nextCell) : null) ?? "Slowly move your phone around your hand";
   })();
@@ -333,17 +340,14 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className="mm-cam-draw" aria-hidden="true" />
         {!degraded && phaseRunning === "running" && !submitting && (
-          <ParticleField poseRef={poseRef} frameRef={frameRef} coverageRef={coverageRef} lengthsRef={lengthsRef} onLabels={setLabelsShown} mirror={status?.mirrored ?? false} mesh={meshOn} onDegrade={() => setDegraded(true)} />
+          <ParticleField poseRef={poseRef} frameRef={frameRef} coverageRef={coverageRef} lengthsRef={lengthsRef} onLabels={setLabelsShown} mirror={status?.mirrored ?? false} mesh={meshOn} lined={align.aligned} onDegrade={() => setDegraded(true)} />
         )}
         {labelsShown && phaseRunning === "running" && !between && !submitting && (
           <span className="mm-live-note" aria-hidden="true">
             Live estimate, knuckle to tip · final result after the scan
           </span>
         )}
-        <i className="mm-corner mm-corner--tl" aria-hidden="true" />
-        <i className="mm-corner mm-corner--tr" aria-hidden="true" />
-        <i className="mm-corner mm-corner--bl" aria-hidden="true" />
-        <i className="mm-corner mm-corner--br" aria-hidden="true" />
+        {!between && !submitting && <AlignGuide poseRef={poseRef} frameRef={frameRef} mirror={status?.mirrored ?? false} phase={phase} onChange={setAlign} />}
         {cameraCount > 1 && (
           <button className="mm-cam-switch" onClick={switchCamera} aria-label="Switch camera" disabled={phaseRunning !== "running"}>
             <SwitchIcon />
@@ -351,7 +355,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         )}
 
         {phaseRunning === "running" && guidance && !between && !submitting && !submitError && (
-          <div className={`mm-pill ${live?.ok ? "is-ok" : ""}`} aria-hidden="true">
+          <div className={`mm-pill ${live?.ok && !(settingUp && !align.aligned) ? "is-ok" : ""}`} aria-hidden="true">
             <span key={guidance}>{guidance}</span>
           </div>
         )}

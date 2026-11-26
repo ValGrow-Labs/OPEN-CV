@@ -52,6 +52,8 @@ export interface ParticleFieldProps {
   onLabels?: (shown: boolean) => void;
   /** The speed guard gave up on the layer: tell the screen once. */
   onDegrade?: () => void;
+  /** The hand is lined up with the guide box: the scan frame turns green (a colour only, nothing else changes). */
+  lined?: boolean;
   className?: string;
 }
 
@@ -121,14 +123,19 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
 
 const BUCKETS = 4;
 
+/** A colour channel between `a` and `b` (t 0..1), as a whole number. */
+const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+
 const LABEL_FONT = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLabels, mirror, mesh = true, onDegrade, className }: ParticleFieldProps) {
+export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLabels, mirror, mesh = true, onDegrade, lined = false, className }: ParticleFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mirrorRef = useRef(mirror);
   mirrorRef.current = mirror;
   const meshRef = useRef(mesh);
   meshRef.current = mesh;
+  const linedRef = useRef(lined);
+  linedRef.current = lined;
   const degradeRef = useRef(onDegrade);
   degradeRef.current = onDegrade;
   const labelsRef = useRef(onLabels);
@@ -200,6 +207,7 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
     let scanF = 0.06;
     let shareS = 0.6;
     let meshS = 1; // 1 full mesh .. 0 light version, eased
+    let greenS = 0; // 0 cyan scan frame .. 1 green (lined up with the guide box), eased
     let drawn = 0;
     let visibleDots = 0;
 
@@ -232,6 +240,7 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
       const present = hand !== null || now - lastSeen < 450;
       handAlpha += ((present ? 1 : 0) - handAlpha) * ease(5);
       meshS += ((meshRef.current ? 1 : 0) - meshS) * ease(8);
+      greenS += ((linedRef.current ? 1 : 0) - greenS) * ease(10);
       const full = meshS > 0.5;
 
       if (hand && fr) {
@@ -294,7 +303,7 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
         ctx.strokeStyle = `rgba(4,48,110,${0.3 * ha})`;
         ctx.stroke();
         ctx.lineWidth = 1.3;
-        ctx.strokeStyle = `rgba(140,228,255,${0.98 * ha})`;
+        ctx.strokeStyle = `rgba(${mix(140, 61, greenS)},${mix(228, 220, greenS)},${mix(255, 151, greenS)},${0.98 * ha})`;
         ctx.stroke();
         {
           const inset = 7;
@@ -321,7 +330,7 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
           ctx.strokeStyle = `rgba(4,48,110,${0.45 * ha})`;
           ctx.stroke();
           ctx.lineWidth = 2.2;
-          ctx.strokeStyle = `rgba(215,250,255,${0.99 * ha})`;
+          ctx.strokeStyle = `rgba(${mix(215, 150, greenS)},${mix(250, 255, greenS)},${mix(255, 205, greenS)},${0.99 * ha})`;
           ctx.stroke();
         }
 
