@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AlignGuide } from "./AlignGuide";
 import { guideBox, handBoxInView, type AlignResult } from "./alignment";
+import { useAlignment } from "./useAlignment";
 import type { Landmark } from "../hand3d/handModel";
 
 const VIEW = { width: 350, height: 540 };
@@ -36,63 +37,64 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Renders the hook and lets a test read its latest result. */
 function setup(pose: readonly Landmark[] | null, phase: "palm" | "side" | "back" = "palm") {
   const poseRef = { current: pose };
   const frameRef = { current: { width: VIEW.width, height: VIEW.height } };
-  const seen: AlignResult[] = [];
-  const view = render(<AlignGuide poseRef={poseRef} frameRef={frameRef} mirror={false} phase={phase} onChange={(r) => seen.push(r)} />);
-  const svg = () => view.container.querySelector("svg.mm-align") as SVGSVGElement;
-  return { poseRef, seen, svg, ...view };
+  const latest: { current: AlignResult | null } = { current: null };
+  function Probe() {
+    const viewRef = useRef<HTMLDivElement>(null);
+    latest.current = useAlignment({ poseRef, frameRef, viewRef, mirror: false, phase });
+    return <div ref={viewRef} />;
+  }
+  const view = render(<Probe />);
+  return { poseRef, latest, ...view };
 }
+const lit = (r: AlignResult | null) => (r ? (["tl", "tr", "bl", "br"] as const).filter((c) => r.corners[c]) : []);
 
-describe("AlignGuide", () => {
-  it("draws a solid box and a boxed arrow at each of its four corners, none lit with no hand", async () => {
-    const { svg } = setup(null);
-    await waitFor(() => expect(svg().querySelectorAll(".mm-align-tag")).toHaveLength(4));
-    expect(svg().querySelectorAll(".mm-align-box")).toHaveLength(1);
-    expect(svg().querySelectorAll(".mm-align-tag.is-on")).toHaveLength(0);
-    expect(svg().getAttribute("data-aligned")).toBe("false");
-    expect(svg().getAttribute("aria-hidden")).toBe("true");
+describe("useAlignment", () => {
+  it("lights nothing with no hand in the picture", async () => {
+    const { latest } = setup(null);
+    await waitFor(() => expect(latest.current).not.toBeNull());
+    expect(lit(latest.current)).toEqual([]);
+    expect(latest.current?.aligned).toBe(false);
+    expect(latest.current?.hint).toBe("show_hand");
   });
 
-  it("lights all four arrows green when the hand fills the box", async () => {
-    const { svg, seen } = setup(handFilling(0.9));
-    await waitFor(() => expect(svg().getAttribute("data-aligned")).toBe("true"));
-    expect(svg().querySelectorAll(".mm-align-tag.is-on")).toHaveLength(4);
-    expect(svg().classList.contains("is-aligned")).toBe(true);
-    expect(seen.at(-1)?.aligned).toBe(true);
+  it("lights all four corners when the hand fills the guide", async () => {
+    const { latest } = setup(handFilling(0.9));
+    await waitFor(() => expect(latest.current?.aligned).toBe(true));
+    expect(lit(latest.current)).toHaveLength(4);
   });
 
-  it("lights none of them for a hand that is too small, and some of them when it is moved to a side", async () => {
+  it("lights none for a hand that is too small, and says which way to move a hand that is off to the side", async () => {
     const small = setup(handFilling(0.5));
-    await waitFor(() => expect(small.seen.length).toBeGreaterThan(0));
-    expect(small.svg().getAttribute("data-aligned")).toBe("false");
-    expect(small.svg().querySelectorAll(".mm-align-tag.is-on")).toHaveLength(0);
+    await waitFor(() => expect(small.latest.current?.hint).toBe("closer"));
+    expect(lit(small.latest.current)).toEqual([]);
     small.unmount();
 
     const shifted = setup(handFilling(0.8, 70));
-    await waitFor(() => expect(shifted.seen.length).toBeGreaterThan(0));
-    expect(shifted.svg().getAttribute("data-aligned")).toBe("false");
-    expect(shifted.seen.at(-1)?.hint).toBe("left");
+    await waitFor(() => expect(shifted.latest.current?.hint).toBe("left"));
+    expect(shifted.latest.current?.aligned).toBe(false);
   });
 
   it("goes back to not lined up when the hand is moved away or lost", async () => {
-    const { svg, poseRef } = setup(handFilling(0.9));
-    await waitFor(() => expect(svg().getAttribute("data-aligned")).toBe("true"));
+    const { latest, poseRef } = setup(handFilling(0.9));
+    await waitFor(() => expect(latest.current?.aligned).toBe(true));
     act(() => {
       poseRef.current = handFilling(0.45);
     });
-    await waitFor(() => expect(svg().getAttribute("data-aligned")).toBe("false"));
+    await waitFor(() => expect(latest.current?.aligned).toBe(false));
     act(() => {
       poseRef.current = null;
     });
-    await waitFor(() => expect(svg().querySelectorAll(".mm-align-tag.is-on")).toHaveLength(0), { timeout: 3000 });
+    await waitFor(() => expect(lit(latest.current)).toEqual([]), { timeout: 3000 });
   });
 
   it("stops its timer when it is removed", async () => {
     const clear = vi.spyOn(window, "clearInterval");
-    const { unmount, svg } = setup(handFilling(0.9));
-    await waitFor(() => expect(svg()).not.toBeNull());
+    const { unmount, latest } = setup(handFilling(0.9));
+    await waitFor(() => expect(latest.current).not.toBeNull());
     unmount();
     expect(clear).toHaveBeenCalled();
   });

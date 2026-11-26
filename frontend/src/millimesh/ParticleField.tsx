@@ -9,6 +9,7 @@
 // The same layer draws the five live finger-length labels ("~72 mm") beside the fingertips from the numbers the scan already
 // computes (fingerLabels.ts has the smoothing and the placement): they are rough live estimates, shown only while the coin is
 // accepted, and are not drawn by the speed guard's last steps.
+import { CORNERS, NO_CORNERS, type Corner } from "./alignment";
 import { useEffect, useRef, type MutableRefObject } from "react";
 import type { Landmark } from "../hand3d/handModel";
 import { PerfGuard } from "../hand3d/perfGuard";
@@ -52,8 +53,9 @@ export interface ParticleFieldProps {
   onLabels?: (shown: boolean) => void;
   /** The speed guard gave up on the layer: tell the screen once. */
   onDegrade?: () => void;
-  /** The hand is lined up with the guide box: the scan frame turns green (a colour only, nothing else changes). */
-  lined?: boolean;
+  /** Which of the scan frame's four corner arrows are lit green (the hand reaches that corner of the guide); all four lit
+   *  turns the frame green too. A colour only, nothing else changes. */
+  corners?: Record<Corner, boolean>;
   className?: string;
 }
 
@@ -128,14 +130,14 @@ const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 
 const LABEL_FONT = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLabels, mirror, mesh = true, onDegrade, lined = false, className }: ParticleFieldProps) {
+export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLabels, mirror, mesh = true, onDegrade, corners = NO_CORNERS, className }: ParticleFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mirrorRef = useRef(mirror);
   mirrorRef.current = mirror;
   const meshRef = useRef(mesh);
   meshRef.current = mesh;
-  const linedRef = useRef(lined);
-  linedRef.current = lined;
+  const cornersRef = useRef(corners);
+  cornersRef.current = corners;
   const degradeRef = useRef(onDegrade);
   degradeRef.current = onDegrade;
   const labelsRef = useRef(onLabels);
@@ -207,7 +209,8 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
     let scanF = 0.06;
     let shareS = 0.6;
     let meshS = 1; // 1 full mesh .. 0 light version, eased
-    let greenS = 0; // 0 cyan scan frame .. 1 green (lined up with the guide box), eased
+    let greenS = 0; // 0 cyan scan frame .. 1 green (all four corners lit), eased
+    const cornerS = { tl: 0, tr: 0, bl: 0, br: 0 }; // each corner arrow: 0 white .. 1 green, eased
     let drawn = 0;
     let visibleDots = 0;
 
@@ -240,7 +243,11 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
       const present = hand !== null || now - lastSeen < 450;
       handAlpha += ((present ? 1 : 0) - handAlpha) * ease(5);
       meshS += ((meshRef.current ? 1 : 0) - meshS) * ease(8);
-      greenS += ((linedRef.current ? 1 : 0) - greenS) * ease(10);
+      {
+        const c = cornersRef.current;
+        for (const k of CORNERS) cornerS[k] += ((c[k] ? 1 : 0) - cornerS[k]) * ease(10);
+        greenS += ((c.tl && c.tr && c.bl && c.br ? 1 : 0) - greenS) * ease(10);
+      }
       const full = meshS > 0.5;
 
       if (hand && fr) {
@@ -305,33 +312,49 @@ export function ParticleField({ poseRef, frameRef, coverageRef, lengthsRef, onLa
         ctx.lineWidth = 1.3;
         ctx.strokeStyle = `rgba(${mix(140, 61, greenS)},${mix(228, 220, greenS)},${mix(255, 151, greenS)},${0.98 * ha})`;
         ctx.stroke();
+        // the four corners: a boxed arrow in each, pointing out to the corner the hand should reach; white until the hand
+        // reaches that corner, then green
         {
-          const inset = 7;
-          const L = Math.min(18, bw / 4, bh / 4);
-          const x0 = fb.x0 + inset;
-          const y0 = fb.y0 + inset;
-          const x1 = fb.x1 - inset;
-          const y1 = fb.y1 - inset;
-          ctx.beginPath();
-          ctx.moveTo(x0, y0 + L);
-          ctx.lineTo(x0, y0);
-          ctx.lineTo(x0 + L, y0);
-          ctx.moveTo(x1 - L, y0);
-          ctx.lineTo(x1, y0);
-          ctx.lineTo(x1, y0 + L);
-          ctx.moveTo(x1, y1 - L);
-          ctx.lineTo(x1, y1);
-          ctx.lineTo(x1 - L, y1);
-          ctx.moveTo(x0 + L, y1);
-          ctx.lineTo(x0, y1);
-          ctx.lineTo(x0, y1 - L);
+          const tag = Math.max(20, Math.min(28, Math.min(bw, bh) / 7));
+          const half = tag / 2;
+          const inset = half + 4;
+          const spots: [Corner, number, number, number, number][] = [
+            ["tl", fb.x0 + inset, fb.y0 + inset, -1, -1],
+            ["tr", fb.x1 - inset, fb.y0 + inset, 1, -1],
+            ["bl", fb.x0 + inset, fb.y1 - inset, -1, 1],
+            ["br", fb.x1 - inset, fb.y1 - inset, 1, 1],
+          ];
           ctx.lineCap = "round";
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = `rgba(4,48,110,${0.45 * ha})`;
-          ctx.stroke();
-          ctx.lineWidth = 2.2;
-          ctx.strokeStyle = `rgba(${mix(215, 150, greenS)},${mix(250, 255, greenS)},${mix(255, 205, greenS)},${0.99 * ha})`;
-          ctx.stroke();
+          ctx.lineJoin = "round";
+          for (const [k, cx, cy, sx, sy] of spots) {
+            const g = cornerS[k];
+            roundedRect(ctx, cx - half, cy - half, tag, tag, 7);
+            ctx.fillStyle = `rgba(${mix(5, 61, g)},${mix(12, 220, g)},${mix(24, 151, g)},${(0.72 - 0.44 * g) * ha})`;
+            ctx.fill();
+            if (g > 0.05) {
+              ctx.shadowColor = `rgba(61,220,151,${0.8 * g * ha})`;
+              ctx.shadowBlur = 8;
+            }
+            ctx.lineWidth = 1.6;
+            ctx.strokeStyle = `rgba(${mix(255, 61, g)},${mix(255, 220, g)},${mix(255, 151, g)},${0.95 * ha})`;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            // the arrow: from the middle of the tag out towards the corner, with its head
+            const r = tag * 0.22;
+            const ax = cx - sx * r;
+            const ay = cy - sy * r;
+            const tx = cx + sx * r;
+            const ty = cy + sy * r;
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(tx, ty);
+            ctx.moveTo(tx - sx * r * 1.1, ty);
+            ctx.lineTo(tx, ty);
+            ctx.lineTo(tx, ty - sy * r * 1.1);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = `rgba(${mix(255, 61, g)},${mix(255, 220, g)},${mix(255, 151, g)},${0.98 * ha})`;
+            ctx.stroke();
+          }
         }
 
         // 3. the dots: which ones are shown follows the real coverage and the speed guard (always a subset of the same set)

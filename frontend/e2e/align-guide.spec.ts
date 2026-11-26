@@ -1,6 +1,7 @@
-// The alignment guide on the capture screen: a solid box with a boxed arrow at each corner, lit green when the hand is lined
-// up. With the test hand video in front of the camera it checks the markup, that no corner is lit with no hand in the
-// picture, that the guide never breaks the scan, and writes a screenshot to $MILLIMESH_SHOTS for looking at.
+// The alignment corners of the capture screen: the scan frame around the hand has a boxed arrow in each corner, lit green when
+// the hand is lined up. The arrows are drawn on the particle canvas; the screen reports which are lit in data-corners and
+// data-aligned. With the test hand video it checks that the scan still collects frames and the state is consistent, that no
+// corner is lit with no hand in the picture, and writes a screenshot to $MILLIMESH_SHOTS for looking at.
 import { expect, test, type Page } from "@playwright/test";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -26,24 +27,21 @@ function watchErrors(page: Page) {
 }
 
 const framesIn = (page: Page) => page.locator(".mm-capture").evaluate((el) => Number((el as HTMLElement).dataset.frames));
-const lit = (page: Page) => page.locator(".mm-align").evaluate((el) => (el.getAttribute("data-corners") ?? "").split(" ").filter(Boolean));
+const lit = (page: Page) => page.locator(".mm-capture").evaluate((el) => (el.getAttribute("data-corners") ?? "").split(" ").filter(Boolean));
 
-test("the guide box has four boxed arrows and the scan still collects frames", async ({ page }) => {
+test("the scan frame carries the corner arrows, there is no separate outer box, and the scan still collects frames", async ({ page }) => {
   test.setTimeout(240_000);
   const problems = watchErrors(page);
   await routeConfig(page, { timing: "hold" });
   await startCustomerScan(page);
   await expect(page.getByRole("heading", { level: 2, name: "Palm Scan" })).toBeVisible({ timeout: 120_000 });
-  await expect(page.locator(".mm-align")).toBeVisible();
-  await expect(page.locator(".mm-align-box")).toHaveCount(1);
-  await expect(page.locator(".mm-align-tag")).toHaveCount(4);
-  for (const c of ["tl", "tr", "bl", "br"]) await expect(page.locator(`.mm-align-tag[data-corner='${c}']`)).toHaveCount(1);
+  await expect(page.locator(".mm-particles")).toBeVisible();
+  await expect(page.locator(".mm-align, .mm-corner")).toHaveCount(0);
   await expect.poll(() => framesIn(page), { timeout: 120_000 }).toBeGreaterThan(3);
-  // the lit corners are exactly the ones the data attribute lists, and "lined up" means all four
+  // "lined up" means all four corners are lit
   const corners = await lit(page);
-  expect(await page.locator(".mm-align-tag.is-on").count()).toBe(corners.length);
-  expect((await page.locator(".mm-align").getAttribute("data-aligned")) === "true").toBe(corners.length === 4);
-  await page.screenshot({ path: `${SHOTS}/align-guide.png` });
+  expect((await page.locator(".mm-capture").getAttribute("data-aligned")) === "true").toBe(corners.length === 4);
+  await page.screenshot({ path: `${SHOTS}/align-corners.png` });
   expect(problems).toEqual([]);
 });
 
@@ -63,10 +61,10 @@ test("with no hand in the picture no corner is lit", async ({ page }) => {
     navigator.mediaDevices.getUserMedia = () => Promise.resolve(c.captureStream(10));
   });
   await startCustomerScan(page);
-  await expect(page.locator(".mm-align")).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator(".mm-cam")).toBeVisible({ timeout: 120_000 });
   await page.waitForTimeout(3000);
   expect(await lit(page)).toEqual([]);
-  await expect(page.locator(".mm-align")).toHaveAttribute("data-aligned", "false");
-  await page.screenshot({ path: `${SHOTS}/align-guide-no-hand.png` });
+  await expect(page.locator(".mm-capture")).toHaveAttribute("data-aligned", "false");
+  await page.screenshot({ path: `${SHOTS}/align-corners-no-hand.png` });
   expect(problems.filter((p) => !/NotAllowed|Permission denied|camera/i.test(p))).toEqual([]);
 });

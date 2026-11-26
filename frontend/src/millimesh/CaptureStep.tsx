@@ -16,8 +16,8 @@ import { ArrowRight, CloseIcon, OrbitIcon, PhoneIcon, Ring, SwitchIcon, Wordmark
 import { angleHint, computeCoverage, palmZSignOf, type Coverage, type PhaseId } from "./coverage";
 import { THUMB_MESSAGE } from "../vision/liveChecks";
 import { guidanceText, isPhase, PHASE_ORDER, PHASES } from "./phases";
-import { AlignGuide } from "./AlignGuide";
-import { ALIGN_MESSAGES, NO_HAND, type AlignResult } from "./alignment";
+import { ALIGN_MESSAGES } from "./alignment";
+import { useAlignment } from "./useAlignment";
 import { ParticleField } from "./ParticleField";
 import type { FingerLengths } from "./fingerLabels";
 
@@ -72,6 +72,9 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const poseRef = useRef<readonly Landmark[] | null>(null);
   const frameRef = useRef<{ width: number; height: number } | null>(null);
   const coverageRef = useRef(0);
+  // Whether the hand is lined up for the shot: lights the four corner arrows of the scan frame and sets the hint. Feedback only.
+  const camRef = useRef<HTMLDivElement>(null);
+  const align = useAlignment({ poseRef, frameRef, viewRef: camRef, mirror: status?.mirrored ?? false, phase });
   // The per-finger lengths of the current frame (scan/scanController.ts: vision/liveLengths.ts, scaled by the coin), only
   // while the coin is accepted. The particle layer smooths and labels them: rough live estimates, not the result.
   const lengthsRef = useRef<{ mm: FingerLengths | null; at: number }>({ mm: null, at: 0 });
@@ -94,8 +97,6 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const [pendingFrames, setPendingFrames] = useState<FrameObservation[] | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [degraded, setDegraded] = useState(false);
-  // Whether the hand is lined up with the guide box (arrows at its four corners). Feedback only: nothing is gated on it.
-  const [align, setAlign] = useState<AlignResult>(NO_HAND);
   // The 3D mesh over the hand: the full mesh, or a light version so the hand can be seen plainly.
   const [meshOn, setMeshOn] = useState(true);
   // The camera switch is offered only on a device that has more than one camera.
@@ -312,7 +313,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const startAgain = () => start();
 
   return (
-    <main className="mm-screen mm-capture" aria-label="Hand scan" data-phase={phase} data-coverage={percent} data-frames={cov?.frames ?? 0}>
+    <main className="mm-screen mm-capture" aria-label="Hand scan" data-phase={phase} data-coverage={percent} data-frames={cov?.frames ?? 0} data-aligned={align.aligned ? "true" : "false"} data-corners={Object.entries(align.corners).filter(([, on]) => on).map(([c]) => c).join(" ")}>
       <header className="mm-top mm-top--bar">
         <span className="mm-top-slot" />
         <Wordmark size="sm" />
@@ -336,18 +337,17 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         ))}
       </ol>
 
-      <div className="mm-cam">
+      <div className="mm-cam" ref={camRef}>
         <video ref={videoRef} className={status?.mirrored ? "mirrored" : ""} playsInline muted aria-hidden="true" />
         <canvas ref={canvasRef} className="mm-cam-draw" aria-hidden="true" />
         {!degraded && phaseRunning === "running" && !submitting && (
-          <ParticleField poseRef={poseRef} frameRef={frameRef} coverageRef={coverageRef} lengthsRef={lengthsRef} onLabels={setLabelsShown} mirror={status?.mirrored ?? false} mesh={meshOn} lined={align.aligned} onDegrade={() => setDegraded(true)} />
+          <ParticleField poseRef={poseRef} frameRef={frameRef} coverageRef={coverageRef} lengthsRef={lengthsRef} onLabels={setLabelsShown} mirror={status?.mirrored ?? false} mesh={meshOn} corners={align.corners} onDegrade={() => setDegraded(true)} />
         )}
         {labelsShown && phaseRunning === "running" && !between && !submitting && (
           <span className="mm-live-note" aria-hidden="true">
             Live estimate, knuckle to tip · final result after the scan
           </span>
         )}
-        {!between && !submitting && <AlignGuide poseRef={poseRef} frameRef={frameRef} mirror={status?.mirrored ?? false} phase={phase} onChange={setAlign} />}
         {cameraCount > 1 && (
           <button className="mm-cam-switch" onClick={switchCamera} aria-label="Switch camera" disabled={phaseRunning !== "running"}>
             <SwitchIcon />
