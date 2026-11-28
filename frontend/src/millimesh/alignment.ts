@@ -4,12 +4,14 @@
 // no threshold, rejects no frame and feeds no measurement.
 import type { Landmark } from "../hand3d/handModel";
 import type { PhaseId } from "./coverage";
+import type { Point } from "../api/types";
+import { palmNormal } from "../vision/geometry";
 import { type Box, type Size, frameTarget, videoToCanvas } from "./swarm";
 
 export type Corner = "tl" | "tr" | "bl" | "br";
 export const CORNERS: readonly Corner[] = ["tl", "tr", "bl", "br"];
 
-export type AlignHint = "show_hand" | "closer" | "back" | "left" | "right" | "up" | "down" | "upright" | "aligned";
+export type AlignHint = "show_hand" | "closer" | "back" | "left" | "right" | "up" | "down" | "upright" | "level" | "aligned";
 
 export const ALIGN_MESSAGES: Record<AlignHint, string> = {
   show_hand: "Line your hand up with the box",
@@ -20,6 +22,7 @@ export const ALIGN_MESSAGES: Record<AlignHint, string> = {
   up: "Move your hand up",
   down: "Move your hand down",
   upright: "Point your fingers up",
+  level: "Tilt your phone to match your hand",
   aligned: "Lined up. Hold it there",
 };
 
@@ -28,20 +31,25 @@ export const GUIDE_ASPECT = 0.8;
 /** How far a hand edge may poke out of the box (share of the box's size) before that corner is not lined up. */
 export const EDGE_TOLERANCE = 0.035;
 /** How far inside the box a hand edge may stay (share of the box's size) and still count as reaching its corner. */
-export const EDGE_SLACK = 0.2;
+export const EDGE_SLACK = 0.12;
 /** How far the fingers may lean from straight up (degrees). */
 export const MAX_TILT_DEG = 25;
 /** Once lined up, the same limits are a little wider so the corners do not flicker at the edge. */
 export const HOLD_TOLERANCE = 0.07;
-export const HOLD_SLACK = 0.26;
+export const HOLD_SLACK = 0.17;
 export const HOLD_TILT_DEG = 32;
 
-/** The box the hand should fill: centred, a little above the middle (the hint sits at the bottom), as large as fits. */
+/** Room kept under the guide for the hint and the tilt indicator, in pixels. */
+export const BOTTOM_ROOM = 88;
+
+/** The box the hand should fill: close to the screen's corners, a little above the middle (the hint and the tilt indicator
+ *  sit under it), as large as fits. */
 export function guideBox(w: number, h: number): Box {
-  const bh = Math.max(1, Math.min(h * 0.74, (w * 0.84) / GUIDE_ASPECT));
+  const room = Math.max(1, h - BOTTOM_ROOM);
+  const bh = Math.max(1, Math.min(room - 16, (w * 0.92) / GUIDE_ASPECT));
   const bw = bh * GUIDE_ASPECT;
   const cx = w / 2;
-  const cy = h * 0.47;
+  const cy = room / 2 + 8;
   return { x0: cx - bw / 2, y0: cy - bh / 2, x1: cx + bw / 2, y1: cy + bh / 2 };
 }
 
@@ -72,12 +80,14 @@ export interface AlignResult {
   corners: Record<Corner, boolean>;
   /** All four are lit and the fingers point up: the hand is lined up. */
   aligned: boolean;
-  /** What to tell the customer next, or null when nothing is needed. */
+  /** What to tell the customer next. */
   hint: AlignHint;
+  /** The phone is parallel enough to the palm (true when its tilt is not known). */
+  level: boolean;
 }
 
 export const NO_CORNERS: Record<Corner, boolean> = { tl: false, tr: false, bl: false, br: false };
-export const NO_HAND: AlignResult = { corners: NO_CORNERS, aligned: false, hint: "show_hand" };
+export const NO_HAND: AlignResult = { corners: NO_CORNERS, aligned: false, hint: "show_hand", level: true };
 
 export interface AlignInput {
   /** The box around the hand in view pixels, or null while no hand is tracked. */
@@ -119,7 +129,7 @@ export function evaluateAlignment(input: AlignInput): AlignResult {
   const maxTilt = wasAligned ? HOLD_TILT_DEG : MAX_TILT_DEG;
   const upright = free || tilt === null || Math.abs(tilt) <= maxTilt;
   const aligned = corners.tl && corners.tr && corners.bl && corners.br && upright;
-  if (aligned) return { corners, aligned, hint: "aligned" };
+  if (aligned) return { corners, aligned, hint: "aligned", level: true };
 
   // What to say: poking out first (move away from that side), then too far inside (move towards it), then the lean.
   const pokeL = left < -tol;
@@ -144,12 +154,44 @@ export function evaluateAlignment(input: AlignInput): AlignResult {
     else if (farB) hint = "down";
   }
   if (!hint && !upright) hint = "upright";
-  return { corners, aligned: false, hint: hint ?? "closer" };
+  return { corners, aligned: false, hint: hint ?? "closer", level: true };
+}
+
+/** How the palm is tilted against the phone, from the hand's world landmarks: left-right (roll) and front-back (pitch) in
+ *  degrees as seen on the screen, and the total angle between the palm and the camera's flat view of it. 0 everywhere means
+ *  the phone is parallel to the palm. A reading from the hand tracker, not from the phone's sensors. */
+export interface PhoneTilt {
+  rollDeg: number;
+  pitchDeg: number;
+  totalDeg: number;
+}
+
+/** The palm may lean this far from the phone's plane (degrees) and still count as level; a little more once level, so it
+ *  does not flicker at the edge. (ASSUMED display values, not measured.) */
+export const LEVEL_DEG = 10;
+export const LEVEL_HOLD_DEG = 14;
+
+export function phoneTilt(world: Point[] | null | undefined, mirror: boolean): PhoneTilt | null {
+  if (!world || world.length < 21) return null;
+  const n = palmNormal(world);
+  if (!n) return null;
+  let [nx, ny, nz] = n;
+  if (nz < 0) [nx, ny, nz] = [-nx, -ny, -nz]; // the sign of the normal is arbitrary: take the one facing the camera
+  const len = Math.hypot(nx, ny, nz);
+  const deg = 180 / Math.PI;
+  const roll = Math.atan2(nx, nz) * deg * (mirror ? -1 : 1);
+  const pitch = Math.atan2(ny, nz) * deg;
+  const total = Math.acos(Math.min(1, nz / len)) * deg;
+  return [roll, pitch, total].every(Number.isFinite) ? { rollDeg: roll, pitchDeg: pitch, totalDeg: total } : null;
+}
+
+export function isLevel(t: PhoneTilt | null, wasLevel = true): boolean {
+  return t === null || t.totalDeg <= (wasLevel ? LEVEL_HOLD_DEG : LEVEL_DEG);
 }
 
 /** Same lit corners and verdict (the hint can change without anything being redrawn). */
 export function sameAlignment(a: AlignResult | null, b: AlignResult | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.aligned === b.aligned && a.hint === b.hint && CORNERS.every((c) => a.corners[c] === b.corners[c]);
+  return a.aligned === b.aligned && a.hint === b.hint && a.level === b.level && CORNERS.every((c) => a.corners[c] === b.corners[c]);
 }

@@ -7,9 +7,14 @@ import {
   evaluateAlignment,
   guideBox,
   handBoxInView,
+  isLevel,
+  LEVEL_DEG,
+  LEVEL_HOLD_DEG,
+  phoneTilt,
   sameAlignment,
   tiltDeg,
 } from "./alignment";
+import type { Point } from "../api/types";
 import type { Box } from "./swarm";
 
 const VIEW = { width: 350, height: 540 };
@@ -67,14 +72,14 @@ describe("evaluateAlignment", () => {
 
   it("lights only the corners the hand reaches, and says which way to move", () => {
     // a small hand pushed against the right edge, away from the left
-    const r = run(box(0.15, 0.12));
+    const r = run(box(0.08, 0.1));
     expect(r.aligned).toBe(false);
     expect(r.corners.tr && r.corners.br).toBe(true);
     expect(r.corners.tl || r.corners.bl).toBe(false);
     expect(r.hint).toBe("left");
-    expect(run(box(0.15, -0.12)).hint).toBe("right");
-    expect(run(box(0.15, 0, 0.12)).hint).toBe("up");
-    expect(run(box(0.15, 0, -0.12)).hint).toBe("down");
+    expect(run(box(0.08, -0.1)).hint).toBe("right");
+    expect(run(box(0.08, 0, 0.1)).hint).toBe("up");
+    expect(run(box(0.08, 0, -0.1)).hint).toBe("down");
   });
 
   it("tells a hand poking out of the box to move the other way", () => {
@@ -97,7 +102,7 @@ describe("evaluateAlignment", () => {
   });
 
   it("holds a lined-up hand a little longer, so the arrows do not flicker at the edge", () => {
-    const edge = box(0.15, 0.1);
+    const edge = box(0.1, 0.05);
     expect(run(edge).aligned).toBe(false);
     expect(run(edge, { wasAligned: true }).aligned).toBe(true);
     expect(run(box(0.05), { tilt: 29 }).aligned).toBe(false);
@@ -166,5 +171,59 @@ describe("sameAlignment", () => {
     expect(sameAlignment(a, run(box(0.3)))).toBe(false);
     expect(sameAlignment(a, null)).toBe(false);
     expect(sameAlignment(null, null)).toBe(true);
+  });
+});
+
+describe("phone tilt from world landmarks", () => {
+  /** A palm plane z = kx - m*y: `roll` leans its right side away, `pitch` its top away (degrees). */
+  const palm = (rollDeg: number, pitchDeg: number): Point[] => {
+    const kx = Math.tan((rollDeg * Math.PI) / 180);
+    const ky = Math.tan((pitchDeg * Math.PI) / 180);
+    const pts: Point[] = Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 }));
+    const set = (i: number, x: number, y: number) => (pts[i] = { x, y, z: kx * x - ky * y });
+    set(0, 0, 0);
+    set(5, -0.03, -0.08);
+    set(9, 0, -0.09);
+    set(13, 0.03, -0.08);
+    set(17, 0.05, -0.06);
+    return pts;
+  };
+
+  it("reads 0 for a palm parallel to the phone", () => {
+    const t = phoneTilt(palm(0, 0), false)!;
+    expect(t.totalDeg).toBeCloseTo(0, 5);
+    expect(Math.abs(t.rollDeg)).toBeLessThan(1e-6);
+    expect(Math.abs(t.pitchDeg)).toBeLessThan(1e-6);
+  });
+
+  it("gives the lean's size and direction as seen on the screen", () => {
+    const right = phoneTilt(palm(25, 0), false)!;
+    expect(right.rollDeg).toBeCloseTo(-25, 3); // the right side is farther away
+    expect(right.totalDeg).toBeCloseTo(25, 3);
+    const top = phoneTilt(palm(0, 20), false)!;
+    expect(top.pitchDeg).toBeCloseTo(20, 3); // the top is farther away
+    expect(top.totalDeg).toBeCloseTo(20, 3);
+    // a front camera shows the picture mirrored, so left and right swap
+    expect(phoneTilt(palm(25, 0), true)!.rollDeg).toBeCloseTo(25, 3);
+    expect(phoneTilt(palm(0, 20), true)!.pitchDeg).toBeCloseTo(20, 3);
+  });
+
+  it("does not depend on which way the landmarks' normal happens to point", () => {
+    const flipped = palm(25, 10).map((p) => ({ ...p, z: -p.z }));
+    expect(phoneTilt(flipped, false)!.totalDeg).toBeCloseTo(phoneTilt(palm(25, 10), false)!.totalDeg, 3);
+  });
+
+  it("is null without a full set of landmarks or a palm to measure", () => {
+    expect(phoneTilt(null, false)).toBeNull();
+    expect(phoneTilt(palm(0, 0).slice(0, 10), false)).toBeNull();
+    expect(phoneTilt(Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })), false)).toBeNull();
+  });
+
+  it("calls the phone level up to a limit, a little wider once it was level", () => {
+    expect(isLevel(null)).toBe(true);
+    expect(isLevel(phoneTilt(palm(LEVEL_DEG - 1, 0), false), false)).toBe(true);
+    expect(isLevel(phoneTilt(palm(LEVEL_DEG + 2, 0), false), false)).toBe(false);
+    expect(isLevel(phoneTilt(palm(LEVEL_DEG + 2, 0), false), true)).toBe(true);
+    expect(isLevel(phoneTilt(palm(LEVEL_HOLD_DEG + 2, 0), false), true)).toBe(false);
   });
 });

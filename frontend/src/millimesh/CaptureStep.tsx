@@ -17,7 +17,10 @@ import { angleHint, computeCoverage, palmZSignOf, type Coverage, type PhaseId } 
 import { THUMB_MESSAGE } from "../vision/liveChecks";
 import { guidanceText, isPhase, PHASE_ORDER, PHASES } from "./phases";
 import { ALIGN_MESSAGES } from "./alignment";
+import { AlignGuide } from "./AlignGuide";
+import { TiltGuide } from "./TiltGuide";
 import { useAlignment } from "./useAlignment";
+import type { Point } from "../api/types";
 import { ParticleField } from "./ParticleField";
 import type { FingerLengths } from "./fingerLabels";
 
@@ -74,7 +77,8 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const coverageRef = useRef(0);
   // Whether the hand is lined up for the shot: lights the four corner arrows of the scan frame and sets the hint. Feedback only.
   const camRef = useRef<HTMLDivElement>(null);
-  const align = useAlignment({ poseRef, frameRef, viewRef: camRef, mirror: status?.mirrored ?? false, phase });
+  const worldRef = useRef<Point[] | null>(null);
+  const { align, view: camView, tiltRef } = useAlignment({ poseRef, frameRef, worldRef, viewRef: camRef, mirror: status?.mirrored ?? false, phase });
   // The per-finger lengths of the current frame (scan/scanController.ts: vision/liveLengths.ts, scaled by the coin), only
   // while the coin is accepted. The particle layer smooths and labels them: rough live estimates, not the result.
   const lengthsRef = useRef<{ mm: FingerLengths | null; at: number }>({ mm: null, at: 0 });
@@ -205,9 +209,10 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
       // The particle layer draws the hand; the controller's own 2D canvas stays empty (no outline, no coin ring).
       overlay3d: true,
       simpleOverlay: true,
-      onPose: (landmarks, frame) => {
+      onPose: (landmarks, frame, world) => {
         poseRef.current = landmarks;
         frameRef.current = frame;
+        worldRef.current = world?.points ?? null;
       },
       onFrameAccepted: (f) => {
         const list = acceptedRef.current;
@@ -313,7 +318,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
   const startAgain = () => start();
 
   return (
-    <main className="mm-screen mm-capture" aria-label="Hand scan" data-phase={phase} data-coverage={percent} data-frames={cov?.frames ?? 0} data-aligned={align.aligned ? "true" : "false"} data-corners={Object.entries(align.corners).filter(([, on]) => on).map(([c]) => c).join(" ")}>
+    <main className="mm-screen mm-capture" aria-label="Hand scan" data-phase={phase} data-coverage={percent} data-frames={cov?.frames ?? 0} data-aligned={align.aligned ? "true" : "false"} data-level={align.level ? "true" : "false"} data-corners={Object.entries(align.corners).filter(([, on]) => on).map(([c]) => c).join(" ")}>
       <header className="mm-top mm-top--bar">
         <span className="mm-top-slot" />
         <Wordmark size="sm" />
@@ -348,6 +353,8 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
             Live estimate, knuckle to tip · final result after the scan
           </span>
         )}
+        {!between && !submitting && <AlignGuide align={align} view={camView} />}
+        {!between && !submitting && phaseRunning === "running" && <TiltGuide tiltRef={tiltRef} level={align.level} enabled={phase !== "side"} />}
         {cameraCount > 1 && (
           <button className="mm-cam-switch" onClick={switchCamera} aria-label="Switch camera" disabled={phaseRunning !== "running"}>
             <SwitchIcon />
@@ -355,7 +362,7 @@ export function CaptureStep({ config, chartId, reference, views, onCancel, onBac
         )}
 
         {phaseRunning === "running" && guidance && !between && !submitting && !submitError && (
-          <div className={`mm-pill ${live?.ok && !(settingUp && !align.aligned) ? "is-ok" : ""}`} aria-hidden="true">
+          <div className={`mm-pill ${live?.ok && !(settingUp && !(align.aligned && align.level)) ? "is-ok" : ""}`} aria-hidden="true">
             <span key={guidance}>{guidance}</span>
           </div>
         )}
