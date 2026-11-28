@@ -3284,3 +3284,25 @@ details.panel > summary {
     height: 420px;
   }
 }
+
+/* Validation screen: the finger readings (protocol FL-1), two readings per datum in a compact table. */
+.finger-readings > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.finger-readings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+.finger-readings-table th,
+.finger-readings-table td {
+  padding: 2px 3px;
+  text-align: left;
+  font-size: 0.85rem;
+}
+.finger-readings-table .input {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 6px;
+}
