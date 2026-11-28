@@ -71,7 +71,15 @@ RANGES_MM = {
     "hand_length_mm": (100.0, 260.0),
     "palm_breadth_mm": (50.0, 150.0),
     "hand_circumference_mm": (100.0, 400.0),
+    # Finger lengths by protocol FL-1 (docs/PILOT_PROTOCOL.md): plausible adult ranges, wide on purpose.
+    "crease_to_tip_mm": (25.0, 130.0),
+    "knuckle_to_tip_mm": (35.0, 150.0),
 }
+FINGERS = ("thumb", "index", "middle", "ring", "little")
+FingerName = Literal["thumb", "index", "middle", "ring", "little"]
+# Two readings of one finger must agree within this to count (ASSUMED: a caliper read twice by trained staff; the
+# study reports the readings' own spread so this can be checked). Hand length uses validation_reference_tolerance_mm.
+FINGER_TOLERANCE_MM = 2.0
 # A live camera always shows sensor noise and hand tremor; MediaPipe jitter is 1-3 px. Landmarks
 # that move less than this across the whole scan came from a still image or replayed data.
 STATIC_MOTION_PX = 0.05
@@ -110,6 +118,35 @@ class Reading(_Model):
         return self.value * MM_PER_UNIT[self.unit]
 
 
+class FingerReading(_Model):
+    """One finger measured by protocol FL-1 (docs/PILOT_PROTOCOL.md), each datum read 1 to 3 times, finger repositioned
+    between readings. Crease to tip is the glove-industry definition; knuckle to tip is the closest physical datum to the
+    camera's joint-centre chain."""
+
+    crease_to_tip: list[Reading] | None = Field(
+        default=None, min_length=1, max_length=3,
+        description="Palmar crease at the base of the finger (for the thumb: its MCP crease) to the skin tip.",
+    )  # fmt: skip
+    knuckle_to_tip: list[Reading] | None = Field(
+        default=None, min_length=1, max_length=3,
+        description="Dorsal knuckle (metacarpal head) to the skin tip, finger straight.",
+    )  # fmt: skip
+
+    @model_validator(mode="after")
+    def _plausible(self) -> FingerReading:
+        if not self.crease_to_tip and not self.knuckle_to_tip:
+            raise ValueError("a finger needs at least one reading (crease to tip or knuckle to tip)")
+        for key, readings in (("crease_to_tip_mm", self.crease_to_tip), ("knuckle_to_tip_mm", self.knuckle_to_tip)):
+            lo, hi = RANGES_MM[key]
+            for r in readings or []:
+                if not lo <= r.mm <= hi:
+                    raise ValueError(
+                        f"{key.removesuffix('_mm').replace('_', ' ')} reading {r.value:g} {r.unit} = {r.mm:.1f} mm "
+                        f"is outside {lo:.0f}-{hi:.0f} mm; check the value and the unit"
+                    )
+        return self
+
+
 class ReferenceInput(_Model):
     protocol: Literal["HL-1", "HL-1-self"] = Field(
         description="Physical measurement protocol, docs/PILOT_PROTOCOL.md (HL-1-self: remote self-measurement)."
@@ -121,6 +158,9 @@ class ReferenceInput(_Model):
     )
     palm_breadth: Reading | None = None
     hand_circumference: Reading | None = None
+    fingers: dict[FingerName, FingerReading] | None = Field(
+        default=None, description="Optional finger lengths by protocol FL-1, by finger."
+    )
     tool: Literal["ruler", "tape", "calipers", "anthropometer", "other"]
     measured_by: Literal["operator", "participant"]
     operator_code: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,16}$")
@@ -179,6 +219,17 @@ class ReferenceSummary(_Model):
     readings_mm: list[float]
     spread_mm: float
     repeated: bool
+    reliability: Literal["agreed", "single_reading", "discrepant"]
+    tolerance_mm: float
+
+
+class FingerReferenceSummary(_Model):
+    """One finger datum's physical readings, summarized by the same agreement rule as the hand length."""
+
+    key: str = Field(description="e.g. 'index_crease_to_tip_mm'.")
+    reference_mm: float
+    readings_mm: list[float]
+    spread_mm: float
     reliability: Literal["agreed", "single_reading", "discrepant"]
     tolerance_mm: float
 
@@ -246,6 +297,9 @@ class ValidationRecord(_Model):
     conditions: CaptureConditions
     capture: CaptureInfo
     comparisons: list[Comparison]
+    finger_references: list[FingerReferenceSummary] = Field(
+        default_factory=list, description="Finger readings by protocol FL-1, when they were taken."
+    )
     recorded_only: dict[str, float] = Field(
         default_factory=dict,
         description="Reference values (mm) with no camera estimate, kept for future model fitting.",
@@ -355,22 +409,44 @@ def load_frames(record_id: str) -> FrameData | None:
     return FrameData.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def summarize_reference(ref: ReferenceInput, tolerance_mm: float) -> ReferenceSummary:
+def _agree(mm: list[float], tolerance_mm: float) -> tuple[float, str]:
     """Median-of-readings rule: two readings must agree within the tolerance; if they do not, a
     third reading is taken and the median is used when it agrees with one of the others."""
-    mm = [round(r.mm, 2) for r in ref.hand_length]
     s = sorted(mm)
     tol = tolerance_mm + 1e-9
     if len(s) == 1:
-        value, reliability = s[0], "single_reading"
-    elif len(s) == 2:
-        value, reliability = (s[0] + s[1]) / 2, "agreed" if s[1] - s[0] <= tol else "discrepant"
-    else:
-        value, reliability = s[1], "agreed" if min(s[1] - s[0], s[2] - s[1]) <= tol else "discrepant"
+        return s[0], "single_reading"
+    if len(s) == 2:
+        return (s[0] + s[1]) / 2, "agreed" if s[1] - s[0] <= tol else "discrepant"
+    return s[1], "agreed" if min(s[1] - s[0], s[2] - s[1]) <= tol else "discrepant"
+
+
+def summarize_reference(ref: ReferenceInput, tolerance_mm: float) -> ReferenceSummary:
+    mm = [round(r.mm, 2) for r in ref.hand_length]
+    value, reliability = _agree(mm, tolerance_mm)
     return ReferenceSummary(
-        hand_length_mm=round(value, 2), readings_mm=mm, spread_mm=round(s[-1] - s[0], 2), repeated=len(s) > 1,
+        hand_length_mm=round(value, 2), readings_mm=mm, spread_mm=round(max(mm) - min(mm), 2), repeated=len(mm) > 1,
         reliability=reliability, tolerance_mm=tolerance_mm,
     )  # fmt: skip
+
+
+def summarize_fingers(ref: ReferenceInput, tolerance_mm: float = FINGER_TOLERANCE_MM) -> list[FingerReferenceSummary]:
+    """Each finger datum that was read, in finger order (thumb to little, crease before knuckle)."""
+    out: list[FingerReferenceSummary] = []
+    for name in FINGERS:
+        f = (ref.fingers or {}).get(name)
+        if f is None:
+            continue
+        for datum, readings in (("crease_to_tip", f.crease_to_tip), ("knuckle_to_tip", f.knuckle_to_tip)):
+            if not readings:
+                continue
+            mm = [round(r.mm, 2) for r in readings]
+            value, reliability = _agree(mm, tolerance_mm)
+            out.append(FingerReferenceSummary(
+                key=f"{name}_{datum}_mm", reference_mm=round(value, 2), readings_mm=mm,
+                spread_mm=round(max(mm) - min(mm), 2), reliability=reliability, tolerance_mm=tolerance_mm,
+            ))  # fmt: skip
+    return out
 
 
 def _capture_info(req: ValidationScanRequest, resp: ScanResponse) -> CaptureInfo:
@@ -415,6 +491,27 @@ def _compare(key: str, ref_mm: float, est) -> Comparison:
     )
 
 
+class _CreaseEstimate:
+    """The crease-to-tip estimate of a finger measurement, shaped like a measurement for _compare."""
+
+    def __init__(self, m) -> None:
+        self.value_mm = m.crease_to_tip_mm
+        self.uncertainty_mm = m.crease_uncertainty_mm
+        self.status = m.crease_status or m.status
+
+
+def _finger_estimate(key: str, estimates: dict):
+    """The camera's value for a finger reference key: crease to tip from the finger's crease estimate, knuckle to tip from
+    its joint-centre chain (the closest the camera has to that datum). None when the camera gave none."""
+    name, _, datum = key.removesuffix("_mm").partition("_")
+    m = estimates.get(f"{name}_length_mm")
+    if m is None:
+        return None
+    if datum == "crease_to_tip":
+        return _CreaseEstimate(m) if m.crease_to_tip_mm is not None else None
+    return m
+
+
 def build_record(req: ValidationScanRequest, resp: ScanResponse, now: datetime | None = None) -> ValidationRecord:
     calib = pipeline.load_measurement_calibration()
     ref_summary = summarize_reference(req.reference, load_app_config().validation_reference_tolerance_mm)
@@ -440,6 +537,15 @@ def build_record(req: ValidationScanRequest, resp: ScanResponse, now: datetime |
             comparisons.append(_compare(key, ref_mm, None))
         elif key != "hand_length_mm":
             recorded_only[key] = ref_mm
+    finger_refs = summarize_fingers(req.reference)
+    for fr in finger_refs:
+        est = _finger_estimate(fr.key, estimates)
+        if est is not None:
+            comparisons.append(_compare(fr.key, fr.reference_mm, est))
+        elif resp.status == "accepted":
+            comparisons.append(_compare(fr.key, fr.reference_mm, None))  # accepted, but this finger had no value
+        else:
+            recorded_only[fr.key] = fr.reference_mm
     capture = _capture_info(req, resp)
     flags = []
     if capture.landmark_motion_px is not None and capture.landmark_motion_px < STATIC_MOTION_PX:
@@ -466,6 +572,7 @@ def build_record(req: ValidationScanRequest, resp: ScanResponse, now: datetime |
         conditions=req.conditions,
         capture=capture,
         comparisons=comparisons,
+        finger_references=finger_refs,
         recorded_only=recorded_only,
         integrity_flags=flags,
     )
@@ -768,6 +875,45 @@ def by_reference_source(real: list[ValidationRecord]) -> dict:
     return out
 
 
+def finger_accuracy(real: list[ValidationRecord]) -> dict:
+    """Per finger datum: camera minus physical reference on standard-condition scans that passed the quality checks, with
+    agreed repeated readings of that finger. by_hand averages a hand's scans first (one hand, one number). The mean signed
+    error is the offset a calibration would remove; it is descriptive here, not fitted and not held out."""
+    out: dict[str, dict] = {}
+    for name in FINGERS:
+        for datum in ("crease_to_tip", "knuckle_to_tip"):
+            key = f"{name}_{datum}_mm"
+            by_scan: list[float] = []
+            by_hand: dict[tuple[str, str], list[float]] = defaultdict(list)
+            within: list[bool] = []
+            no_estimate = 0
+            for r in real:
+                if r.trial.condition != "standard" or not r.quality_passed:
+                    continue
+                ref = next((f for f in r.finger_references if f.key == key), None)
+                if ref is None or ref.reliability != "agreed":
+                    continue
+                c = next((c for c in r.comparisons if c.key == key), None)
+                if c is None or c.signed_error_mm is None:
+                    no_estimate += 1
+                    continue
+                by_scan.append(c.signed_error_mm)
+                by_hand[_hand_key(r)].append(c.signed_error_mm)
+                if c.within_95 is not None:
+                    within.append(c.within_95)
+            if not by_scan and not no_estimate:
+                continue
+            out[key] = {
+                "by_scan": describe_errors(by_scan),
+                "by_hand": describe_errors([float(np.mean(v)) for v in by_hand.values()]),
+                "n_hands": len(by_hand),
+                "accepted_without_estimate": no_estimate,
+                "within_reported_95_interval": {"count": sum(within), "of": len(within)},
+                "sample_note": sample_note(len(by_hand)),
+            }
+    return out
+
+
 def summarize(records: list[ValidationRecord], unreadable_lines: int = 0) -> dict:
     """Separate real-participant results from everything else and describe them. Software test
     records are counted only as excluded; they never enter a statistic."""
@@ -854,6 +1000,12 @@ def summarize(records: list[ValidationRecord], unreadable_lines: int = 0) -> dic
                 "within_reported_95_interval": {"count": sum(within), "of": len(within)},
                 "sample_note": sample_note(len(by_hand)),
             },
+            "fingers": {
+                "label": "Finger lengths by protocol FL-1 (camera minus caliper)",
+                "scope": "standard-condition scans that passed quality checks, with agreed repeated readings of that finger",
+                "tolerance_mm": FINGER_TOLERANCE_MM,
+                "by_key": finger_accuracy(real),
+            },
             "conditions": conditions,
             "by_participant": by_participant(real),
             "by_reference_source": by_reference_source(real),
@@ -903,11 +1055,21 @@ def to_csv(records: list[ValidationRecord], record_flags: dict[str, list[str]] |
         rs, cap = r.reference_summary, r.capture
         dist = cap.estimated_camera_distance_mm
         flags = (record_flags or {}).get(r.id, r.integrity_flags)
+        fingers = {f.key: f for f in r.finger_references}
         for c in r.comparisons or [None]:
+            fr = fingers.get(c.key) if c else None
+            if fr is not None:  # a finger row: that finger's own readings
+                name, _, datum = fr.key.removesuffix("_mm").partition("_")
+                entered = getattr((r.reference.fingers or {})[name], datum) or []
+                ref_cols = ["FL-1", "; ".join(f"{x.value:g} {x.unit}" for x in entered),
+                            "; ".join(f"{x:.2f}" for x in fr.readings_mm), fr.reference_mm, fr.reliability, fr.spread_mm]  # fmt: skip
+            else:
+                ref_cols = [r.reference.protocol, "; ".join(f"{x.value:g} {x.unit}" for x in r.reference.hand_length),
+                            "; ".join(f"{x:.2f}" for x in rs.readings_mm),
+                            c.reference_mm if c else rs.hand_length_mm, rs.reliability, rs.spread_mm]  # fmt: skip
             w.writerow([_cell(v) for v in [
                 r.id, r.created_at, r.data_origin, r.consent_confirmed, r.participant_code, r.trial.hand,
-                r.trial.condition, r.reference.protocol, "; ".join(f"{x.value:g} {x.unit}" for x in r.reference.hand_length),
-                "; ".join(f"{x:.2f}" for x in rs.readings_mm), rs.hand_length_mm, rs.reliability, rs.spread_mm,
+                r.trial.condition, *ref_cols,
                 c.key if c else "", c.estimate_mm if c else "", c.uncertainty_mm if c else "",
                 c.signed_error_mm if c else "", c.abs_error_mm if c else "", c.pct_error if c else "",
                 c.within_95 if c else "", c.status if c else "", r.scan_status, ";".join(r.scan_rejection_reasons),

@@ -5,6 +5,8 @@ Every scan and record in this module is SYNTHETIC test data, created in memory o
 temp directory. Nothing here is, or is written as, a real-world measurement.
 """
 
+import csv
+import io
 import json
 import uuid
 from datetime import date
@@ -612,3 +614,157 @@ def test_coin_implied_distance_bands(template, enabled):
     assert rows["30-40 cm"]["mean_signed_error_mm"] == pytest.approx(2.0)
     assert rows["50 cm and over"]["mean_signed_error_mm"] == pytest.approx(-4.0)
     assert coin["without_distance"] == 1 and "assumed" in coin["note"]
+
+
+# --------------------------------------------------------------------------- #
+# Finger readings (protocol FL-1): SYNTHETIC scans and constructed records only
+# --------------------------------------------------------------------------- #
+
+FINGERS_BODY = {
+    "index": {"crease_to_tip": [{"value": 70.0, "unit": "mm"}, {"value": 70.5, "unit": "mm"}],
+              "knuckle_to_tip": [{"value": 9.2, "unit": "cm"}]},
+    "thumb": {"crease_to_tip": [{"value": 55.0, "unit": "mm"}, {"value": 59.0, "unit": "mm"}]},
+}  # fmt: skip
+
+
+def test_finger_readings_are_compared_finger_by_finger(operator_client, enabled):
+    b = body()
+    b["reference"]["fingers"] = FINGERS_BODY
+    r = operator_client.post("/api/validation/scans", json=b)
+    assert r.status_code == 201
+    rec = r.json()["record"]
+    refs = {f["key"]: f for f in rec["finger_references"]}
+    # Thumb first, crease before knuckle; units converted; the same agreement rule as the hand length.
+    assert list(refs) == ["thumb_crease_to_tip_mm", "index_crease_to_tip_mm", "index_knuckle_to_tip_mm"]
+    ic, ik = refs["index_crease_to_tip_mm"], refs["index_knuckle_to_tip_mm"]
+    assert (ic["reference_mm"], ic["reliability"]) == (70.25, "agreed")
+    assert (ik["reference_mm"], ik["reliability"]) == (92.0, "single_reading")
+    assert refs["thumb_crease_to_tip_mm"]["reliability"] == "discrepant"  # 4 mm apart, tolerance 2 mm
+    comps = {c["key"]: c for c in rec["comparisons"]}
+    # Knuckle to tip is compared with the finger's joint-centre chain; crease to tip with its crease estimate.
+    scan = operator_client.post("/api/scan", json=b["scan"]).json()
+    index_len = next(m for m in scan["measurements"] if m["key"] == "index_length_mm")
+    k = comps["index_knuckle_to_tip_mm"]
+    assert k["estimate_mm"] == pytest.approx(index_len["value_mm"], abs=0.01)
+    assert k["signed_error_mm"] == pytest.approx(k["estimate_mm"] - 92.0, abs=0.01)
+    c = comps["index_crease_to_tip_mm"]
+    if index_len.get("crease_to_tip_mm") is not None:
+        assert c["estimate_mm"] == pytest.approx(index_len["crease_to_tip_mm"], abs=0.01)
+        assert c["signed_error_mm"] == pytest.approx(c["estimate_mm"] - 70.25, abs=0.01)
+    else:
+        assert c["estimate_mm"] is None and c["status"] == "invalid"
+    # The hand length comparison is untouched.
+    assert comps["hand_length_mm"]["reference_mm"] == 187.25
+
+
+@pytest.mark.parametrize(
+    "fingers",
+    [
+        {"index": {}},  # no reading at all
+        {"index": {"crease_to_tip": [{"value": 300, "unit": "mm"}]}},  # implausible
+        {"index": {"crease_to_tip": [{"value": 7.0, "unit": "mm"}]}},  # cm typed as mm
+        {"pinky": {"crease_to_tip": [{"value": 60, "unit": "mm"}]}},  # not a finger name
+        {"index": {"crease_to_tip": [{"value": 70, "unit": "mm"}] * 4}},  # more than three readings
+    ],
+)
+def test_finger_readings_are_checked(fingers):
+    b = body()
+    b["reference"]["fingers"] = fingers
+    with pytest.raises(ValidationError):
+        vr.ValidationScanRequest.model_validate(b)
+
+
+def test_records_without_finger_readings_still_load(template):
+    d = template.model_dump(mode="json")
+    d.pop("finger_references")
+    rec = vr.ValidationRecord.model_validate(d)
+    assert rec.finger_references == []
+
+
+def with_fingers(rec, readings: dict, estimates: dict):
+    """A constructed record with finger references and camera values: readings {key: (mm, ...)}, estimates {key: mm or None}."""
+    d = rec.model_dump(mode="json")
+    refs, comps = [], [c for c in d["comparisons"] if c["key"] == "hand_length_mm"]
+    for key, mm in readings.items():
+        value, reliability = vr._agree(list(mm), vr.FINGER_TOLERANCE_MM)
+        refs.append({"key": key, "reference_mm": value, "readings_mm": list(mm), "spread_mm": max(mm) - min(mm),
+                     "reliability": reliability, "tolerance_mm": vr.FINGER_TOLERANCE_MM})  # fmt: skip
+        est = estimates.get(key)
+        if est is None:
+            comps.append({"key": key, "reference_mm": value, "estimate_mm": None, "uncertainty_mm": None, "status": "invalid",
+                          "abs_error_mm": None, "pct_error": None, "signed_error_mm": None, "within_95": None})  # fmt: skip
+        else:
+            err = est - value
+            comps.append({"key": key, "reference_mm": value, "estimate_mm": est, "uncertainty_mm": 2.0, "status": "valid",
+                          "abs_error_mm": abs(err), "pct_error": 100 * err / value, "signed_error_mm": err,
+                          "within_95": abs(err) <= vr.Z95 * 2.0})  # fmt: skip
+    d["finger_references"], d["comparisons"] = refs, comps
+    return vr.ValidationRecord.model_validate(d)
+
+
+def test_finger_accuracy_summary(template, enabled):
+    k = "index_crease_to_tip_mm"
+    rs = [
+        with_fingers(make_record(template, code="P-AAAAAA"), {k: (70.0, 70.0)}, {k: 73.0}),  # +3
+        with_fingers(make_record(template, code="P-AAAAAA"), {k: (70.0, 70.0)}, {k: 71.0}),  # +1 (same hand: +2)
+        with_fingers(make_record(template, code="P-BBBBBB"), {k: (80.0, 80.0)}, {k: 76.0}),  # -4
+        with_fingers(make_record(template, code="P-CCCCCC"), {k: (75.0, 75.0)}, {k: None}),  # accepted, no value
+        # Not scored: discrepant readings, a single reading, a non-standard condition.
+        with_fingers(make_record(template, code="P-DDDDDD"), {k: (70.0, 75.0)}, {k: 90.0}),
+        with_fingers(make_record(template, code="P-EEEEEE"), {k: (70.0,)}, {k: 90.0}),
+        with_fingers(make_record(template, code="P-FFFFFF", condition="distance_far"), {k: (70.0, 70.0)}, {k: 90.0}),
+        # Excluded entirely: a software test.
+        with_fingers(make_record(template, code="P-GGGGGG", origin="software_test"), {k: (70.0, 70.0)}, {k: 90.0}),
+    ]
+    s = vr.summarize(rs)
+    f = s["real_world"]["fingers"]
+    assert f["tolerance_mm"] == vr.FINGER_TOLERANCE_MM
+    row = f["by_key"][k]
+    assert row["by_scan"]["errors_mm"] == [-4.0, 1.0, 3.0]
+    assert row["by_scan"]["mean_signed_error_mm"] == pytest.approx(0.0)
+    assert row["n_hands"] == 2
+    assert row["by_hand"]["errors_mm"] == [-4.0, 2.0]
+    assert row["accepted_without_estimate"] == 1
+    assert row["within_reported_95_interval"] == {"count": 2, "of": 3}
+    assert "Only 2 hand(s)" in row["sample_note"]
+    # Only fingers that were read appear.
+    assert list(f["by_key"]) == [k]
+
+
+def test_csv_finger_rows_carry_their_own_readings(operator_client, enabled):
+    b = body(readings=((187.0, "mm"), (187.5, "mm")))
+    b["reference"]["fingers"] = FINGERS_BODY
+    b["reference"]["palm_breadth"] = {"value": 8.5, "unit": "cm"}
+    operator_client.post("/api/validation/scans", json=b)
+    rows = list(csv.reader(io.StringIO(operator_client.get("/api/validation/records.csv").text)))
+    header, rows = rows[0], rows[1:]
+    names = ("protocol", "readings_as_entered", "reference_mm", "measurement", "reference_reliability")
+    col = {name: header.index(name) for name in names}
+    by_key = {r[col["measurement"]]: r for r in rows}
+    idx = by_key["index_crease_to_tip_mm"]
+    assert (idx[col["protocol"]], idx[col["readings_as_entered"]], idx[col["reference_mm"]]) == (
+        "FL-1",
+        "70 mm; 70.5 mm",
+        "70.25",
+    )
+    assert by_key["index_knuckle_to_tip_mm"][col["readings_as_entered"]] == "9.2 cm"
+    assert by_key["thumb_crease_to_tip_mm"][col["reference_reliability"]] == "discrepant"
+    # Every row carries its own reference: the palm-breadth row shows 85 mm, not the hand length.
+    if "palm_breadth_mm" in by_key:
+        assert by_key["palm_breadth_mm"][col["reference_mm"]] == "85.0"
+    assert by_key["hand_length_mm"][col["reference_mm"]] == "187.25"
+
+
+def test_report_has_a_finger_table(template, enabled):
+    from scripts.validation_report import real_section
+
+    k = "middle_crease_to_tip_mm"
+    rs = [
+        with_fingers(make_record(template, code="P-AAAAAA"), {k: (80.0, 80.0)}, {k: 82.0}),
+        with_fingers(make_record(template, code="P-BBBBBB"), {k: (78.0, 78.5)}, {k: 77.25}),
+    ]
+    text = "\n".join(real_section(rs, 0))
+    assert "### Finger lengths: camera estimate minus caliper (protocol FL-1)" in text
+    assert "| middle crease-to-tip | 2 | +0.50 | 1.50 |" in text
+    # No finger readings: the report says so instead of an empty table.
+    assert "No finger readings were recorded." in "\n".join(real_section([make_record(template)], 0))

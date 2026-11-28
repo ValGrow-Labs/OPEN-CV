@@ -30,7 +30,9 @@ COPY backend/glovesize ./backend/glovesize
 COPY config ./config
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
-RUN useradd --no-create-home --uid 10001 app
+# /data: where study records go when validation mode is switched on (a Coolify persistent volume mounted there starts
+# out owned by this user, so the app can write to it). Unused, and empty, while validation mode is off.
+RUN useradd --no-create-home --uid 10001 app && mkdir -p /data && chown app /data
 USER app
 ENV PYTHONPATH=/app/backend PORT=8000
 EXPOSE 8000

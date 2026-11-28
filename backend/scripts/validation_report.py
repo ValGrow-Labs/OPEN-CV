@@ -105,6 +105,37 @@ def real_section(records: list[vr.ValidationRecord], unreadable: int) -> list[st
             out.append(f"  >= +20 mm  {'#' * hist['above']} {hist['above']}")
         out += ["```", ""]
 
+    fing = rw["fingers"]
+    out += [
+        "### Finger lengths: camera estimate minus caliper (protocol FL-1)",
+        "",
+        f"Scope: {fing['scope']}; two readings must agree within {fing['tolerance_mm']:.1f} mm. Unit: hand (mean of its",
+        "scans). Crease to tip is compared with the camera's crease estimate, knuckle to tip with its joint-centre chain.",
+        "The mean signed error is the offset a calibration would remove: descriptive only, not fitted, not held out.",
+        "",
+    ]
+    if not fing["by_key"]:
+        out += ["No finger readings were recorded.", ""]
+    else:
+        out += [
+            "| Finger, datum | n hands | Mean signed error (bias) | MAE | RMSE | Median abs | Max abs | SD | In 95% interval | No estimate |",
+            "|---|---|---|---|---|---|---|---|---|---|",
+        ]
+        for key, row in fing["by_key"].items():
+            h, w = row["by_hand"], row["within_reported_95_interval"]
+            label = key.removesuffix("_mm").replace("_", " ", 1).replace("_", "-")
+            if h.get("n", 0) == 0:
+                cells = "n/a | n/a | n/a | n/a | n/a | n/a"
+            else:
+                cells = (
+                    f"{_f(h['mean_signed_error_mm'], 2, True)} | {_f(h['mae_mm'], 2)} | {_f(h['rmse_mm'], 2)} "
+                    f"| {_f(h['median_abs_error_mm'], 2)} | {_f(h['max_abs_error_mm'], 2)} | {_f(h['error_sd_mm'], 2)}"
+                )
+            out.append(
+                f"| {label} | {row['n_hands']} | {cells} | {w['count']} of {w['of']} scans | {row['accepted_without_estimate']} |"
+            )
+        out.append("")
+
     out += [
         "### Individual results",
         "",
@@ -308,7 +339,11 @@ def main() -> None:
         "The three parts below come from different kinds of evidence and must not be combined.",
         "",
         *real_section(records, unreadable),
-        *(pytest_section() if not args.no_pytest else ["## 2. Synthetic software tests", "", "Not run (--no-pytest).", ""]),
+        *(
+            pytest_section()
+            if not args.no_pytest
+            else ["## 2. Synthetic software tests", "", "Not run (--no-pytest).", ""]
+        ),
         *(
             simulation_section()
             if not args.no_simulation

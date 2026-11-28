@@ -454,11 +454,40 @@ export interface Reading {
   unit: LengthUnit;
 }
 
+export type FingerName = "thumb" | "index" | "middle" | "ring" | "little";
+
+export interface FingerReading {
+  /** Palmar crease at the base of the finger (the thumb: its MCP crease) to the skin tip. */
+  crease_to_tip?: Reading[];
+  /** Dorsal knuckle to the skin tip, finger straight. */
+  knuckle_to_tip?: Reading[];
+}
+
+export interface FingerReferenceSummary {
+  key: string;
+  reference_mm: number;
+  readings_mm: number[];
+  spread_mm: number;
+  reliability: ReferenceSummary["reliability"];
+  tolerance_mm: number;
+}
+
+export interface FingerAccuracyRow {
+  by_scan: ErrorStats;
+  by_hand: ErrorStats;
+  n_hands: number;
+  accepted_without_estimate: number;
+  within_reported_95_interval: { count: number; of: number };
+  sample_note: string;
+}
+
 export interface ValidationReference {
   protocol: "HL-1";
   hand_length: Reading[];
   palm_breadth?: Reading;
   hand_circumference?: Reading;
+  /** Optional finger lengths by protocol FL-1 (docs/PILOT_PROTOCOL.md), each datum read 1 to 3 times. */
+  fingers?: Partial<Record<FingerName, FingerReading>>;
   tool: "ruler" | "tape" | "calipers" | "anthropometer" | "other";
   measured_by: "operator" | "participant";
   operator_code?: string;
@@ -556,6 +585,7 @@ export interface ValidationRecord {
   conditions: CaptureConditions;
   capture: CaptureInfo;
   comparisons: ValidationComparison[];
+  finger_references?: FingerReferenceSummary[];
   recorded_only: Record<string, number>;
   integrity_flags: string[];
   frames_stored: boolean;
@@ -654,6 +684,7 @@ export interface ValidationSummary {
       within_reported_95_interval: { count: number; of: number };
       sample_note: string;
     };
+    fingers?: { label: string; scope: string; tolerance_mm: number; by_key: Record<string, FingerAccuracyRow> };
     conditions: Partial<Record<TrialCondition, ConditionStats>>;
     by_participant: ParticipantRow[];
     by_reference_source: Record<"operator" | "participant", { scans: number; hands_scored: number; by_hand: ErrorStats }>;

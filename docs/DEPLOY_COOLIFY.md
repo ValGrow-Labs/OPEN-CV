@@ -34,6 +34,8 @@ measurement, calibration or validation settings.
 - The `/api` proxy is not trusting `X-Forwarded-*` headers on purpose: the operator-only
   endpoints refuse proxied requests, and they are off anyway.
 - No volume is needed. The service stores nothing.
+- To run the accuracy study on this deployment (validation mode, a `/data` volume and an operator token), follow
+  `ACCURACY_STUDY_QUICKSTART.md`. Leave it off otherwise.
 - The Vercel and Render deployments are unaffected. Retire them only when you decide to.
 - To run the same image locally: `docker build -t glovesize .` then
   `docker run --rm -p 8000:8000 glovesize` and open http://localhost:8000

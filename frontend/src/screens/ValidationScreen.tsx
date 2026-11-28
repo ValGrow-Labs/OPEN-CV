@@ -23,6 +23,7 @@ import type {
   ValidationSummary,
 } from "../api/types";
 import { Badge } from "../ui/components";
+import { FingerReadingsFields, emptyFingers, fingerKeyLabel, fingerProblems, fingersPayload } from "../ui/fingerReadings";
 import { HAND_LENGTH_RANGE_MM, newParticipantCode, referenceCheck, toMm } from "../ui/pilot";
 import { PilotInvites } from "./PilotInvites";
 import { ScanScreen } from "./ScanScreen";
@@ -114,6 +115,8 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
     lighting: "indoor_bright" as CaptureConditions["lighting"],
     distance: "",
   });
+  // Optional finger readings by protocol FL-1, kept apart from the hand-length form.
+  const [fingers, setFingers] = useState(emptyFingers);
   const needsToken = config.operator_access === "token";
 
   const reload = useCallback(() => {
@@ -145,6 +148,7 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
     readings.length > 0 && !inRange && "readings in a plausible range (check the unit)",
     real && check && check.reliability !== "agreed" && "agreeing repeated readings",
     !form.device.trim() && "the device",
+    ...fingerProblems(fingers, form.unit),
   ].filter(Boolean) as string[];
 
   const submit = useCallback(
@@ -161,6 +165,7 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
             hand_length: parseReadings(form).map((value) => ({ value, unit: form.unit })),
             palm_breadth: optionalReading(form.palmBreadth),
             hand_circumference: optionalReading(form.circumference),
+            fingers: fingersPayload(fingers, form.unit),
             tool: form.tool,
             measured_by: form.measuredBy,
             operator_code: form.operatorCode.trim() || undefined,
@@ -181,7 +186,7 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
         throw e;
       }
     },
-    [form],
+    [form, fingers],
   );
 
   const downloadCsv = async () => {
@@ -391,6 +396,7 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
               <input id="v-circ" className="input num" inputMode="decimal" value={form.circumference} onChange={set("circumference")} />
             </div>
           </div>
+          <FingerReadingsFields value={fingers} unit={form.unit} onChange={setFingers} />
           <div className="row" style={{ gap: 12 }}>
             <div className="field" style={{ flex: 1 }}>
               <label htmlFor="v-tool">Tool</label>
@@ -450,7 +456,13 @@ export function ValidationScreen({ config, chartId, reference, onClose }: Props)
               Scan and record
             </button>
             {last && (
-              <button className="btn" onClick={() => setForm({ ...form, ...EMPTY_PARTICIPANT })}>
+              <button
+                className="btn"
+                onClick={() => {
+                  setForm({ ...form, ...EMPTY_PARTICIPANT });
+                  setFingers(emptyFingers());
+                }}
+              >
                 Next participant
               </button>
             )}
@@ -679,6 +691,35 @@ function SummaryView({ summary }: { summary: ValidationSummary }) {
                 ))}
             </div>
           )}
+        </div>
+      )}
+
+      {rw.fingers && Object.keys(rw.fingers.by_key).length > 0 && (
+        <div className="stack" style={{ gap: 8 }}>
+          <strong>Finger lengths: camera minus caliper (mm, protocol FL-1)</strong>
+          <span className="small muted">
+            Scope: {rw.fingers.scope}. One value per hand. The bias is the offset a calibration would remove; it is not fitted here.
+          </span>
+          <div style={{ overflowX: "auto" }}>
+            <table className="diag-table validation-table" style={{ minWidth: 520 }} aria-label="Finger length errors">
+              <thead>
+                <tr>
+                  <th>Finger, datum</th>
+                  <th>Hands</th>
+                  <th>Bias</th>
+                  <th>MAE</th>
+                  <th>RMSE</th>
+                  <th>Median |e|</th>
+                  <th>Max |e|</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(rw.fingers.by_key).map(([key, row]) => (
+                  <StatsRow key={key} label={fingerKeyLabel(key)} d={row.by_hand} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

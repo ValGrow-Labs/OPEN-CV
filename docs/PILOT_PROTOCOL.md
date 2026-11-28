@@ -71,6 +71,31 @@ glove sizing, and it is what the app compares against.
 One trained operator should measure all participants if possible. Record the operator code
 (e.g. `OP1`), not a name.
 
+## 2a. Finger lengths (protocol FL-1, optional, about 5 minutes)
+
+The camera reports a length for each finger. FL-1 gives it something to be compared with. Enter the readings under
+**Finger lengths** on the validation screen; the server compares each with the camera (crease to tip with the camera's
+crease estimate, knuckle to tip with its joint-centre chain) and the report shows the error per finger. Nothing is fitted
+from them automatically.
+
+**Tool:** a sliding caliper (at least 150 mm, read to 0.5 mm or better). A ruler is not precise enough for fingers.
+
+**Datums** (each finger straight, the hand resting as in section 2):
+
+* **Crease to tip** (the glove-industry definition): from the **crease at the base of the finger on the palm side** to
+  the **tip of the finger** (the most distal point of the pad, not the nail). If there are two creases at the base, use
+  the one nearest the palm. For the thumb, use the crease at the base of the thumb's first segment.
+* **Knuckle to tip:** with the hand turned palm down and the finger straight, from the **top of the knuckle** (the head of
+  the hand bone at the base of the finger) to the tip of the finger. For the thumb, from the top of the knuckle at the
+  base of its first segment.
+
+**Readings:** two readings of each datum, the finger lifted and put back between them, without looking at the first. If
+the two differ by more than **2 mm** (`FINGER_TOLERANCE_MM` in `backend/glovesize/validation_records.py`, an assumed value
+for trained staff), take a third; the same median rule as the hand length applies, and a finger whose readings disagree is
+left out of that finger's statistics. Measure every finger you can; a finger you skip is simply not compared.
+
+Use the **same finger readings for every scan of that hand**, as for the hand length.
+
 ## 3. Scans for each participant (about 10 minutes)
 
 Scan the **right hand** for everyone unless that is not possible; record which hand was used.
