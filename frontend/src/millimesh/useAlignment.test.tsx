@@ -2,6 +2,7 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Point } from "../api/types";
 import { guideBox, handBoxInView, type AlignResult } from "./alignment";
 import { useAlignment } from "./useAlignment";
 import type { Landmark } from "../hand3d/handModel";
@@ -38,13 +39,27 @@ afterEach(() => {
 });
 
 /** Renders the hook and lets a test read its latest result. */
-function setup(pose: readonly Landmark[] | null, phase: "palm" | "side" | "back" = "palm") {
+/** World landmarks of a palm leaning `deg` about the vertical axis (its right side farther away): 0 is flat to the camera. */
+function worldTilted(deg: number): Point[] {
+  const k = Math.tan((deg * Math.PI) / 180);
+  const pts: Point[] = Array.from({ length: 21 }, () => ({ x: 0, y: -0.05, z: 0 }));
+  const set = (i: number, x: number, y: number) => (pts[i] = { x, y, z: k * x });
+  set(0, 0, 0);
+  set(5, -0.03, -0.08);
+  set(9, 0, -0.09);
+  set(13, 0.03, -0.08);
+  set(17, 0.05, -0.06);
+  return pts;
+}
+
+function setup(pose: readonly Landmark[] | null, phase: "palm" | "side" | "back" = "palm", world: Point[] | null = null) {
   const poseRef = { current: pose };
+  const worldRef = { current: world };
   const frameRef = { current: { width: VIEW.width, height: VIEW.height } };
   const latest: { current: AlignResult | null } = { current: null };
   function Probe() {
     const viewRef = useRef<HTMLDivElement>(null);
-    latest.current = useAlignment({ poseRef, frameRef, viewRef, mirror: false, phase });
+    latest.current = useAlignment({ poseRef, frameRef, worldRef, viewRef, mirror: false, phase }).align;
     return <div ref={viewRef} />;
   }
   const view = render(<Probe />);
@@ -89,6 +104,33 @@ describe("useAlignment", () => {
       poseRef.current = null;
     });
     await waitFor(() => expect(lit(latest.current)).toEqual([]), { timeout: 3000 });
+  });
+
+  it("keeps the corners lit but asks for a level phone when the palm leans away from it", async () => {
+    const { latest } = setup(handFilling(0.9), "palm", worldTilted(30));
+    await waitFor(() => expect(latest.current?.hint).toBe("level"));
+    expect(latest.current?.aligned).toBe(true);
+    expect(latest.current?.level).toBe(false);
+    expect(lit(latest.current)).toHaveLength(4);
+  });
+
+  it("is level and says lined up when the palm is parallel to the phone", async () => {
+    const { latest } = setup(handFilling(0.9), "palm", worldTilted(3));
+    await waitFor(() => expect(latest.current?.hint).toBe("aligned"));
+    expect(latest.current?.level).toBe(true);
+  });
+
+  it("does not ask for a level phone in the side view, where the hand is on its edge", async () => {
+    const { latest } = setup(handFilling(0.9), "side", worldTilted(50));
+    await waitFor(() => expect(latest.current?.aligned).toBe(true));
+    expect(latest.current?.level).toBe(true);
+    expect(latest.current?.hint).not.toBe("level");
+  });
+
+  it("does not ask for anything about tilt when the tracker gave no world landmarks", async () => {
+    const { latest } = setup(handFilling(0.9), "palm", null);
+    await waitFor(() => expect(latest.current?.aligned).toBe(true));
+    expect(latest.current?.level).toBe(true);
   });
 
   it("stops its timer when it is removed", async () => {

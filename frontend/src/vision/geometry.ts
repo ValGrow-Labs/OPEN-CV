@@ -53,10 +53,10 @@ export function chainElevationDeg(points: Point[], chain: number[]): number {
   return n < 1e-9 ? NaN : (Math.asin(Math.min(1, Math.abs(v[2]) / n)) * 180) / Math.PI;
 }
 
-/** Approximate palm-plane tilt from MediaPipe world landmarks (live gate only; the server is authoritative). */
-export function palmTiltDeg(world: Point[]): number {
+/** The (unnormalised) normal of the palm plane from MediaPipe world landmarks: the sum of the normals of the fan of
+ *  triangles wrist -> consecutive knuckles, or null when the landmarks are degenerate. Its sign is arbitrary. */
+export function palmNormal(world: Point[]): [number, number, number] | null {
   const p0 = world[0];
-  // Average of the normals of the fan of triangles wrist -> consecutive knuckles.
   let nx = 0;
   let ny = 0;
   let nz = 0;
@@ -69,9 +69,14 @@ export function palmTiltDeg(world: Point[]): number {
     ny += u[2] * v[0] - u[0] * v[2];
     nz += u[0] * v[1] - u[1] * v[0];
   }
-  const n = Math.hypot(nx, ny, nz);
-  if (n < 1e-12) return NaN;
-  return (Math.acos(Math.min(1, Math.abs(nz) / n)) * 180) / Math.PI;
+  return Math.hypot(nx, ny, nz) < 1e-12 ? null : [nx, ny, nz];
+}
+
+/** Approximate palm-plane tilt from MediaPipe world landmarks (live gate only; the server is authoritative). */
+export function palmTiltDeg(world: Point[]): number {
+  const n = palmNormal(world);
+  if (!n) return NaN;
+  return (Math.acos(Math.min(1, Math.abs(n[2]) / Math.hypot(n[0], n[1], n[2]))) * 180) / Math.PI;
 }
 
 export function pointInPolygon(x: number, y: number, poly: Point[]): boolean {
